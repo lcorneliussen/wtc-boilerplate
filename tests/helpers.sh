@@ -219,6 +219,14 @@ repos:
   - name: gadget
     remote: git@gitlab.com:example/gadget.git
     default_ref: origin/develop
+
+  - name: sprocket
+    remote: git@bitbucket.org:example/sprocket.git
+    default_ref: origin/main
+
+  - name: cog
+    remote: https://bitbucket.org/example/cog.git
+    default_ref: origin/main
 YML
 
   git -C "$_hsrc" init -q -b main
