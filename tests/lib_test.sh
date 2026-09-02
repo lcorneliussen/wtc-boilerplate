@@ -279,3 +279,13 @@ saved="$ROOT"; ROOT="$(dirname "$ws")/another-workspace"
 assert_neq "$here" "$(wtc_browse_socket main)"
 assert_eq "/tmp/wtc-browse-another-workspace-main.nvim" "$(wtc_browse_socket main)"
 ROOT="$saved"
+
+it "a workspace and collection too long for a socket path are cut to fit"
+# sun_path is 104 bytes on macOS, NUL included; past it nvim --listen fails
+# outright. The cut name keeps a checksum of the full pair so it stays unique.
+long="$(printf '%090d' 0 | tr 0 c)"
+sock="$(wtc_browse_socket "$long")"
+assert_eq "yes" "$([ "$(printf '%s' "$sock" | wc -c | tr -d ' ')" -le 100 ] && echo yes || echo no)" "fits a socket path"
+assert_contains "$sock" "/tmp/wtc-browse-$(basename "$ws")-" "still says which workspace"
+assert_eq "$sock" "$(wtc_browse_socket "$long")" "stable across calls"
+assert_neq "$sock" "$(wtc_browse_socket "${long}d")" "a name differing past the cut still gets its own socket"
