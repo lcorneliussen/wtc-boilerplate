@@ -17,6 +17,9 @@ fi
 set -euo pipefail
 
 wtc_status_usage() {
+  # Asking for help is success (exit 0); unknown options and other call sites
+  # pass nothing and get exit 1. See tests/cli_contract_test.sh.
+  local rc="${1:-1}"
   case "${WTC_STATUS_UI:-}" in
     oneshot)
       cat <<'EOF'
@@ -57,7 +60,7 @@ One-shot output for agents: tools/wtc-status.sh (--json / --md / --ansi).
 EOF
       ;;
   esac
-  exit 1
+  exit "$rc"
 }
 
 # Prefer BASH_SOURCE so a sourced common.sh still resolves *this* tools/
@@ -132,11 +135,26 @@ while [ $# -gt 0 ]; do
     --no-click) click=no; shift ;;
     --no-fetch) fetch=no; shift ;;
     --fetch-age) fetch_max_age="${2:?--fetch-age needs seconds}"; shift 2 ;;
-    -h|--help) wtc_status_usage ;;
+    -h|--help) wtc_status_usage 0 ;;
     -*) echo "unknown option: $1" >&2; wtc_status_usage ;;
     *) only="$1"; shift ;;
   esac
 done
+
+# One numeric truth for the interval, before anything decides on it. `--watch`
+# accepts anything starting with a digit and wtc.env accepts whatever is in it,
+# so `00`, `007` and `0abc` all reach here — and `sleep` returns immediately for
+# the first two and fails for the third, both inside a `while :` loop. Env vars
+# that are wholly non-numeric were already replaced with the default above; a
+# flag value that still has non-digits is refused. 10# keeps a leading zero from
+# being read as octal.
+case "$interval" in
+  ''|*[!0-9]*)
+    echo "error: --watch / WTC_STATUS_WATCH wants a whole number of seconds: $interval" >&2
+    exit 1
+    ;;
+esac
+interval=$((10#$interval))
 
 case "$format" in
   auto)
@@ -153,6 +171,12 @@ esac
 if [ "${WTC_STATUS_UI:-}" = oneshot ]; then
   watch=no
   click=no
+fi
+
+# --cached is repo-table only: a bare `--cached` must not fall through to the
+# live process table (the default `both` view). Select repos instead.
+if [ "$cached" = yes ] && [ "$want" = both ]; then
+  want=repos
 fi
 
 # Collection-local by default; widening the view is always something you typed
@@ -173,6 +197,11 @@ if [ "${WTC_STATUS_UI:-}" != oneshot ]; then
   fi
   [ "$click" = yes ] && watch=yes
 fi
+
+# Zero interval means print once — wins over click re-enabling watch (legacy
+# --no-watch / --watch 0 / WTC_STATUS_WATCH=0). A sleep-0 loop would re-fetch
+# every bare as fast as the machine allows.
+if [ "$interval" = 0 ]; then watch=no; click=no; fi
 
 # Column widths are character counts, and the rollup glyphs (✓ ✗ ● — ↑ ±) are
 # one column but several bytes — so the table needs a UTF-8 ctype to measure.
@@ -2118,13 +2147,21 @@ wtc_status_render_cached() {
     md)
       md_path="$ROOT/$only/.wtc-status.md"
       [ -f "$md_path" ] || { echo "error: no cached snapshot: $md_path" >&2; return 1; }
-      cat "$md_path"
+      # Age line matches the ANSI title bar's "snapshot, Ns old" so tests and
+      # humans can tell a --cached render from a live one without grepping JSON.
+      age="$(file_age_secs "$json_path" 2>/dev/null || file_age_secs "$md_path")"
+      printf '# %s (snapshot, %ss old)\n\n' "$only" "$age"
+      # Drop the leading `# collection` heading from the cached md — we just
+      # wrote a dated one.
+      sed '1{/^# /d;}' "$md_path"
       return 0
       ;;
   esac
   watch=no
   click=no
   if apply_snapshot_from_json "$json_path" 2>/dev/null; then
+    # Same age cue the legacy boiler put in the table header.
+    _snapshot_epoch=$(( $(date +%s) - $(file_age_secs "$json_path") ))
     draw_tty
     return 0
   fi
