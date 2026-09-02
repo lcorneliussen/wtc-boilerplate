@@ -414,7 +414,7 @@ open_collection() { # <collection>
         else
           # --repos is the pane's intent (the process table is its own pane);
           # the interval, click and scope come from wtc-status itself now.
-          status_cmd='./harness/tools/wtc-status.sh --repos'
+          status_cmd='./harness/tools/wtc-status-tui.sh'
           if herdr_pane_run_idle "$session" "$(herdr_row_col "$rows" status 2)" \
                "$status_cmd" "$settle"; then
             note "status started"

@@ -3,3 +3,6 @@
 
 # macOS
 .DS_Store
+
+# wtc-status.sh last-refresh snapshot (collection-scoped, disposable)
+.last-wtc-status.yml

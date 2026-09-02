@@ -4,8 +4,14 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: tools/wtc-status.sh [--repos|--procs] [--watch [seconds]] [--no-click]
+Usage: tools/wtc-status.sh [--repos|--procs] [--tui [seconds]] [--no-click]
                           [--all | <collection>]
+
+Prints once and exits. `--tui` is the live pane — redrawing, clickable, and
+quit with q — and is also what tools/wtc-status-tui.sh runs. The mode is never
+inferred from whether stdout is a terminal: one command must not loop for a
+human and print once into a pipe. `--tui` without a terminal is an error, not
+a silent downgrade.
 
 Prints per-collection branch / open PR + check rollup / working-tree state,
 then the processes running under the herdr session (CPU, memory). Meant to
@@ -80,10 +86,15 @@ want=both
 case "${WTC_STATUS_REPOS:-no}" in yes|1|true|TRUE) want=repos ;; esac
 interval="${WTC_STATUS_WATCH:-60}"
 case "$interval" in ''|*[!0-9]*) interval=60 ;; esac
-# Watching needs a terminal that can be redrawn and quit. Piped or captured,
-# one pass is the only useful answer — see the note in usage.
+# Mode is asked for, not inferred. This used to turn itself on whenever stdout
+# was a terminal, so the same command looped forever for a human and printed
+# once into a pipe — one invocation, two behaviours, decided by something the
+# caller cannot see. `--tui` (or WTC_STATUS_TUI) is the live pane; the default
+# is one pass, which is what a script, an agent, or a person reading a table
+# actually wants.
 watch=no
-if [ "$interval" != 0 ] && [ -t 1 ]; then watch=yes; fi
+tui_asked=no   # on the command line specifically — see the tty guard below
+case "${WTC_STATUS_TUI:-no}" in yes|1|true|TRUE) watch=yes ;; esac
 click=auto
 case "${WTC_STATUS_NO_CLICK:-no}" in yes|1|true|TRUE) click=no ;; esac
 fetch=yes fetch_max_age=300 all=no only=""
@@ -93,8 +104,11 @@ while [ $# -gt 0 ]; do
     --repos) want=repos; shift ;;
     --procs) want=procs; shift ;;
     --all) all=yes; shift ;;
-    --watch) watch=yes; shift; case "${1:-}" in [0-9]*) interval="$1"; shift ;; esac ;;
-    --no-watch) watch=no; interval=0; shift ;;
+    # --tui is the name; --watch stays as its spelling with an interval, and
+    # as what every existing pane command and doc already says.
+    --tui) watch=yes; tui_asked=yes; shift; case "${1:-}" in [0-9]*) interval="$1"; shift ;; esac ;;
+    --watch) watch=yes; tui_asked=yes; shift; case "${1:-}" in [0-9]*) interval="$1"; shift ;; esac ;;
+    --no-tui|--no-watch) watch=no; tui_asked=no; interval=0; shift ;;
     --click) click=yes; shift ;;
     --no-click) click=no; shift ;;
     --no-fetch) fetch=no; shift ;;
@@ -141,12 +155,13 @@ fi
 
 # Clicking needs the collection table (that is what carries the cells) and a
 # terminal on both ends: mouse reports come back in on stdin.
+# Clicking needs the collection table (that is what carries the cells), a
+# terminal on both ends (mouse reports come back in on stdin) — and a live
+# table to click on. It follows the mode now instead of deciding it.
 if [ "$click" = auto ]; then
   click=no
-  if [ "$want" != procs ] && [ -t 0 ] && [ -t 1 ]; then click=yes; fi
+  if [ "$watch" = yes ] && [ "$want" != procs ] && [ -t 0 ] && [ -t 1 ]; then click=yes; fi
 fi
-[ "$click" = yes ] && watch=yes   # a clickable table is a live one
-
 # ...but an interval of 0 means "print once" — that is what --no-watch sets,
 # what WTC_STATUS_WATCH=0 means, and what `--watch 0` asks for. It wins over
 # anything that merely turned watching *on*, including the click rule above:
@@ -155,10 +170,18 @@ fi
 # nobody redraws is not one worth capturing mouse reports for.
 if [ "$interval" = 0 ]; then watch=no click=no; fi
 
-# Redirected output is a report, not a live table — even `--watch` on a pipe
-# would hang an agent capturing the table. Usage promises one pass.
-if [ ! -t 1 ]; then
-  watch=no
+# Asking for the TUI without a terminal is a request that cannot be honoured:
+# the loop would redraw into a pipe forever and hang whatever is reading it.
+# Refuse it rather than silently doing the other thing — the whole point of an
+# explicit mode is that it does what it says or says why not.
+if [ "$watch" = yes ] && { [ ! -t 1 ] || [ ! -t 0 ]; }; then
+  if [ "$tui_asked" = yes ]; then
+    echo "error: --tui needs a terminal on stdin and stdout; got a pipe" >&2
+    exit 1
+  fi
+  # Reached only via the env var, which is set once and inherited by things
+  # that legitimately capture output. Downgrade quietly there.
+  watch=no click=no
 fi
 
 # Column widths are character counts, and the rollup glyphs (✓ ✗ ● — ↑ ±) are
@@ -354,6 +377,16 @@ cell() { # <text> <width> -> $_cell: <width> columns, the text itself underlined
 repos_table() {
   ROWS=("")
   layout
+  # One snapshot per render, written as the rows are built and moved into
+  # place at the end. Only when scoped to a single collection: the file lives
+  # in that collection, and a --all sweep has no single home to write to.
+  cache_on=no
+  if [ -n "$only" ]; then
+    cache_on=yes
+    # The name, not $0: the full path is a temp dir under test and a machine
+    # detail everywhere else, and this field is read by people.
+    wtc_status_cache_begin "$only" "$(basename "$0")$([ "$watch" = yes ] && printf ' --tui')"
+  fi
   # Refresh the refs the table is about to measure against — "behind" computed
   # from a week-old fetch is worse than no number at all. Age-gated, so a
   # --watch pane redrawing every 5s still only fetches every few minutes.
@@ -537,6 +570,12 @@ EOF
       # that is the repo a click has to open. Falls back for a ⌂ row, which
       # has no PR and so no slug of its own to carry.
       ROWS[$line]="$wt|${pr_slug:-$(slug_for_worktree "$wt" "$repo")}|$label|$pr_num"
+      if [ "$cache_on" = yes ]; then
+        wtc_status_cache_repo "$dir" "$branch" "$(git -C "$wt" rev-parse --short HEAD 2>/dev/null)" \
+          "${ahead:-0}" "${behind:-0}" "$tree" "$pr_num" \
+          "$(forge_for_worktree "$wt" "$repo")" "${pr_state:-}" "${pr_checks:-}" \
+          "${pr_merge:-}" "${pr_review:-}" "${pr_title:-}"
+      fi
       TERMX[$line]=$term_x
       name=""
     done
@@ -544,6 +583,10 @@ EOF
   if [ "$stale" -gt 0 ]; then
     out $'\033[2m'"↓ = behind remote — $stale worktree(s) need a catch-up"$'\033[0m'
   fi
+  # Moved into place only once every row is written: a reader never sees a
+  # half-built snapshot, and a render that dies partway leaves the last good
+  # one where it was.
+  [ "$cache_on" = yes ] && wtc_status_cache_commit
   return 0
 }
 

@@ -206,3 +206,46 @@ it "a forge whose CLI is absent yields the unknown row too"
 # takes the same "cannot tell" path a Bitbucket one would without bb.
 out="$(PATH=/nonexistent-for-this-test wtc_pr_enrich widget 5 'a title' 2>/dev/null | cut -f2)"
 assert_empty "$out" "state stays empty when no client is installed"
+
+# --- last-refresh snapshot --------------------------------------------------
+# A cache, so every reader must work without it — and a shared one, so the
+# format has to survive a round trip through both awk and a real YAML parser.
+
+it "the snapshot round-trips every field"
+mkdir -p "$ROOT/snap"
+wtc_status_cache_begin snap wtc-status-tui.sh
+wtc_status_cache_repo widget feat/x abc123 2 0 clean 42 github OPEN SUCCESS CLEAN approved "A title"
+wtc_status_cache_commit
+assert_file "$(wtc_status_cache_file snap)"
+assert_eq "widget	feat/x	abc123	2	0	clean	42	github	OPEN	SUCCESS	CLEAN	approved	A title" \
+  "$(wtc_status_cache_rows snap)"
+
+it "values that look like YAML structure survive"
+# A PR title is arbitrary text from someone else's repo: a leading dash makes
+# it a list item, a colon makes it a mapping, and either would change the
+# shape of the document rather than the value.
+wtc_status_cache_begin snap wtc-status.sh
+wtc_status_cache_repo r b h 0 0 clean "" unknown "" "" "" "" "A title: with a colon"
+wtc_status_cache_repo r2 b h 0 0 clean "" unknown "" "" "" "" "- leading dash"
+wtc_status_cache_commit
+assert_eq "A title: with a colon" "$(wtc_status_cache_rows snap | head -n1 | cut -f13)"
+assert_eq "- leading dash"        "$(wtc_status_cache_rows snap | tail -n1 | cut -f13)"
+
+it "an empty field reads back empty, and the row keeps 13 columns"
+assert_eq "13" "$(wtc_status_cache_rows snap | head -n1 | awk -F'\t' '{print NF}')"
+assert_empty "$(wtc_status_cache_rows snap | head -n1 | cut -f7)" "pr"
+
+it "a missing snapshot is not an error"
+# Every reader has to work without it: the collection may never have rendered.
+assert_ok wtc_status_cache_rows never-rendered
+assert_empty "$(wtc_status_cache_rows never-rendered)"
+
+it "a half-written snapshot is never visible"
+# begin+repo without commit leaves the previous file in place, because the
+# rows go to a temp file that is moved only at the end.
+before="$(wtc_status_cache_rows snap)"
+wtc_status_cache_begin snap wtc-status.sh
+wtc_status_cache_repo interrupted b h 0 0 clean "" unknown "" "" "" "" ""
+assert_eq "$before" "$(wtc_status_cache_rows snap)" "still the last good snapshot"
+wtc_status_cache_commit
+assert_contains "$(wtc_status_cache_rows snap)" "interrupted" "and the new one lands on commit"

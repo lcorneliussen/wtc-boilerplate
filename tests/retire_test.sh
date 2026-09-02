@@ -23,7 +23,8 @@ make_collection() { # <name> -> path
   # retire skips directories with no .git, which is what makes a harness dir
   # with no worktree in it safe to use as a fixture.
   for f in HANDOFF.md .env.collection .env.collection.local mise.toml \
-           AGENTS.md WTC-SCOPE.md .mcp.json .envrc .env.toolchain; do
+           AGENTS.md WTC-SCOPE.md .mcp.json .envrc .env.toolchain \
+           .wtc-prs .last-wtc-status.yml; do
     printf 'generated\n' > "$_c/$f"
   done
   printf 'generated\n' > "$_c/.claude/settings.json"
@@ -40,7 +41,7 @@ out="$("$retire" tidy 2>&1)"
 rc=$?
 for p in .claude .agents .cursor .codex .grok .envrc .env.toolchain \
          .env.collection .env.collection.local mise.toml AGENTS.md \
-         WTC-SCOPE.md HANDOFF.md .mcp.json; do
+         WTC-SCOPE.md HANDOFF.md .mcp.json .wtc-prs .last-wtc-status.yml; do
   assert_no_file "$c/$p" "removed: $p"
 done
 
