@@ -115,3 +115,33 @@ it "--all and a named collection are both accepted"
 assert_ok "$status" --help
 out="$("$status" --help 2>&1)"
 assert_contains "$out" "--all"
+
+# --- --cached scope ---------------------------------------------------------
+# The snapshot is one collection's repo rows. Used outside that, the flag can
+# only produce a table that lies — so it refuses rather than rendering.
+
+it "--cached refuses --all"
+# Unscoped it would print this collection's rows under a heading claiming
+# every collection, with an empty COLLECTION column.
+out="$(run_status 25 --repos --cached --all)"
+rc=$?
+assert_neq "0" "$rc" "refused"
+assert_contains "$out" "--all" "and says which flag is the problem"
+
+it "--cached refuses --procs"
+out="$(run_status 25 --procs --cached)"
+assert_neq "0" "$?" "refused"
+assert_contains "$out" "snapshot" "and says why"
+
+it "--cached without --repos does not fall back to live work"
+# The default view is `both`: the repo table, then the process table. Honouring
+# --cached only in the `repos` branch meant a bare `--cached` did the whole
+# live render anyway — exactly the work the flag exists to skip. It selects
+# the repo view instead, and the output has to prove it came from the file.
+#
+# An unscoped run still means *this* collection (only defaults to it), so a
+# snapshot exists by now: earlier cases in this file wrote one.
+out="$(run_status 25 --cached)"
+assert_ok true   # the run itself is asserted through its output below
+assert_contains "$out" "snapshot," "rendered from the snapshot, not live"
+assert_not_contains "$out" "MEM" "and did not fall through to the process table"

@@ -104,13 +104,15 @@ EOF
 # the collection (credentials scoped to this wtc's work have nowhere to go).
 # AGENTS.md is the collection-root symlink; WTC-SCOPE.md is the seeded copy.
 # .wtc-prs is the local PR enlistment (instructions/development-workflows.md
-# → Catch-up); .wtc-status.json/.wtc-status.md are wtc-status.sh's caches.
+# → Catch-up); .last-wtc-status.yml is wtc-status.sh's last-refresh snapshot,
+# and .wtc-status.json/.wtc-status.md are its older caches.
 # All three are collection-scoped and disposable — nothing durable lives here.
 rm -f "$dest_root/HANDOFF.md" "$dest_root/.env.collection" \
   "$dest_root/.env.collection.local" "$dest_root/mise.toml" "$dest_root/.DS_Store" \
   "$dest_root/AGENTS.md" "$dest_root/WTC-SCOPE.md" "$dest_root/.mcp.json" \
   "$dest_root/.envrc" "$dest_root/.env.toolchain" \
-  "$dest_root/.wtc-prs" "$dest_root/.wtc-status.json" "$dest_root/.wtc-status.md"
+  "$dest_root/.wtc-prs" "$dest_root/.last-wtc-status.yml" \
+  "$dest_root/.wtc-status.json" "$dest_root/.wtc-status.md"
 # Generated agent-config dirs — skill symlinks into harness/skills and the
 # toolchain hook into harness/hooks (link-skills.sh), and the rendered MCP
 # configs (link-mcp.sh). Nothing of their own. Without this the rmdir below

@@ -262,17 +262,12 @@ hook_warn() { # <worktree-path> <hook> <status> — no-op on success
   return 0
 }
 
-repo_slug_for() { # <repo-name> -> GitHub owner/repo derived from the registry remote
-  remote="$(registry_field "$1" remote)"
-  [ -n "$remote" ] || return 0
-  # Both remote forms have to work. Stripping to the first ":" answers for
-  # SSH (git@github.com:owner/repo.git) and turns an HTTPS remote into
-  # "//github.com/owner/repo", which gh cannot resolve — so every PR cell in
-  # wtc-status renders a GraphQL NOT_FOUND blob. Same host-anchored strip
-  # slug_for_worktree already uses just below.
-  case "$remote" in *github.com[:/]*) ;; *) return 0 ;; esac
-  slug="${remote#*github.com}"; slug="${slug#:}"; slug="${slug#/}"
-  printf '%s\n' "${slug%.git}"
+repo_slug_for() { # <repo-name> -> owner/repo derived from the registry remote
+  # Both remote forms have to work, on either host. Stripping to the first ":"
+  # answers for SSH (git@host:owner/repo.git) but turns an HTTPS remote into
+  # "//host/owner/repo", which no CLI can resolve — every PR cell then renders
+  # a NOT_FOUND blob. slug_from_url does the host-anchored strip for both.
+  slug_from_url "$(registry_field "$1" remote)"
 }
 
 slug_for_worktree() { # <worktree> [repo-name] -> owner/repo
@@ -285,18 +280,48 @@ slug_for_worktree() { # <worktree> [repo-name] -> owner/repo
     slug="$(repo_slug_for "$2")"
     if [ -n "$slug" ]; then printf '%s\n' "$slug"; return 0; fi
   fi
-  url="$(git -C "$1" remote get-url origin 2>/dev/null)" || return 0
-  case "$url" in *github.com[:/]*) ;; *) return 0 ;; esac
-  slug="${url#*github.com}"; slug="${slug#:}"; slug="${slug#/}"
-  printf '%s\n' "${slug%.git}"
+  slug_from_url "$(git -C "$1" remote get-url origin 2>/dev/null || true)"
 }
 
-# owner/repo out of a github remote URL, ssh or https. Empty for anything
-# else, which is the caller's signal to skip that remote rather than guess.
-github_slug_from_url() { # <url> -> owner/repo, or empty
-  case "${1:-}" in *github.com[:/]*) ;; *) return 0 ;; esac
-  _s="${1#*github.com}"; _s="${_s#:}"; _s="${_s#/}"
+# --- forges ------------------------------------------------------------------
+# A repo's forge is a property of its remote URL, not a global setting: one
+# collection can hold a GitHub sibling and a Bitbucket one, and each has to be
+# asked with the CLI that speaks its API. Everything downstream — which client
+# runs, what a PR URL looks like, how a review state is spelled — hangs off
+# this one answer, so it is derived in exactly one place.
+#
+# Hosts are matched on the URL, not on which CLI happens to be installed: a
+# missing `bb` should say so, not silently reclassify a Bitbucket repo as
+# unknown and blank its row.
+
+forge_of_url() { # <url> -> github | bitbucket | unknown
+  case "${1:-}" in
+    *github.com[:/]*)    printf 'github\n' ;;
+    *bitbucket.org[:/]*) printf 'bitbucket\n' ;;
+    *)                   printf 'unknown\n' ;;
+  esac
+}
+
+# owner/repo out of a remote URL, ssh or https, for either host. Empty for
+# anything else, which is the caller's signal to skip that remote rather than
+# guess. Both forges spell the path the same way, so one strip serves both:
+# `git@host:owner/repo.git` and `https://host/owner/repo.git`.
+slug_from_url() { # <url> -> owner/repo, or empty
+  case "$(forge_of_url "${1:-}")" in
+    github)    _h=github.com ;;
+    bitbucket) _h=bitbucket.org ;;
+    *)         return 0 ;;
+  esac
+  _s="${1#*"$_h"}"; _s="${_s#:}"; _s="${_s#/}"
   printf '%s\n' "${_s%.git}"
+}
+
+# Kept as its own name: callers that only ever meant GitHub read better saying
+# so, and get an empty answer for a Bitbucket URL rather than a usable slug
+# they would then hand to `gh`.
+github_slug_from_url() { # <url> -> owner/repo, or empty
+  [ "$(forge_of_url "${1:-}")" = github ] || return 0
+  slug_from_url "$1"
 }
 
 # The repo a sibling contributes *to*, when that is not the repo it pushes to.
@@ -304,43 +329,64 @@ github_slug_from_url() { # <url> -> owner/repo, or empty
 # opened against, and everything user-facing about that PR — its number, its
 # checks, the URL a click should open — lives on the upstream, not on origin.
 upstream_slug_for_worktree() { # <worktree> -> owner/repo, or empty
-  github_slug_from_url "$(git -C "$1" remote get-url upstream 2>/dev/null || true)"
+  slug_from_url "$(git -C "$1" remote get-url upstream 2>/dev/null || true)"
 }
 
-# github | unknown — this implementation talks to GitHub (gh) and nothing else.
-# Kept as its own function anyway so every caller reads the same either way,
-# and so a second forge is one case to add here rather than a grep across the
-# tools. `pr_url_for` below already carries the bitbucket branch.
-forge_for_repo() { # <repo-name> -> github | unknown, from the registry remote
-  case "$(registry_field "$1" remote)" in
-    *github.com*) printf 'github\n' ;;
-    *)            printf 'unknown\n' ;;
-  esac
+forge_for_repo() { # <repo-name> -> github | bitbucket | unknown, from the registry
+  forge_of_url "$(registry_field "$1" remote)"
 }
 
-forge_for_slug() { # <owner/repo> -> github (the only forge implemented here)
-  printf 'github\n'
+# The forge a worktree's PRs live on. Upstream wins over origin: a fork
+# checkout pushes to origin, but its PRs are opened against the upstream, and
+# that is the host that has to be asked about them.
+forge_for_worktree() { # <worktree> [repo-name] -> github | bitbucket | unknown
+  _f="$(forge_of_url "$(git -C "$1" remote get-url upstream 2>/dev/null || true)")"
+  if [ "$_f" = unknown ]; then
+    _f="$(forge_of_url "$(git -C "$1" remote get-url origin 2>/dev/null || true)")"
+  fi
+  if [ "$_f" = unknown ] && [ -n "${2:-}" ]; then
+    _f="$(forge_for_repo "$2")"
+  fi
+  printf '%s\n' "$_f"
+}
+
+# The client that speaks a forge's API, and whether it is actually here.
+forge_cli() { # <forge> -> gh | bb, or empty
+  case "${1:-}" in github) printf 'gh\n' ;; bitbucket) printf 'bb\n' ;; esac
+}
+
+forge_cli_present() { # <forge> — 0 when the CLI for it is installed
+  _c="$(forge_cli "${1:-}")"
+  [ -n "$_c" ] || return 1
+  command -v "$_c" >/dev/null 2>&1
 }
 
 # Slug and forge for a repo that may not be in the registry — an `ext.`
 # sibling has no registry entry, but its worktree knows its own remote.
 # Without this, an unregistered repo's PR lookups (wtc-pr enlist's default
 # URL, catch-up's PR-state check) silently returned nothing.
-repo_slug_and_forge() { # <repo> [worktree] -> "<slug>\tgithub"
+repo_slug_and_forge() { # <repo> [worktree] -> "<slug>\t<forge>"
   _slug="$(repo_slug_for "$1")"
+  _forge="$(forge_for_repo "$1")"
   if [ -z "$_slug" ] && [ -n "${2:-}" ]; then
     _slug="$(slug_for_worktree "$2" "$1")"
   fi
+  if [ "$_forge" = unknown ] && [ -n "${2:-}" ]; then
+    _forge="$(forge_for_worktree "$2" "$1")"
+  fi
   [ -n "$_slug" ] || _slug="$1"
-  printf '%s\tgithub\n' "$_slug"
+  printf '%s\t%s\n' "$_slug" "$_forge"
 }
 
 # One place that knows what a pull request's web address looks like.
 pr_url_for() { # <slug> <forge> <number> -> URL, or empty
   [ -n "$1" ] && [ -n "$3" ] || return 0
+  # Explicit per forge, with no default. Guessing github for an unrecognised
+  # remote hands the caller a URL that 404s, which is worse than no URL: an
+  # empty answer is a cell left blank, a wrong one is a click that lies.
   case "$2" in
+    github)    printf 'https://github.com/%s/pull/%s\n' "$1" "$3" ;;
     bitbucket) printf 'https://bitbucket.org/%s/pull-requests/%s\n' "$1" "$3" ;;
-    *)         printf 'https://github.com/%s/pull/%s\n' "$1" "$3" ;;
   esac
 }
 
@@ -934,6 +980,117 @@ EOF
   echo "wrote $dir/.env.collection (port base $base) + $dir/mise.toml + $dir/.env.collection.local"
 }
 
+# --- last-refresh snapshot (.last-wtc-status.yml) ----------------------------
+# The facts behind the last status render, written where anything else can
+# read them: a prompt, a script, an agent that wants the table without paying
+# for a refresh, and a one-shot that would otherwise re-walk every worktree.
+#
+# Collection-scoped and disposable — retire.sh removes it, and it is never
+# committed. It is a cache, so every reader must work without it.
+#
+# The format is a deliberately small YAML subset: two-space indent, one
+# `- key: value` per record, no anchors, no multi-line scalars, no quoting
+# beyond what a value needs. PyYAML is not in the standard library and this
+# harness will not grow a pip dependency to read its own cache, so the subset
+# is exactly what awk can parse and what a person can read. Generated only —
+# hand-edits are overwritten by the next render.
+
+wtc_status_cache_file() { # [collection] -> path
+  _c="${1:-}"
+  [ -n "$_c" ] || _c="${WTC_COLLECTION:-}"
+  [ -n "$_c" ] || _c="$(this_collection)"
+  printf '%s/%s/.last-wtc-status.yml\n' "$ROOT" "$_c"
+}
+
+# A value safe for the subset: no tabs, no newlines, and quoted when it starts
+# with something YAML would read as structure.
+_wtc_yml_val() {
+  _v="$(printf '%s' "${1:-}" | tr '\t\n\r' '   ' | sed 's/  */ /g; s/ *$//')"
+  case "$_v" in
+    '') printf "''" ;;
+    [-\[\{\&\*\#\?\|\>\%\@\`\"\']*|*:\ *) printf "'%s'" "$(printf '%s' "$_v" | sed "s/'/''/g")" ;;
+    *) printf '%s' "$_v" ;;
+  esac
+}
+
+# wtc_status_cache_begin <collection> <mode>   — start a new snapshot
+# wtc_status_cache_repo  <k=v>...              — one repo record
+# wtc_status_cache_commit                      — atomic move into place
+#
+# Written to a temp file and moved, so a reader never sees a half-written
+# snapshot and a render that dies partway leaves the previous one intact.
+wtc_status_cache_begin() {
+  WTC_CACHE_TARGET="$(wtc_status_cache_file "${1:-}")"
+  WTC_CACHE_TMP="$WTC_CACHE_TARGET.tmp.$$"
+  mkdir -p "$(dirname "$WTC_CACHE_TARGET")" 2>/dev/null || true
+  {
+    echo "# Generated by harness/tools/wtc-status.sh — the last completed refresh."
+    echo "# A cache: disposable, never committed, removed by retire.sh."
+    echo "generated_at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "generated_by: $(_wtc_yml_val "${2:-wtc-status.sh}")"
+    echo "collection: $(_wtc_yml_val "${1:-}")"
+    echo "repos:"
+  } > "$WTC_CACHE_TMP" 2>/dev/null || WTC_CACHE_TMP=""
+}
+
+wtc_status_cache_repo() { # repo branch head ahead behind tree pr forge state checks merge review title
+  [ -n "${WTC_CACHE_TMP:-}" ] || return 0
+  {
+    printf '  - repo: %s\n'    "$(_wtc_yml_val "${1:-}")"
+    printf '    branch: %s\n'  "$(_wtc_yml_val "${2:-}")"
+    printf '    head: %s\n'    "$(_wtc_yml_val "${3:-}")"
+    printf '    ahead: %s\n'   "$(_wtc_yml_val "${4:-0}")"
+    printf '    behind: %s\n'  "$(_wtc_yml_val "${5:-0}")"
+    printf '    tree: %s\n'    "$(_wtc_yml_val "${6:-}")"
+    printf '    pr: %s\n'      "$(_wtc_yml_val "${7:-}")"
+    printf '    forge: %s\n'   "$(_wtc_yml_val "${8:-unknown}")"
+    printf '    state: %s\n'   "$(_wtc_yml_val "${9:-}")"
+    printf '    checks: %s\n'  "$(_wtc_yml_val "${10:-}")"
+    printf '    merge: %s\n'   "$(_wtc_yml_val "${11:-}")"
+    printf '    review: %s\n'  "$(_wtc_yml_val "${12:-}")"
+    printf '    title: %s\n'   "$(_wtc_yml_val "${13:-}")"
+  } >> "$WTC_CACHE_TMP" 2>/dev/null || true
+}
+
+wtc_status_cache_commit() {
+  [ -n "${WTC_CACHE_TMP:-}" ] || return 0
+  mv -f "$WTC_CACHE_TMP" "$WTC_CACHE_TARGET" 2>/dev/null || rm -f "$WTC_CACHE_TMP"
+  WTC_CACHE_TMP=""
+}
+
+# Read it back: TSV, one row per repo, in the order written.
+#
+# Empty fields come out as "-", not as nothing. `IFS=$'\t' read` treats tab as
+# IFS *whitespace*, so a run of tabs collapses into one delimiter and every
+# field after an empty one shifts left — a repo with no PR was rendering its
+# forge in the PR column. "-" is this codebase's existing placeholder for
+# "intentionally blank" (see .wtc-prs's own format), so callers already know
+# to read it as empty.
+wtc_status_cache_rows() { # [collection] -> repo \t branch \t head \t ahead \t behind \t tree \t pr \t forge \t state \t checks \t merge \t review \t title
+  _f="$(wtc_status_cache_file "${1:-}")"
+  [ -f "$_f" ] || return 0
+  awk '
+    function val(l) {
+      sub(/^[^:]*: ?/, "", l)
+      if (l ~ /^\x27.*\x27$/) { l = substr(l, 2, length(l) - 2); gsub(/\x27\x27/, "\x27", l) }
+      return l
+    }
+    /^  - repo:/ { if (n) print row(); delete f; n = 1; f["repo"] = val($0); next }
+    n && /^    [a-z_]+:/ { k = $1; sub(/:$/, "", k); f[k] = val($0); next }
+    END { if (n) print row() }
+    function row(   o, i, ks) {
+      split("repo branch head ahead behind tree pr forge state checks merge review title", ks, " ")
+      o = ""
+      for (i = 1; i <= 13; i++) o = o (i > 1 ? "\t" : "") (f[ks[i]] == "" ? "-" : f[ks[i]])
+      return o
+    }
+  ' "$_f"
+}
+
+wtc_status_cache_age() { # [collection] -> seconds since the snapshot, or huge
+  file_age_secs "$(wtc_status_cache_file "${1:-}")"
+}
+
 # --- local PR enlistment (.wtc-prs) -----------------------------------------
 # Local PR enlistment — preferred source of truth for "which PRs belong to
 # this wtc". Not a forge label / forge search. Lives at <collection>/.wtc-prs
@@ -1050,40 +1207,91 @@ wtc_pr_facts_py() {
   printf '%s\n' "${HARNESS_DIR:-}/tools/wtc-pr-facts.py"
 }
 
-wtc_pr_enrich() { # <repo> <number> [fallback-title] [worktree] -> TSV line
-  repo="$1" num="$2" title="${3:-}"
-  # Empty state (not OPEN): catch-up must not push or assume merged when it
-  # cannot verify PR status — missing gh / failed view is "unknown".
-  command -v gh >/dev/null 2>&1 || {
-    printf '%s\t\tNONE\tUNKNOWN\tnone\t%s\t\t\n' "$num" "$title"
-    return 0
-  }
-  IFS=$'\t' read -r slug _forge <<EOF
-$(repo_slug_and_forge "$repo" "${4:-}")
-EOF
-  [ -n "$slug" ] || slug="$repo"
+# The unknown row: number, no state, nothing claimed. Returned whenever the
+# forge cannot be reached or does not answer. Catch-up reads state to decide
+# whether a branch is finished, so "cannot tell" must never be spelled the
+# same as "merged".
+_wtc_pr_unknown_row() { # <number> <title>
+  printf '%s\t\tNONE\tUNKNOWN\tnone\t%s\t\t\n' "$1" "${2:-}"
+}
+
+_wtc_pr_enrich_github() { # <slug> <number> <title> -> TSV line, or empty
+  _slug="$1" _num="$2" _title="$3"
   _facts_py="$(wtc_pr_facts_py)"
   if [ -f "$_facts_py" ]; then
-    row="$(gh pr view "$num" --repo "$slug" \
+    _row="$(gh pr view "$_num" --repo "$_slug" \
       --json number,state,title,isDraft,statusCheckRollup,reviewDecision,mergeCommit,reviewRequests,latestReviews,mergedAt,updatedAt \
       2>/dev/null | python3 "$_facts_py" gh-from-json \
-        --num "$num" --title "$title" 2>/dev/null || true)"
-    if [ -n "$row" ]; then
-      printf '%s\n' "$row"
-      return 0
-    fi
+        --num "$_num" --title "$_title" 2>/dev/null || true)"
+    [ -n "$_row" ] && { printf '%s\n' "$_row"; return 0; }
   fi
-  row="$(gh pr view "$num" --repo "$slug" \
+  gh pr view "$_num" --repo "$_slug" \
     --json number,state,isDraft,title \
     --jq '[(.number|tostring),
            (if .isDraft then "DRAFT" else .state end),
            "NONE", "UNKNOWN", "none", (.title // ""), "", ""] | @tsv' \
-    2>/dev/null || true)"
-  if [ -n "$row" ]; then
-    printf '%s\n' "$row"
-    return 0
-  fi
-  printf '%s\t\tNONE\tUNKNOWN\tnone\t%s\t\t\n' "$num" "$title"
+    2>/dev/null || true
+}
+
+# Bitbucket via `bb`. Deliberately the thin half: Bitbucket Cloud has no
+# labels, its PR states are spelled differently (DECLINED, SUPERSEDED), and
+# `bb pr checks` is a separate call. Only what a row actually shows is mapped,
+# and anything unmapped falls back to the unknown row rather than inventing a
+# value — a wrong "approved" is worse than a blank cell.
+_wtc_pr_enrich_bitbucket() { # <slug> <number> <title> -> TSV line, or empty
+  _slug="$1" _num="$2" _title="$3"
+  command -v python3 >/dev/null 2>&1 || return 0
+  bb pr view "$_num" --workspace "${_slug%%/*}" --repo "${_slug#*/}" --json 2>/dev/null \
+    | python3 -c '
+import json, sys
+raw = sys.stdin.read().strip()
+if not raw:
+    sys.exit(0)
+try:
+    d = json.loads(raw)
+except Exception:
+    sys.exit(0)
+if isinstance(d, list):
+    d = d[0] if d else {}
+# Bitbucket state -> the vocabulary every renderer here already reads.
+state = {"OPEN": "OPEN", "MERGED": "MERGED", "DECLINED": "DECLINED",
+         "SUPERSEDED": "SUPERSEDED"}.get(str(d.get("state", "")).upper(), "")
+if d.get("draft") is True:
+    state = "DRAFT"
+# Reviewers: approved when someone has, changes when someone asked for them.
+parts = d.get("participants") or []
+approved = any(p.get("approved") for p in parts)
+changes  = any((p.get("state") or "").lower() == "changes_requested" for p in parts)
+review = "approved" if approved else ("changes" if changes else "none")
+title = d.get("title") or sys.argv[1]
+merged_on = (d.get("updated_on") or "") if state == "MERGED" else ""
+merge_commit = ((d.get("merge_commit") or {}).get("hash") or "") if state == "MERGED" else ""
+# checks and mergeability are separate calls in bb; not claimed here.
+print("\t".join([str(d.get("id", sys.argv[2])), state, "NONE", "UNKNOWN",
+                 review, title, merge_commit, merged_on]))
+' "$_title" "$_num" 2>/dev/null || true
+}
+
+wtc_pr_enrich() { # <repo> <number> [fallback-title] [worktree] -> TSV line
+  repo="$1" num="$2" title="${3:-}"
+  IFS=$'\t' read -r slug forge <<EOF
+$(repo_slug_and_forge "$repo" "${4:-}")
+EOF
+  [ -n "$slug" ] || slug="$repo"
+
+  # Which client to run is the repo's own answer, from its remote URL — one
+  # collection can hold a GitHub sibling and a Bitbucket one. A missing client
+  # is the unknown row, not a silent reclassification: catch-up must not read
+  # "cannot verify" as "merged".
+  forge_cli_present "$forge" || { _wtc_pr_unknown_row "$num" "$title"; return 0; }
+
+  case "$forge" in
+    github)    row="$(_wtc_pr_enrich_github    "$slug" "$num" "$title")" ;;
+    bitbucket) row="$(_wtc_pr_enrich_bitbucket "$slug" "$num" "$title")" ;;
+    *)         row="" ;;
+  esac
+
+  if [ -n "$row" ]; then printf '%s\n' "$row"; else _wtc_pr_unknown_row "$num" "$title"; fi
 }
 
 # Capture a command's stdout, then IFS-split one TSV line into variables.

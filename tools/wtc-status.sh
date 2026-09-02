@@ -4,8 +4,16 @@ set -euo pipefail
 
 usage() {
   cat <<'EOF'
-Usage: tools/wtc-status.sh [--repos|--procs] [--watch [seconds]] [--no-click]
+Usage: tools/wtc-status.sh [--repos|--procs] [--tui [seconds]] [--no-click]
                           [--all | <collection>]
+
+Prints once and exits. `--tui` is the live pane — redrawing, clickable, and
+quit with q — and is also what tools/wtc-status-tui.sh runs. The mode is never
+inferred from whether stdout is a terminal: one command must not loop for a
+human and print once into a pipe. `--tui` without a terminal is an error, not
+a silent downgrade. `--cached` renders the last snapshot
+(<collection>/.last-wtc-status.yml) without touching git or a forge, and says
+how old it is.
 
 Prints per-collection branch / open PR + check rollup / working-tree state,
 then the processes running under the herdr session (CPU, memory). Meant to
@@ -42,7 +50,8 @@ it in <collection>/.wtc-prs (`tools/wtc-pr.sh enlist` — see the wtc-pr skill),
 not a forge label search, so it costs no extra round trips beyond enriching
 what is already listed. Open and draft PRs show live; a MERGED one fades
 rather than disappearing, until it passes 48 weekday-hours since merge, at
-which point it collapses behind the `a` (archived) toggle. A worktree still
+which point it collapses behind the `a` (archived) toggle — the window is
+48 weekday-hours, or WTC_PR_ARCHIVE_HOURS. A worktree still
 sitting on a branch whose PR has already merged or closed is called out in
 amber, since an open-PRs view would otherwise hide it.
 
@@ -80,21 +89,30 @@ want=both
 case "${WTC_STATUS_REPOS:-no}" in yes|1|true|TRUE) want=repos ;; esac
 interval="${WTC_STATUS_WATCH:-60}"
 case "$interval" in ''|*[!0-9]*) interval=60 ;; esac
-# Watching needs a terminal that can be redrawn and quit. Piped or captured,
-# one pass is the only useful answer — see the note in usage.
+# Mode is asked for, not inferred. This used to turn itself on whenever stdout
+# was a terminal, so the same command looped forever for a human and printed
+# once into a pipe — one invocation, two behaviours, decided by something the
+# caller cannot see. `--tui` (or WTC_STATUS_TUI) is the live pane; the default
+# is one pass, which is what a script, an agent, or a person reading a table
+# actually wants.
 watch=no
-if [ "$interval" != 0 ] && [ -t 1 ]; then watch=yes; fi
+tui_asked=no   # on the command line specifically — see the tty guard below
+case "${WTC_STATUS_TUI:-no}" in yes|1|true|TRUE) watch=yes ;; esac
 click=auto
 case "${WTC_STATUS_NO_CLICK:-no}" in yes|1|true|TRUE) click=no ;; esac
-fetch=yes fetch_max_age=300 all=no only=""
+fetch=yes fetch_max_age=300 all=no only="" cached=no
 
 while [ $# -gt 0 ]; do
   case "$1" in
     --repos) want=repos; shift ;;
     --procs) want=procs; shift ;;
     --all) all=yes; shift ;;
-    --watch) watch=yes; shift; case "${1:-}" in [0-9]*) interval="$1"; shift ;; esac ;;
-    --no-watch) watch=no; interval=0; shift ;;
+    # --tui is the name; --watch stays as its spelling with an interval, and
+    # as what every existing pane command and doc already says.
+    --cached) cached=yes; shift ;;
+    --tui) watch=yes; tui_asked=yes; shift; case "${1:-}" in [0-9]*) interval="$1"; shift ;; esac ;;
+    --watch) watch=yes; tui_asked=yes; shift; case "${1:-}" in [0-9]*) interval="$1"; shift ;; esac ;;
+    --no-tui|--no-watch) watch=no; tui_asked=no; interval=0; shift ;;
     --click) click=yes; shift ;;
     --no-click) click=no; shift ;;
     --no-fetch) fetch=no; shift ;;
@@ -141,12 +159,13 @@ fi
 
 # Clicking needs the collection table (that is what carries the cells) and a
 # terminal on both ends: mouse reports come back in on stdin.
+# Clicking needs the collection table (that is what carries the cells), a
+# terminal on both ends (mouse reports come back in on stdin) — and a live
+# table to click on. It follows the mode now instead of deciding it.
 if [ "$click" = auto ]; then
   click=no
-  if [ "$want" != procs ] && [ -t 0 ] && [ -t 1 ]; then click=yes; fi
+  if [ "$watch" = yes ] && [ "$want" != procs ] && [ -t 0 ] && [ -t 1 ]; then click=yes; fi
 fi
-[ "$click" = yes ] && watch=yes   # a clickable table is a live one
-
 # ...but an interval of 0 means "print once" — that is what --no-watch sets,
 # what WTC_STATUS_WATCH=0 means, and what `--watch 0` asks for. It wins over
 # anything that merely turned watching *on*, including the click rule above:
@@ -155,10 +174,37 @@ fi
 # nobody redraws is not one worth capturing mouse reports for.
 if [ "$interval" = 0 ]; then watch=no click=no; fi
 
-# Redirected output is a report, not a live table — even `--watch` on a pipe
-# would hang an agent capturing the table. Usage promises one pass.
-if [ ! -t 1 ]; then
-  watch=no
+# --cached reads one collection's snapshot, so it only means anything scoped to
+# one. Unscoped it would print this collection's rows under a heading claiming
+# every collection, with an empty COLLECTION column — a table that lies rather
+# than one that is merely stale. And the snapshot holds repo rows only, so it
+# selects that view rather than silently doing live work for the rest of a
+# `both` render, which is what the flag exists to avoid.
+if [ "$cached" = yes ]; then
+  if [ "$all" = yes ]; then
+    echo "error: --cached reads one collection's snapshot; --all has none to read" >&2
+    exit 1
+  fi
+  case "$want" in
+    procs)
+      echo "error: --cached has no process snapshot; it covers the repo table only" >&2
+      exit 1 ;;
+    *) want=repos ;;
+  esac
+fi
+
+# Asking for the TUI without a terminal is a request that cannot be honoured:
+# the loop would redraw into a pipe forever and hang whatever is reading it.
+# Refuse it rather than silently doing the other thing — the whole point of an
+# explicit mode is that it does what it says or says why not.
+if [ "$watch" = yes ] && { [ ! -t 1 ] || [ ! -t 0 ]; }; then
+  if [ "$tui_asked" = yes ]; then
+    echo "error: --tui needs a terminal on stdin and stdout; got a pipe" >&2
+    exit 1
+  fi
+  # Reached only via the env var, which is set once and inherited by things
+  # that legitimately capture output. Downgrade quietly there.
+  watch=no click=no
 fi
 
 # Column widths are character counts, and the rollup glyphs (✓ ✗ ● — ↑ ±) are
@@ -351,9 +397,127 @@ cell() { # <text> <width> -> $_cell: <width> columns, the text itself underlined
   _cell="$s"
 }
 
+# The column header. Shared for the same reason format_repo_row is: a cached
+# table with different headings from the live one would be a different table.
+repos_header() { # [suffix shown after the collection name]
+  hdr=""
+  if [ "$show_coll" = yes ]; then
+    fit COLLECTION $c_coll; hdr="$_fit "
+  else
+    out $'\033[1m'"$only"$'\033[0m'"${1:-}"
+  fi
+  fit REPO $c_repo;       hdr="$hdr$_fit "
+  fit BRANCH $c_branch;   hdr="$hdr$_fit "
+  fit PR $c_pr;           hdr="$hdr$_fit "
+  fit "↑" $c_ahead;       hdr="$hdr$_fit "
+  fit "↓" $c_behind;      hdr="$hdr$_fit TREE"
+  out $'\033[1m'"$hdr"$'\033[0m'
+}
+
+# One repo row, formatted. Both the live table and the --cached one call this,
+# so the two cannot drift into printing different tables from the same facts —
+# which is the whole argument against having two renderers at all.
+#
+# Reads only what it is given. Sets $_row and $_term_x for the caller.
+format_repo_row() { # <coll> <dir> <branch> <pr_num> <sigil> <checks> <draft> <merge> <review> <ahead_disp> <behind_disp> <tree>
+  _fr_coll="$1" _fr_dir="$2" _fr_branch="$3" _fr_num="$4" _fr_sigil="$5"
+  _fr_checks="$6" _fr_draft="$7" _fr_merge="$8" _fr_review="$9"
+  shift 9; _fr_a="$1" _fr_b="$2" _fr_tree="$3"
+
+  _row=""
+  if [ "$show_coll" = yes ]; then fit "$_fr_coll" $c_coll; _row="$_fit "; fi
+  # Projects whose repos all share a prefix (`acme-api`, `acme-web`, …)
+  # waste a third of this column repeating it. Set WTC_REPO_PREFIX to trim
+  # it from the display only; unset, nothing is stripped.
+  cell "${_fr_dir#${WTC_REPO_PREFIX:-}}" $c_repo; _row="$_row$_cell "
+  fit "$_fr_branch" $c_branch;  _row="$_row$_fit "
+  # The number and the ▣ are two targets, not one cell with a fallback:
+  # each does exactly one thing, so a click can no longer set off both.
+  # Built by hand rather than through cell(): the underline belongs on
+  # "#225" alone, and the escape codes in the glyphs would break its
+  # width arithmetic anyway.
+  if [ -n "$_fr_num" ]; then
+    _cg="$(glyph_checks "$_fr_checks")"
+    [ "$_fr_draft" = yes ] && _cg="$(glyph_checks draft)"
+    _term_x=$((col_pr + 4 + ${#_fr_num} + 1))
+    printf -v _cell '\033[4m%s%s\033[24m %s%s%s %s' "$_fr_sigil" "$_fr_num" \
+      "$_cg" "$(glyph_merge "$_fr_merge")" \
+      "$(glyph_review "$_fr_review")" "$TERM_GLYPH"
+    _pad=$((c_pr - (1 + ${#_fr_num} + 1 + 3 + 1 + 1)))
+    [ "$_pad" -gt 0 ] && printf -v _cell '%s%*s' "$_cell" "$_pad" ''
+  else
+    _term_x=0
+    fit "" $c_pr; _cell="$_fit"
+  fi
+  _row="$_row$_cell "
+  fit "$_fr_a" $c_ahead;   _row="$_row$_fit "
+  fit "$_fr_b" $c_behind;  _row="$_row$_fit "
+  cell "$_fr_tree" $c_tree; _row="$_row$_cell"
+}
+
+# The same table, from the last snapshot, without touching git or a forge.
+# Everything it prints came out of format_repo_row, so it cannot drift from
+# the live one; what it cannot do is tell you anything newer than the file.
+#
+# It refuses rather than falling back to a live render. Quietly doing the slow
+# thing when asked for the fast one is the same class of surprise as inferring
+# the mode from a tty — say what is missing and let the caller choose.
+cached_repos_table() {
+  ROWS=("")
+  layout
+  _rows="$(wtc_status_cache_rows "$only")"
+  if [ -z "$_rows" ]; then
+    echo "error: no snapshot for '${only:-this collection}' — run tools/wtc-status.sh without --cached first" >&2
+    return 1
+  fi
+  # Say how old it is, every time. A stale table that does not admit it is
+  # worse than no table: the whole point of the live one is that it is live.
+  repos_header " $(printf '\033[2m(snapshot, %ss old)\033[0m' "$(wtc_status_cache_age "$only")")"
+  # Field names deliberately unlike the c_* column widths format_repo_row
+  # reads — an earlier draft called one of these c_branch and silently
+  # replaced the branch column's width with a branch name.
+  while IFS=$'\t' read -r f_repo f_branch f_head f_ahead f_behind f_tree \
+                           f_pr f_forge f_state f_checks f_merge f_review f_title; do
+    [ -n "$f_repo" ] || continue
+    # "-" is the snapshot's placeholder for an empty field; turn it back.
+    # Written out rather than looped: a loop here needs either eval or an
+    # indirection, and eight plain lines are easier to be sure about than
+    # either. `case` rather than `[ … ] && …` because the latter returns the
+    # test's status — put one of those last in a loop body under `set -e` and
+    # the loop ends early on the first field that is not "-".
+    case "$f_branch" in -) f_branch="" ;; esac
+    case "$f_pr"     in -) f_pr=""     ;; esac
+    case "$f_state"  in -) f_state=""  ;; esac
+    case "$f_checks" in -) f_checks="" ;; esac
+    case "$f_merge"  in -) f_merge=""  ;; esac
+    case "$f_review" in -) f_review="" ;; esac
+    case "$f_title"  in -) f_title=""  ;; esac
+    case "$f_tree"   in -) f_tree=""   ;; esac
+    _a=""; [ "${f_ahead:-0}"  != 0 ] && _a="↑$f_ahead"
+    _b=""; [ "${f_behind:-0}" != 0 ] && _b="↓$f_behind"
+    _draft=no; [ "$f_state" = DRAFT ] && _draft=yes
+    format_repo_row "" "$f_repo" "$f_branch" "$f_pr" "#" \
+      "$f_checks" "$_draft" "$f_merge" "$f_review" "$_a" "$_b" "$f_tree"
+    out "$_row"
+  done <<EOF
+$_rows
+EOF
+  return 0
+}
+
 repos_table() {
   ROWS=("")
   layout
+  # One snapshot per render, written as the rows are built and moved into
+  # place at the end. Only when scoped to a single collection: the file lives
+  # in that collection, and a --all sweep has no single home to write to.
+  cache_on=no
+  if [ -n "$only" ]; then
+    cache_on=yes
+    # The name, not $0: the full path is a temp dir under test and a machine
+    # detail everywhere else, and this field is read by people.
+    wtc_status_cache_begin "$only" "$(basename "$0")$([ "$watch" = yes ] && printf ' --tui')"
+  fi
   # Refresh the refs the table is about to measure against — "behind" computed
   # from a week-old fetch is worse than no number at all. Age-gated, so a
   # --watch pane redrawing every 5s still only fetches every few minutes.
@@ -407,18 +571,7 @@ repos_table() {
   wait 2>/dev/null || true
 
   stale=0
-  hdr=""
-  if [ "$show_coll" = yes ]; then
-    fit COLLECTION $c_coll; hdr="$_fit "
-  else
-    out $'\033[1m'"$only"$'\033[0m'
-  fi
-  fit REPO $c_repo;       hdr="$hdr$_fit "
-  fit BRANCH $c_branch;   hdr="$hdr$_fit "
-  fit PR $c_pr;           hdr="$hdr$_fit "
-  fit "↑" $c_ahead;       hdr="$hdr$_fit "
-  fit "↓" $c_behind;      hdr="$hdr$_fit TREE"
-  out $'\033[1m'"$hdr"$'\033[0m'
+  repos_header
   for c in "$ROOT"/*/; do
     c="${c%/}"
     [ -d "$c/harness" ] || continue
@@ -501,42 +654,23 @@ EOF
         fi
       fi
 
-      row=""
-      if [ "$show_coll" = yes ]; then fit "$name" $c_coll; row="$_fit "; fi
-      # Projects whose repos all share a prefix (`acme-api`, `acme-web`, …)
-      # waste a third of this column repeating it. Set WTC_REPO_PREFIX to trim
-      # it from the display only; unset, nothing is stripped.
-      cell "${dir#${WTC_REPO_PREFIX:-}}" $c_repo; row="$row$_cell "
-      fit "$branch" $c_branch;     row="$row$_fit "
-      # The number and the ▣ are two targets, not one cell with a fallback:
-      # each does exactly one thing, so a click can no longer set off both.
-      # Built by hand rather than through cell(): the underline belongs on
-      # "#225" alone, and the escape codes in the glyphs would break its
-      # width arithmetic anyway.
-      if [ -n "$pr_num" ]; then
-        checks_g="$(glyph_checks "$pr_checks")"
-        [ "$pr_draft" = yes ] && checks_g="$(glyph_checks draft)"
-        term_x=$((col_pr + 4 + ${#pr_num} + 1))
-        printf -v _cell '\033[4m%s%s\033[24m %s%s%s %s' "$pr_sigil" "$pr_num" \
-          "$checks_g" "$(glyph_merge "$pr_merge")" \
-          "$(glyph_review "$pr_review")" "$TERM_GLYPH"
-        pad=$((c_pr - (1 + ${#pr_num} + 1 + 3 + 1 + 1)))
-        [ "$pad" -gt 0 ] && printf -v _cell '%s%*s' "$_cell" "$pad" ''
-      else
-        term_x=0
-        fit "" $c_pr; _cell="$_fit"
-      fi
-      row="$row$_cell "
-      fit "$a_disp" $c_ahead;      row="$row$_fit "
-      fit "$b_disp" $c_behind;     row="$row$_fit "
-      cell "$tree" $c_tree;        row="$row$_cell"
-      out "$row"
+      format_repo_row "$name" "$dir" "$branch" "$pr_num" "$pr_sigil" \
+        "${pr_checks:-}" "$pr_draft" "${pr_merge:-}" "${pr_review:-}" \
+        "$a_disp" "$b_disp" "$tree"
+      term_x=$_term_x
+      out "$_row"
       # $label, not $branch: the click map wants a real ref for `gh browse`,
       # not the ⌂-prefixed display string.
       # $pr_slug, not the worktree's origin: when the PR is on the upstream,
       # that is the repo a click has to open. Falls back for a ⌂ row, which
       # has no PR and so no slug of its own to carry.
       ROWS[$line]="$wt|${pr_slug:-$(slug_for_worktree "$wt" "$repo")}|$label|$pr_num"
+      if [ "$cache_on" = yes ]; then
+        wtc_status_cache_repo "$dir" "$branch" "$(git -C "$wt" rev-parse --short HEAD 2>/dev/null)" \
+          "${ahead:-0}" "${behind:-0}" "$tree" "$pr_num" \
+          "$(forge_for_worktree "$wt" "$repo")" "${pr_state:-}" "${pr_checks:-}" \
+          "${pr_merge:-}" "${pr_review:-}" "${pr_title:-}"
+      fi
       TERMX[$line]=$term_x
       name=""
     done
@@ -544,6 +678,10 @@ EOF
   if [ "$stale" -gt 0 ]; then
     out $'\033[2m'"↓ = behind remote — $stale worktree(s) need a catch-up"$'\033[0m'
   fi
+  # Moved into place only once every row is written: a reader never sees a
+  # half-built snapshot, and a render that dies partway leaves the last good
+  # one where it was.
+  [ "$cache_on" = yes ] && wtc_status_cache_commit
   return 0
 }
 
@@ -776,7 +914,7 @@ render() {
   line=0
   [ "$watch" = yes ] && printf '\033[H\033[2J'
   case "$want" in
-    repos) repos_table; prs_table ;;
+    repos) if [ "$cached" = yes ]; then cached_repos_table || return 1; else repos_table; prs_table; fi ;;
     procs) procs_table ;;
     both)  repos_table; prs_table; out ""; procs_table ;;
   esac

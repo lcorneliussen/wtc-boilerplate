@@ -3,7 +3,8 @@
 
 CLI:
   wtc-pr-facts.py gh-from-json          # stdin: gh pr view JSON → TSV enrich line
-  wtc-pr-facts.py is-archived <iso>     # exit 0 if 48 weekday-hours past merge
+  wtc-pr-facts.py is-archived <iso>     # exit 0 past the archive window
+                                        # (48 weekday-hours; WTC_PR_ARCHIVE_HOURS)
   wtc-pr-facts.py weekday-hours <iso>   # print elapsed weekday hours (float)
 
 GitHub-only: this implementation talks to GitHub (gh) and nothing else. A
@@ -22,12 +23,25 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
 
-ARCHIVE_WEEKDAY_HOURS = 48
+# How long a merged PR keeps its row before collapsing behind the `a` toggle.
+# Weekday hours, so a Friday merge is still visible on Monday rather than
+# ageing out across a weekend nobody was working. Override with
+# WTC_PR_ARCHIVE_HOURS: a team on a different rhythm should not have to patch
+# this file. A bad value falls back rather than raising — this number decides
+# what is *shown*, so getting it wrong must never break a render.
+ARCHIVE_WEEKDAY_HOURS = 48.0
+try:
+    _h = float(os.environ.get("WTC_PR_ARCHIVE_HOURS") or ARCHIVE_WEEKDAY_HOURS)
+    if _h > 0:
+        ARCHIVE_WEEKDAY_HOURS = _h
+except ValueError:
+    pass
 
 
 def parse_iso(value: str | None) -> datetime | None:
