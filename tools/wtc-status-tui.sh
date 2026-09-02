@@ -6,9 +6,15 @@
 # per mode: two implementations of the same table drift, and a mode flag says
 # the same thing to `ps` that a second filename does.
 #
-# It exists for the name. wtc-open types this into the status pane, so shell
-# history and a process list read as what the pane is rather than as a flag
-# on something else, and retire.sh's kill-needle has a stable string to match.
+# It exists for the name at the point it is *typed*: wtc-open puts this in the
+# pane, so shell history and the pane's own command read as what the pane is
+# rather than as a flag on something else.
+#
+# It does not change what `ps` shows — a plain exec keeps argv[0] as the
+# wtc-status.sh path, and that is deliberate: retire.sh finds a running status
+# pane by matching that path, so `exec -a` to dress up the process name would
+# hide the pane from the thing whose job is to kill it.
+#
 # Flags after it still win.
 set -euo pipefail
 script_dir="$(cd "$(dirname "$0")" && pwd)"

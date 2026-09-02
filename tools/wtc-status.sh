@@ -174,6 +174,25 @@ fi
 # nobody redraws is not one worth capturing mouse reports for.
 if [ "$interval" = 0 ]; then watch=no click=no; fi
 
+# --cached reads one collection's snapshot, so it only means anything scoped to
+# one. Unscoped it would print this collection's rows under a heading claiming
+# every collection, with an empty COLLECTION column — a table that lies rather
+# than one that is merely stale. And the snapshot holds repo rows only, so it
+# selects that view rather than silently doing live work for the rest of a
+# `both` render, which is what the flag exists to avoid.
+if [ "$cached" = yes ]; then
+  if [ "$all" = yes ]; then
+    echo "error: --cached reads one collection's snapshot; --all has none to read" >&2
+    exit 1
+  fi
+  case "$want" in
+    procs)
+      echo "error: --cached has no process snapshot; it covers the repo table only" >&2
+      exit 1 ;;
+    *) want=repos ;;
+  esac
+fi
+
 # Asking for the TUI without a terminal is a request that cannot be honoured:
 # the loop would redraw into a pipe forever and hang whatever is reading it.
 # Refuse it rather than silently doing the other thing — the whole point of an
@@ -461,9 +480,19 @@ cached_repos_table() {
                            f_pr f_forge f_state f_checks f_merge f_review f_title; do
     [ -n "$f_repo" ] || continue
     # "-" is the snapshot's placeholder for an empty field; turn it back.
-    for _v in f_branch f_pr f_state f_checks f_merge f_review f_title f_tree; do
-      eval "[ \"\$$_v\" = - ] && $_v=''"
-    done
+    # Written out rather than looped: a loop here needs either eval or an
+    # indirection, and eight plain lines are easier to be sure about than
+    # either. `case` rather than `[ … ] && …` because the latter returns the
+    # test's status — put one of those last in a loop body under `set -e` and
+    # the loop ends early on the first field that is not "-".
+    case "$f_branch" in -) f_branch="" ;; esac
+    case "$f_pr"     in -) f_pr=""     ;; esac
+    case "$f_state"  in -) f_state=""  ;; esac
+    case "$f_checks" in -) f_checks="" ;; esac
+    case "$f_merge"  in -) f_merge=""  ;; esac
+    case "$f_review" in -) f_review="" ;; esac
+    case "$f_title"  in -) f_title=""  ;; esac
+    case "$f_tree"   in -) f_tree=""   ;; esac
     _a=""; [ "${f_ahead:-0}"  != 0 ] && _a="↑$f_ahead"
     _b=""; [ "${f_behind:-0}" != 0 ] && _b="↓$f_behind"
     _draft=no; [ "$f_state" = DRAFT ] && _draft=yes
