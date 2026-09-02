@@ -90,6 +90,11 @@ harness_lib_init
 herdr_present || { echo "error: herdr is not installed (see instructions/herdr.md)" >&2; exit 1; }
 [ -n "$session" ] || session="$(herdr_session_name)"
 
+# Ceiling, in seconds, on waiting for a freshly created pane to reach its
+# prompt. Polled rather than slept: a pane that settles in a second costs a
+# second, and only a pane that never settles costs the whole budget.
+PANE_SETTLE=10
+
 # Machine defaults from the control root; flags still win (instructions/secrets.md).
 load_wtc_config
 [ "$agent_kind_set" = yes ] || agent_kind="$WTC_AGENT_KIND"
@@ -291,19 +296,39 @@ open_collection() { # <collection>
     if [ -n "$shell_pane" ]; then
       herdr --session "$session" pane rename "$shell_pane" shell >/dev/null
     fi
-    settle=2   # a pane created a moment ago has not reached its prompt
+    settle=$PANE_SETTLE   # its panes have not reached their prompts yet
     note "workspace created"
   fi
 
   # browse / status — added to workspaces opened before they existed. Panes
   # that are already there are untouched.
   if [ "$dry_run" = no ]; then
-    herdr_ensure_browse_pane "$session" "$ws_id" "$dir" >/dev/null || true
+    had_browse="$(herdr_pane_id_by_label "$session" "$ws_id" browse)"
+    fresh="$(herdr_ensure_browse_pane "$session" "$ws_id" "$dir" || true)"
+    # Only a pane this call just made needs settling. An existing browse pane
+    # is quite likely running nvim, and waiting on that would spend the whole
+    # budget to learn what one look already says.
+    if [ -z "$had_browse" ] && [ -n "$fresh" ]; then
+      herdr_pane_wait_idle "$session" "$fresh" "$PANE_SETTLE" || true
+    fi
     if [ "$start_status" = yes ] \
        && [ -z "$(herdr_pane_id_by_label "$session" "$ws_id" status)" ]; then
-      ensure_status_pane "$ws_id" "$dir" >/dev/null || true
-      settle=2
+      fresh="$(ensure_status_pane "$ws_id" "$dir" || true)"
+      [ -z "$fresh" ] || herdr_pane_wait_idle "$session" "$fresh" "$PANE_SETTLE" || true
     fi
+  fi
+
+  # A workspace created a moment ago has four panes still running their shell
+  # rc, and herdr reports that rc's own commands as each pane's foreground
+  # process. Reading the rows now is a coin flip per pane, and a pane that
+  # comes up busy is "left alone" — the agent never starts, browse never
+  # opens, and re-running wtc-open is the only way back. So wait for the
+  # prompts before looking; nothing runs in a workspace this young, so every
+  # pane is expected to hold one. Afterwards the panes are settled and the
+  # per-pane budgets below have nothing left to wait for.
+  if [ "$settle" != 0 ]; then
+    herdr_ws_wait_idle "$session" "$ws_id" "$settle"
+    settle=0
   fi
 
   rows="$(herdr_pane_rows "$session" "$ws_id")"

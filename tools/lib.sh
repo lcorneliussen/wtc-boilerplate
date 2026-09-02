@@ -601,16 +601,74 @@ herdr_pane_idle() { # <session> <pane>
   herdr_cmdline_is_shell "$(herdr_pane_fg_cmdline "$1" "$2")"
 }
 
+# Wait for a pane to be sitting at its prompt, up to <seconds>.
+#
+# One look is not enough at a pane that was created moments ago. Its shell is
+# still running its rc, and the rc's own commands are what herdr reports as
+# the pane's foreground process — `brew shellenv`, `readlink pyenv`, a
+# prompt's printf — with idle-looking gaps between them. A single sample lands
+# in a gap about as often as in a command, and whatever it catches decides the
+# pane's fate for good: read as busy, the pane is "left alone" and never gets
+# its command at all. So the prompt has to hold for <steady> consecutive
+# samples before it is believed.
+#
+# With no budget the pane has been there long enough that one look IS the
+# truth (a session restored after a reboot), and a real TUI must read as busy
+# immediately rather than after a pointless wait.
+herdr_pane_wait_idle() { # <session> <pane> [seconds] [steady-samples]
+  _left="${3:-0}"
+  [ "$_left" -gt 0 ] || { herdr_pane_idle "$1" "$2"; return $?; }
+  _need="${4:-3}" _run=0
+  while :; do
+    if herdr_pane_idle "$1" "$2"; then
+      _run=$((_run + 1))
+      [ "$_run" -ge "$_need" ] && return 0
+    else
+      _run=0
+    fi
+    [ "$_left" -gt 0 ] || return 1
+    sleep 1
+    _left=$((_left - 1))
+  done
+}
+
+# Same wait, for every pane in a workspace at once. Only meaningful on a
+# workspace whose panes were all just created — nothing is running in one that
+# young, so "every pane holds a prompt" is the right question, and asking it
+# in one loop settles four panes in the time one of them takes. Best effort:
+# it returns 0 even when the budget runs out, and each pane's own dispatch
+# decides what to do with what it then reads.
+herdr_ws_wait_idle() { # <session> <workspace> [seconds] [steady-samples]
+  _wleft="${3:-0}"
+  [ "$_wleft" -gt 0 ] || return 0
+  _wneed="${4:-3}" _wrun=0
+  while :; do
+    _all=yes
+    for _wp in $(herdr_pane_rows "$1" "$2" | awk -F'\t' '$2 != "" { print $2 }'); do
+      herdr_pane_idle "$1" "$_wp" || { _all=no; break; }
+    done
+    if [ "$_all" = yes ]; then
+      _wrun=$((_wrun + 1))
+      [ "$_wrun" -ge "$_wneed" ] && return 0
+    else
+      _wrun=0
+    fi
+    [ "$_wleft" -gt 0 ] || return 0
+    sleep 1
+    _wleft=$((_wleft - 1))
+  done
+}
+
 # Start <cmd> in a pane that is idle; leave a pane that is already working
 # alone. This is what makes wtc-open re-runnable: a herdr session restored
 # after a reboot comes back with the layout but not the processes, so every
 # pane is a bare prompt and each one's own command has to be put back.
-# <settle> seconds waits for a pane created moments ago to reach its prompt; a
-# pane that has been sitting there since the reboot needs no wait at all.
+# <settle> seconds is the ceiling on waiting for a pane created moments ago to
+# reach its prompt — spent before the idle check, not after it, or the check
+# is the very sample the wait exists to avoid.
 herdr_pane_run_idle() { # <session> <pane> <cmd> [settle-seconds]
   [ -n "$2" ] || return 1
-  herdr_pane_idle "$1" "$2" || return 1
-  [ -z "${4:-}" ] || [ "${4:-0}" = 0 ] || sleep "$4"
+  herdr_pane_wait_idle "$1" "$2" "${4:-0}" || return 1
   herdr --session "$1" pane run "$2" "$3" >/dev/null 2>&1 || return 1
 }
 
