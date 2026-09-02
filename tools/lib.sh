@@ -803,10 +803,15 @@ herdr_ensure_browse_pane() { # <session> <workspace> <cwd> -> pane id
 
 herdr_ensure_tui_pane() { herdr_ensure_browse_pane "$@"; } # leftover name
 
-# Socket for the collection's browse nvim (--listen). Short path: macOS
-# unix-socket names are capped around 104 bytes.
+# Socket for the collection's browse nvim (--listen). Keyed by the workspace
+# root as well as the collection: every workspace on a machine tends to have a
+# `main`, and one shared /tmp/wtc-browse-main.nvim meant the second
+# workspace's browse pane died with "address already in use" while its status
+# clicks reached the first one's editor. The root's basename already names the
+# herdr session, so it is already assumed unique per machine. Short path:
+# macOS unix-socket names are capped around 104 bytes.
 wtc_browse_socket() { # <collection-name>
-  printf '/tmp/wtc-browse-%s.nvim' "$1"
+  printf '/tmp/wtc-browse-%s-%s.nvim' "$(basename "$ROOT")" "$1"
 }
 
 wtc_browse_alive() { # <collection-name> — 0 if a browse nvim is answering

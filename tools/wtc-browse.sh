@@ -24,7 +24,9 @@ Where it opens depends on who launched it:
   --session <n> herdr session
 
 Status-pane clicks talk to this nvim over a listen socket
-(/tmp/wtc-browse-<collection>.nvim).
+(/tmp/wtc-browse-<workspace>-<collection>.nvim). When a browse nvim for
+this collection is already listening there, this one opens without the
+socket and the clicks keep going to the first.
 EOF
   exit "${1:-1}"
 }
@@ -69,9 +71,19 @@ command -v nvim >/dev/null 2>&1 || {
 run_nvim() {
   cd "$collection"
   sock="$(wtc_browse_socket "$name")"
-  if ! wtc_browse_alive "$name"; then
-    rm -f "$sock"
+  if wtc_browse_alive "$name"; then
+    # Something answers on the socket, so binding it again can only fail
+    # ("address already in use"). The socket is keyed by workspace and
+    # collection, so that something is this collection's own browse nvim —
+    # typically the herdr browse pane, with this call coming from a terminal.
+    # A second window is still useful; it just cannot be the one the status
+    # pane talks to.
+    echo "==> $name: a browse nvim already listens on $sock — opening this window without it" >&2
+    exec nvim \
+      -c "lua vim.g.wtc_browse_root = [[$collection]]" \
+      -c "luafile $lua"
   fi
+  rm -f "$sock"   # nothing answers: left over from an nvim that is gone
   exec nvim --listen "$sock" \
     -c "lua vim.g.wtc_browse_root = [[$collection]]" \
     -c "luafile $lua"
