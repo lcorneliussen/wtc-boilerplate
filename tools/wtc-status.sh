@@ -38,10 +38,13 @@ commits ahead of and behind the remote, blank when zero; any ↓ means a
 catch-up will bring in remote changes. TREE carries ±changed files.
 
 Scoped to one collection, a PRS section lists the open pull requests that
-collection opened — found by the `wtc:<collection>` label its PR skills apply,
-so they are still listed after the worktree has gone back to the tip. A
-worktree still sitting on a branch whose PR has already merged or closed is
-called out there too, since an open-PRs view would otherwise hide it.
+collection opened — those on a sibling's own origin found by the
+`wtc:<collection>` label its PR skills apply, so they are still listed after
+the worktree has gone back to the tip. PRs it sent to a sibling's *upstream*
+are listed too, marked `↗ <owner>`: the fork workflow opens those against a
+repo you cannot label, so they are found by author instead. A worktree still
+sitting on a branch whose PR has already merged or closed is called out there
+too, since an open-PRs view would otherwise hide it.
 
 On a terminal the collection table is clickable: REPO focuses that sibling
 in the browse nvim, TREE opens its git status there (lazygit if nvim is not
@@ -512,10 +515,18 @@ EOF
   out $'\033[1m'"PRS  $(wtc_pr_label "$only")"$'\033[0m'
 
   if [ -n "$rows" ]; then
-    while IFS=$'\t' read -r repo num checks merge review title; do
+    while IFS=$'\t' read -r kind slug repo num checks merge review title; do
       [ -n "$num" ] || continue
-      slug="$(repo_slug_for "$repo")"
-      fit "$repo" $c_repo
+      # The slug comes from the row, not from repo_slug_for: an `ext.` sibling
+      # is outside the registry and would look up empty, and an `out` row's
+      # repo is not a sibling at all. Both would lose their click target.
+      #
+      # An `out` PR went to a repo you do not own, so name where it went
+      # rather than which sibling it came from — against someone else's main
+      # is a different thing from against your own, and the row has to say so.
+      what="$repo"
+      case "$kind" in out) what="↗ ${slug%%/*}" ;; esac
+      fit "$what" $c_repo
       # Width is whatever is left; the title is the one thing safe to cut.
       room=$((cols - prs_x_num - prs_w_num - c_repo - 10))
       [ "$room" -ge 10 ] || room=10
@@ -562,6 +573,7 @@ help_block() {
   out ""
   out "${k}KEYS${z}    ${d}?${z} this list   ${d}s${z} select text   ${d}r${z} redraw   ${d}q${z} quit"
   out "${k}CLICK${z}   ${d}REPO${z} open in nvim   ${d}TREE${z} git status   ${d}#n${z} github.com   ${d}$TERM_GLYPH${z} octo in browse"
+  out "${k}PRS${z}     ${d}↗${z} sent to that owner's repo, not one of yours"
   out ""
   out "${k}CHECKS${z}  $(glyph_checks SUCCESS) passing   $(glyph_checks FAILURE) failing   $(glyph_checks PENDING) running   $(glyph_checks draft) draft   $(glyph_checks NONE) none"
   out "${k}MERGE${z}   $(glyph_merge BEHIND) behind base   $(glyph_merge DIRTY) conflict   $(glyph_merge BLOCKED) blocked   ${d}blank${z} clean"

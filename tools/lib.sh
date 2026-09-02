@@ -837,25 +837,57 @@ wtc_pr_label_add() { # <slug> <pr-number> <label> — tag an existing PR
   gh pr edit "$2" --repo "$1" --add-label "$3" >/dev/null 2>&1 || true
 }
 
-wtc_pr_list() { # <collection> -> TSV rows, one per open PR this collection owns
-  # repo \t number \t checks \t merge \t review \t title
+# One PullRequest node -> the row wtc-status prints. Shared by both queries
+# below so the two paths cannot drift apart.
+_WTC_PR_ROW_JQ='[
+  (.number|tostring),
+  (if .isDraft then "draft"
+   else (.commits.nodes[0].commit.statusCheckRollup.state // "NONE") end),
+  (.mergeStateStatus // "UNKNOWN"),
+  (([.reviewThreads.nodes[] | select((.isResolved|not) and (.isOutdated|not))] | length) as $open
+    | if $open > 0 then ($open|tostring)
+      elif .reviewDecision == "APPROVED" then "approved"
+      elif .reviewDecision == "CHANGES_REQUESTED" then "changes"
+      else "none" end),
+  (.title // "")
+]'
+
+wtc_pr_list() { # <collection> -> TSV rows, one per open PR this collection has
+  # kind \t slug \t repo \t number \t checks \t merge \t review \t title
   #
+  # kind:   own | out
   # checks: SUCCESS|FAILURE|ERROR|PENDING|draft|NONE
   # merge:  mergeStateStatus (BEHIND / DIRTY / BLOCKED / CLEAN / …)
   # review: approved | changes | <count of unresolved threads> | none
   #
-  # One GraphQL round trip per repo returns every fact a row shows, and the
-  # repos are queried in parallel — the same shape wtc-status uses per branch.
+  # The slug travels with the row because the caller cannot re-derive it from
+  # the repo name: an `ext.` sibling is deliberately outside the registry, and
+  # an `out` row's repo is not a sibling at all.
+  #
+  # Two kinds of PR, found two different ways:
+  #
+  # own — a PR on a sibling's own origin, found by the `wtc:<collection>`
+  #   label the PR skills apply. The label outlives the branch going back to
+  #   the tip, which is why it and not the branch is the key.
+  #
+  # out — a PR this collection sent to a sibling's *upstream*: the fork
+  #   workflow, where the branch is pushed to your fork and the PR is opened
+  #   against a repo you do not own. The label cannot be the key there —
+  #   creating one needs write access you do not have, and `gh pr edit
+  #   --add-label` just answers "not found" — so these are found by author.
+  #   Without this half a collection whose whole purpose is sending fixes
+  #   upstream cannot see a single one of them.
   #
   # Only open PRs: a merged one is not something you act on, and the row that
   # matters after a merge is the worktree still sitting on that branch, which
   # wtc_pr_orphans reports instead.
   command -v gh >/dev/null 2>&1 || return 0
   label="$(wtc_pr_label "$1")"
-  tmp="$(mktemp -d)"
+
   # Driven by the collection's worktrees rather than the registry: that covers
   # `ext.` siblings, and it stops a two-repo collection querying every repo the
   # workspace has ever owned.
+  targets="" own_slugs="" out_slugs="" me=""
   for wt in "$ROOT/$1"/*/; do
     wt="${wt%/}"
     [ -e "$wt/.git" ] || continue
@@ -863,34 +895,114 @@ wtc_pr_list() { # <collection> -> TSV rows, one per open PR this collection owns
     [ "$repo" = harness ] && repo="$(harness_repo)"
     slug="$(slug_for_worktree "$wt" "$repo")"
     [ -n "$slug" ] || continue
+    case " $own_slugs " in *" $slug "*) continue ;; esac
+    own_slugs="$own_slugs $slug"
+    targets="${targets}own|$slug|$repo
+"
+  done
+
+  # The branches this collection currently has checked out. They are the
+  # fallback hold on an `out` PR, for one opened before the body trailer
+  # existed or opened by hand: the durable hold is the trailer itself, and
+  # this only lasts as long as the branch does. Detached worktrees contribute
+  # nothing, which is right — a collection back at the tip claims a PR by
+  # what the PR says, not by where the collection happens to be sitting.
+  branches=""
+  for wt in "$ROOT/$1"/*/; do
+    wt="${wt%/}"
+    [ -e "$wt/.git" ] || continue
+    b="$(git -C "$wt" branch --show-current 2>/dev/null || true)"
+    [ -n "$b" ] || continue
+    branches="$branches $b"
+  done
+
+  # Upstreams in a second pass, so a slug that is already some sibling's
+  # origin is never also queried as an upstream. Siblings commonly share one
+  # upstream (a fork and the thing it forks), and a single pass would list its
+  # PRs once per sibling.
+  for wt in "$ROOT/$1"/*/; do
+    wt="${wt%/}"
+    [ -e "$wt/.git" ] || continue
+    up="$(git -C "$wt" remote get-url upstream 2>/dev/null)" || continue
+    case "$up" in *github.com[:/]*) ;; *) continue ;; esac
+    up="${up#*github.com}"; up="${up#:}"; up="${up#/}"; up="${up%.git}"
+    case " $own_slugs $out_slugs " in *" $up "*) continue ;; esac
+    # Asked once, and only if there is an upstream to ask about.
+    [ -n "$me" ] || me="$(gh api user --jq .login 2>/dev/null || true)"
+    [ -n "$me" ] || break
+    out_slugs="$out_slugs $up"
+    targets="${targets}out|$up|${up#*/}
+"
+  done
+  [ -n "${targets// /}" ] || return 0
+
+  # One GraphQL round trip per repo returns every fact a row shows, and the
+  # repos are queried in parallel — the same shape wtc-status uses per branch.
+  tmp="$(mktemp -d)"
+  while IFS='|' read -r kind slug repo; do
+    [ -n "$slug" ] || continue
     (
-      gh api graphql -F owner="${slug%%/*}" -F name="${slug#*/}" -F label="$label" -f query='
-        query($owner:String!,$name:String!,$label:String!){
-          repository(owner:$owner,name:$name){
-            pullRequests(labels:[$label],states:OPEN,first:20,
-                         orderBy:{field:UPDATED_AT,direction:DESC}){
-              nodes{
-                number title isDraft mergeStateStatus reviewDecision
+      if [ "$kind" = own ]; then
+        gh api graphql -F owner="${slug%%/*}" -F name="${slug#*/}" -F label="$label" -f query='
+          query($owner:String!,$name:String!,$label:String!){
+            repository(owner:$owner,name:$name){
+              pullRequests(labels:[$label],states:OPEN,first:20,
+                           orderBy:{field:UPDATED_AT,direction:DESC}){
+                nodes{
+                  number title isDraft mergeStateStatus reviewDecision
+                  reviewThreads(first:100){nodes{isResolved isOutdated}}
+                  commits(last:1){nodes{commit{statusCheckRollup{state}}}}
+                }}}}' \
+          --jq ".data.repository.pullRequests.nodes[] | $_WTC_PR_ROW_JQ | @tsv" 2>/dev/null
+      else
+        # No mergeStateStatus: GitHub only answers it for someone with push
+        # access, and asking anyway fails the whole query rather than that one
+        # field — which would drop the row silently, the exact bug this half
+        # exists to fix. It renders blank, which is honest: from here you
+        # cannot know whether their base has moved under you.
+        #
+        # Two leading fields carry what the filter below needs: the head
+        # branch, and whether the body names this collection.
+        #
+        # `author:` alone is repo-wide — every collection sharing this
+        # upstream would claim every PR you have open against it — so a row
+        # has to earn its place twice:
+        #
+        #   the body carries `wtc:<collection>`, which the PR skills write as
+        #     an HTML-comment trailer, precisely because the label cannot be
+        #     created here. A comment rather than a visible line because the
+        #     reader is a maintainer of someone else's repo, to whom our
+        #     bookkeeping is noise.
+        #     Durable: it survives the worktree going back to the tip, the
+        #     same property the label gives an `own` PR.
+        #   or a worktree here is still on its head branch. That is the
+        #     fallback for a PR opened before the trailer existed, or by hand.
+        #     It lasts only as long as the branch is checked out.
+        gh api graphql -F q="repo:$slug is:pr is:open author:$me" -f query='
+          query($q:String!){
+            search(query:$q,type:ISSUE,first:20){
+              nodes{ ... on PullRequest {
+                number title isDraft reviewDecision headRefName body
                 reviewThreads(first:100){nodes{isResolved isOutdated}}
                 commits(last:1){nodes{commit{statusCheckRollup{state}}}}
-              }}}}' --jq '
-        .data.repository.pullRequests.nodes[] | [
-          (.number|tostring),
-          (if .isDraft then "draft"
-           else (.commits.nodes[0].commit.statusCheckRollup.state // "NONE") end),
-          (.mergeStateStatus // "UNKNOWN"),
-          (([.reviewThreads.nodes[] | select((.isResolved|not) and (.isOutdated|not))] | length) as $open
-            | if $open > 0 then ($open|tostring)
-              elif .reviewDecision == "APPROVED" then "approved"
-              elif .reviewDecision == "CHANGES_REQUESTED" then "changes"
-              else "none" end),
-          (.title // "")
-        ] | @tsv' 2>/dev/null \
-        | awk -v r="$repo" 'NF { print r "\t" $0 }' > "$tmp/$(printf '%s' "$repo" | tr -c 'A-Za-z0-9._-' '_')" 2>/dev/null || :
+              }}}}' \
+          --jq ".data.search.nodes[]
+                | [.headRefName,
+                   (if ((.body // \"\") | contains(\"$label\")) then \"1\" else \"0\" end)]
+                  + $_WTC_PR_ROW_JQ | @tsv" 2>/dev/null \
+          | awk -F'\t' -v bs=" $branches " '$2 == "1" || index(bs, " " $1 " ") {
+              sub(/^[^\t]*\t[^\t]*\t/, ""); print }'
+      fi \
+        | awk -v k="$kind" -v s="$slug" -v r="$repo" 'NF { print k "\t" s "\t" r "\t" $0 }' \
+        > "$tmp/$kind-$(printf '%s' "$slug" | tr -c 'A-Za-z0-9._-' '_')" 2>/dev/null || :
     ) &
-  done
+  done <<EOF
+$targets
+EOF
   wait 2>/dev/null || true
-  cat "$tmp"/* 2>/dev/null || true
+  # `own` before `out`: your own repos are the ones you act on directly.
+  cat "$tmp"/own-* 2>/dev/null || true
+  cat "$tmp"/out-* 2>/dev/null || true
   rm -rf "$tmp"
 }
 

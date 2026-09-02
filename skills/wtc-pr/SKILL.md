@@ -122,10 +122,23 @@ gh label create "wtc:$WTC_COLLECTION" --color ededed \
   --description "Opened from the $WTC_COLLECTION worktree collection" 2>/dev/null || true
 ```
 
-`$WTC_COLLECTION` comes from `.env.collection`. If labelling fails — no
-permission, a repo that refuses new labels — **open the PR anyway** and say so.
-A PR that is missing from one status table is a smaller problem than a PR that
-was never opened.
+`$WTC_COLLECTION` comes from `.env.collection`.
+
+**On a repo you cannot label** — a PR sent to a sibling's upstream, where the
+branch lives on your fork and `gh pr edit --add-label` answers `not found` —
+put the same string in the body instead, as an HTML comment on its own line:
+
+```markdown
+<!-- wtc:$WTC_COLLECTION -->
+```
+
+`wtc-status` reads it exactly as it reads the label, so a PR you sent upstream
+is listed by the collection that sent it rather than by every collection that
+happens to share that upstream. A comment and not a visible line: the reader
+is a maintainer of someone else's repo, to whom our bookkeeping is noise.
+
+If both fail, **open the PR anyway** and say so. A PR that is missing from one
+status table is a smaller problem than a PR that was never opened.
 
 ### 5.2 Ready for review
 

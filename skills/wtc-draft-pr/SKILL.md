@@ -41,6 +41,11 @@ ready PR. The body can be thinner — but say what the change is for and what is
 still missing, since "what's left" is the whole reason it's a draft. A
 checklist of remaining work is a good body for a draft.
 
+On a repo you cannot label — a draft sent to a sibling's upstream — put
+`<!-- wtc:$WTC_COLLECTION -->` in the body on its own line instead, as
+described in wtc-pr §5.1. That is what keeps it in this collection's status
+table and out of every other collection's.
+
 If a draft already exists, just push; there is nothing else to do.
 
 ## What this skill deliberately does not do
