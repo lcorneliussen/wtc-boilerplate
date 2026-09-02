@@ -808,10 +808,20 @@ herdr_ensure_tui_pane() { herdr_ensure_browse_pane "$@"; } # leftover name
 # `main`, and one shared /tmp/wtc-browse-main.nvim meant the second
 # workspace's browse pane died with "address already in use" while its status
 # clicks reached the first one's editor. The root's basename already names the
-# herdr session, so it is already assumed unique per machine. Short path:
-# macOS unix-socket names are capped around 104 bytes.
+# herdr session, so it is already assumed unique per machine.
+#
+# A unix socket path is capped at 104 bytes on macOS (108 on Linux), NUL
+# included, and past that `nvim --listen` fails outright. So a workspace and
+# collection pair too long for it gets a name cut to fit plus a checksum of
+# the full pair — still unique and stable, no longer readable, which is the
+# right trade for a name nobody types.
 wtc_browse_socket() { # <collection-name>
-  printf '/tmp/wtc-browse-%s-%s.nvim' "$(basename "$ROOT")" "$1"
+  _bs="/tmp/wtc-browse-$(basename "$ROOT")-$1.nvim"
+  if [ "$(printf '%s' "$_bs" | wc -c | tr -d ' ')" -gt 100 ]; then
+    _bsum="$(printf '%s/%s' "$ROOT" "$1" | cksum | cut -d' ' -f1)"
+    _bs="/tmp/wtc-browse-$(printf '%s-%s' "$(basename "$ROOT")" "$1" | LC_ALL=C cut -c1-60)-$_bsum.nvim"
+  fi
+  printf '%s' "$_bs"
 }
 
 wtc_browse_alive() { # <collection-name> — 0 if a browse nvim is answering
