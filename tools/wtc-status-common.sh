@@ -60,8 +60,33 @@ EOF
   exit 1
 }
 
-script_dir="$(cd "$(dirname "$0")" && pwd)"
-HARNESS_DIR="$(dirname "$script_dir")"
+# Prefer BASH_SOURCE so a sourced common.sh still resolves *this* tools/
+# directory (wrappers live beside us). $0 alone would also work today because
+# the wrappers source us, but BASH_SOURCE is the durable form.
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# HARNESS_DIR is the worktree that carries .harness-repos.yml. Normally that
+# is dirname(tools/). When this checkout is an unmanaged ext.* sibling inside
+# someone else's collection (Steep's harness-dev layout), borrow that
+# collection's harness/ so status can still resolve the registry — and infer
+# WTC_HARNESS_REPO from the harness_repo_bare_owner reason line when unset.
+if [ -z "${HARNESS_DIR:-}" ] || [ ! -f "${HARNESS_DIR}/.harness-repos.yml" ]; then
+  if [ -f "$(dirname "$script_dir")/.harness-repos.yml" ]; then
+    HARNESS_DIR="$(dirname "$script_dir")"
+  else
+    _coll_harness="$(cd "$(dirname "$script_dir")/.." && pwd)/harness"
+    if [ -f "$_coll_harness/.harness-repos.yml" ]; then
+      HARNESS_DIR="$_coll_harness"
+      if [ -z "${WTC_HARNESS_REPO:-}" ]; then
+        WTC_HARNESS_REPO="$(awk '
+          $1 == "-" && $2 == "name:" { n = $3 }
+          $1 == "reason:" && $2 == "harness_repo_bare_owner" { print n; exit }
+        ' "$HARNESS_DIR/.harness-repos.yml" 2>/dev/null || true)"
+      fi
+    else
+      HARNESS_DIR="$(dirname "$script_dir")"
+    fi
+  fi
+fi
 . "$script_dir/lib.sh"
 harness_lib_init
 # Machine defaults first, flags on top: a changed default lives in the control
