@@ -1,21 +1,23 @@
 #!/usr/bin/env bash
 # wtc-status-tui.sh — the live status pane.
 #
-# A two-line exec onto `wtc-status.sh --tui`, and deliberately nothing more.
-# The split that matters is collect/render inside wtc-status.sh, not one script
-# per mode: two implementations of the same table drift, and a mode flag says
-# the same thing to `ps` that a second filename does.
+# Ported from the Steep reference (harness/tools/steep-status-tui.sh,
+# port/status-from-steep): sets the mode and sources the shared
+# implementation directly, rather than exec-ing into wtc-status.sh the way
+# the boilerplate-native wtc-status-legacy-tui.sh does.
 #
-# It exists for the name at the point it is *typed*: wtc-open puts this in the
-# pane, so shell history and the pane's own command read as what the pane is
-# rather than as a flag on something else.
-#
-# It does not change what `ps` shows — a plain exec keeps argv[0] as the
-# wtc-status.sh path, and that is deliberate: retire.sh finds a running status
-# pane by matching that path, so `exec -a` to dress up the process name would
-# hide the pane from the thing whose job is to kill it.
-#
-# Flags after it still win.
+# Kept as its own file purely for the name at the point it is *typed*:
+# wtc-open.sh puts this path in the pane, so shell history and the pane's own
+# command read as what the pane is. retire.sh matches a running pane by that
+# same path (tools/retire.sh's status_needle) — note that this only works
+# because there is no exec here: `ps` shows a sourced script's own path, not
+# whatever it sources, so retire.sh's needle had to move from wtc-status.sh
+# to wtc-status-tui.sh when this stopped being an exec wrapper. If this file
+# is ever turned back into an exec (`exec wtc-status.sh --tui "$@"`), move
+# the needle back.
 set -euo pipefail
-script_dir="$(cd "$(dirname "$0")" && pwd)"
-exec "$script_dir/wtc-status.sh" --tui --repos "$@"
+WTC_STATUS_UI=tui
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=wtc-status-common.sh
+. "$script_dir/wtc-status-common.sh"
+wtc_status_main_tui

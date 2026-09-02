@@ -93,9 +93,19 @@ if herdr_present; then
 fi
 # Kill any wtc-status --watch still bound to *this* harness's tools path.
 # Match by fixed substring, not pkill's regex — paths can contain `.`, `+`, etc.
-status_needle="$dest_root/harness/tools/wtc-status.sh"
+#
+# Two needles, not one: wtc-status-tui.sh sources wtc-status-common.sh rather
+# than exec-ing into wtc-status.sh (ported from the Steep reference,
+# port/status-from-steep), so `ps` shows a live pane under its own filename
+# now, not the one-shot script's. A `wtc-status.sh --tui` typed by hand still
+# shows the latter, with --tui in argv, so both are matched.
+status_needle_tui="$dest_root/harness/tools/wtc-status-tui.sh"
+status_needle_oneshot="$dest_root/harness/tools/wtc-status.sh"
 while read -r pid args; do
-  case "$args" in *"$status_needle"*) kill "$pid" 2>/dev/null || true ;; esac
+  case "$args" in
+    *"$status_needle_tui"*) kill "$pid" 2>/dev/null || true ;;
+    *"$status_needle_oneshot"*"--tui"*) kill "$pid" 2>/dev/null || true ;;
+  esac
 done <<EOF
 $(ps ax -o pid=,args= 2>/dev/null || true)
 EOF
@@ -104,9 +114,11 @@ EOF
 # the collection (credentials scoped to this wtc's work have nowhere to go).
 # AGENTS.md is the collection-root symlink; WTC-SCOPE.md is the seeded copy.
 # .wtc-prs is the local PR enlistment (instructions/development-workflows.md
-# → Catch-up); .last-wtc-status.yml is wtc-status.sh's last-refresh snapshot,
-# and .wtc-status.json/.wtc-status.md are its older caches.
-# All three are collection-scoped and disposable — nothing durable lives here.
+# → Catch-up); .last-wtc-status.yml, .wtc-status.json and .wtc-status.md are
+# wtc-status.sh's last-refresh snapshots — the same render, in three shapes,
+# written together on every scoped pass (see write_snapshot_files /
+# write_last_status_yml in wtc-status-common.sh).
+# All are collection-scoped and disposable — nothing durable lives here.
 rm -f "$dest_root/HANDOFF.md" "$dest_root/.env.collection" \
   "$dest_root/.env.collection.local" "$dest_root/mise.toml" "$dest_root/.DS_Store" \
   "$dest_root/AGENTS.md" "$dest_root/WTC-SCOPE.md" "$dest_root/.mcp.json" \

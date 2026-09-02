@@ -378,6 +378,59 @@ repo_slug_and_forge() { # <repo> [worktree] -> "<slug>\t<forge>"
   printf '%s\t%s\n' "$_slug" "$_forge"
 }
 
+# Forge for a bare owner/repo slug — the Steep-ported status stack
+# (wtc-status-common.sh) asks this rather than forge_for_worktree, since by
+# the time it has a slug it may not still have the worktree in hand (a PR
+# cache entry keyed on slug+branch, read back on a later render). Prefer a
+# registry match; otherwise there is nothing here to say bitbucket, since
+# core boilerplate has no second forge wired in — gh present is the only
+# other signal worth trusting, and even that is a guess, not a lookup.
+forge_for_slug() { # <owner/repo> -> github | bitbucket | unknown
+  want="$1"
+  while IFS= read -r name || [ -n "$name" ]; do
+    [ -n "$name" ] || continue
+    slug="$(repo_slug_for "$name")"
+    if [ "$slug" = "$want" ]; then
+      forge_for_repo "$name"
+      return 0
+    fi
+  done <<EOF
+$(registry_all_names)
+EOF
+  if command -v gh >/dev/null 2>&1; then
+    printf 'github\n'
+  else
+    printf 'unknown\n'
+  fi
+}
+
+# No separate production tier in core boilerplate (that is a Steep/Bitbucket
+# concept — registry `production_ref`, distinct from the default branch a PR
+# targets). Falling back to default_ref_for makes prod == tip here, which is
+# what wtc-status-common.sh reads as "nothing to show in the PROD column"
+# and collapses on its own.
+production_ref_for() { # <repo-name> -> default_ref_for "$1"
+  default_ref_for "$1"
+}
+
+# No Bitbucket Pipelines (or any CI) plumbed into core boilerplate — the
+# TIP/PROD columns that would read this are hidden by default anyway
+# (WTC_STATUS_PIPE; see wtc-status-common.sh). Kept as real stubs, not
+# missing functions, so a fork that does wire a pipeline just replaces this
+# one place: same cache dir, same <slug> <branch> -> "build\tchecks\tcommit\turl"
+# TSV shape as pipe_fetch_bg/pipe_facts on the Steep side. wtc-status-common.sh
+# only calls either when forge_for_slug says bitbucket — which core boilerplate
+# never returns on its own, but a repo actually hosted there (as some of this
+# workspace's own registry entries are, mid-port) still can, and must not
+# crash the render for it.
+PIPE_CACHE="${TMPDIR:-/tmp}/wtc-pipe-$(id -u)"
+pipe_fetch_bg() { # <slug> <branch> -> no-op (stub)
+  return 0
+}
+pipe_facts() { # <slug> <branch> -> empty (stub)
+  return 0
+}
+
 # One place that knows what a pull request's web address looks like.
 pr_url_for() { # <slug> <forge> <number> -> URL, or empty
   [ -n "$1" ] && [ -n "$3" ] || return 0
