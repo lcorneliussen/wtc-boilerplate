@@ -1059,6 +1059,13 @@ wtc_status_cache_commit() {
 }
 
 # Read it back: TSV, one row per repo, in the order written.
+#
+# Empty fields come out as "-", not as nothing. `IFS=$'\t' read` treats tab as
+# IFS *whitespace*, so a run of tabs collapses into one delimiter and every
+# field after an empty one shifts left — a repo with no PR was rendering its
+# forge in the PR column. "-" is this codebase's existing placeholder for
+# "intentionally blank" (see .wtc-prs's own format), so callers already know
+# to read it as empty.
 wtc_status_cache_rows() { # [collection] -> repo \t branch \t head \t ahead \t behind \t tree \t pr \t forge \t state \t checks \t merge \t review \t title
   _f="$(wtc_status_cache_file "${1:-}")"
   [ -f "$_f" ] || return 0
@@ -1074,7 +1081,7 @@ wtc_status_cache_rows() { # [collection] -> repo \t branch \t head \t ahead \t b
     function row(   o, i, ks) {
       split("repo branch head ahead behind tree pr forge state checks merge review title", ks, " ")
       o = ""
-      for (i = 1; i <= 13; i++) o = o (i > 1 ? "\t" : "") (f[ks[i]] == "" ? "" : f[ks[i]])
+      for (i = 1; i <= 13; i++) o = o (i > 1 ? "\t" : "") (f[ks[i]] == "" ? "-" : f[ks[i]])
       return o
     }
   ' "$_f"

@@ -231,9 +231,23 @@ wtc_status_cache_commit
 assert_eq "A title: with a colon" "$(wtc_status_cache_rows snap | head -n1 | cut -f13)"
 assert_eq "- leading dash"        "$(wtc_status_cache_rows snap | tail -n1 | cut -f13)"
 
-it "an empty field reads back empty, and the row keeps 13 columns"
+it "an empty field is '-', not nothing, and the row keeps 13 columns"
+# `IFS=$'\t' read` treats tab as IFS whitespace, so consecutive tabs collapse
+# into one delimiter and every field after an empty one shifts left. A repo
+# with no PR rendered its forge in the PR column before this. "-" is the
+# codebase's existing placeholder for "intentionally blank".
 assert_eq "13" "$(wtc_status_cache_rows snap | head -n1 | awk -F'\t' '{print NF}')"
-assert_empty "$(wtc_status_cache_rows snap | head -n1 | cut -f7)" "pr"
+assert_eq "-"  "$(wtc_status_cache_rows snap | head -n1 | cut -f7)" "empty pr is -"
+
+it "an empty field survives a shell read without shifting the row"
+# The failure this guards is silent: the columns still line up, they just hold
+# the wrong values.
+IFS=$'\t' read -r r_repo r_branch r_head r_ahead r_behind r_tree r_pr r_forge _rest <<ROW
+$(wtc_status_cache_rows snap | head -n1)
+ROW
+assert_eq "r"       "$r_repo"
+assert_eq "-"       "$r_pr"     "pr field did not swallow the next column"
+assert_eq "unknown" "$r_forge"  "forge is still in the forge field"
 
 it "a missing snapshot is not an error"
 # Every reader has to work without it: the collection may never have rendered.
