@@ -22,7 +22,7 @@ GLYPH = {
     "changes": "!",
     "waiting": "…",
     "commented": "✎",
-    "noreviewers": "⚠",
+    "noreviewers": "◌",
     "merged": "·",
     "FOLLOW": "→",
     "MERGED": "·",
@@ -33,7 +33,7 @@ REVIEW_LABEL = {
     "changes": "changes requested",
     "waiting": "waiting on reviewers",
     "commented": "reviewer commented",
-    "noreviewers": "⚠ no reviewers",
+    "noreviewers": "◌ no reviewers",
     "merged": "merged",
     "none": "",
 }
@@ -324,7 +324,7 @@ def format_md(snapshot: dict[str, Any]) -> str:
             if pr and pr.get("number"):
                 pr_bits = [f"#{pr['number']}"]
                 if pr.get("draft"):
-                    pr_bits.append("DRAFT")
+                    pr_bits.append("◇ draft")
                 for key in ("checks", "merge", "review"):
                     val = pr.get(key)
                     if key == "review":
@@ -384,7 +384,7 @@ def format_md(snapshot: dict[str, Any]) -> str:
             if p.get("on_branch"):
                 bits.append("⚠ MERGED — still on branch; catch-up")
             elif p.get("draft"):
-                bits.append("**DRAFT**")
+                bits.append("◇ draft")
             merge = p.get("merge")
             if not p.get("on_branch") and merge in ("FOLLOW", "MERGED"):
                 bits.append("_merged_")

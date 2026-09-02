@@ -301,6 +301,20 @@ _ahead_cell_width() {
   printf '%s' "$w"
 }
 
+_behind_cell_width() {
+  local w=0 i=0 b
+  while [ "$i" -lt "${#CR_BEHIND[@]}" ]; do
+    b="${CR_BEHIND[$i]:-0}"
+    if [ -n "$b" ] && [ "$b" != 0 ] && [ "${#b}" -gt "$w" ]; then
+      w=${#b}
+    fi
+    i=$((i + 1))
+  done
+  # Compact mode prefixes ↓; reserve room so the floor stays honest across modes.
+  [ "$w" -gt 0 ] && w=$((w + 1))
+  printf '%s' "$w"
+}
+
 layout() { # recompute the columns for the terminal as it is now
   # stty asks the terminal itself; tput would believe an inherited $COLUMNS.
   cols="$(stty size 2>/dev/null | awk '{print $2}' || true)"
@@ -317,8 +331,12 @@ layout() { # recompute the columns for the terminal as it is now
   c_pr="$(_pr_cell_width)"; [ "$c_pr" -lt 7 ] && c_pr=7
   c_local="$(_local_cell_width)"; [ "$c_local" -lt 1 ] && c_local=1
   c_ahead="$(_ahead_cell_width)"; [ "$c_ahead" -lt 2 ] && c_ahead=2
+  c_behind="$(_behind_cell_width)"; [ "$c_behind" -lt 2 ] && c_behind=2
+  # Wide mode prints the bare behind count (no ↓ prefix); compact adds one.
+  if [ "$c_behind" -gt 1 ]; then c_behind=$((c_behind - 1)); fi
+  [ "$c_behind" -lt 2 ] && c_behind=2
   c_branch="$(_branch_width)"; [ "$c_branch" -lt 6 ] && c_branch=6
-  c_behind=3 c_tip=2 c_prod=2
+  c_tip=2 c_prod=2
   _apply_column_floors
 
   # Narrow panes / live status pane: two lines per repo (identity, then columns).
@@ -331,7 +349,8 @@ layout() { # recompute the columns for the terminal as it is now
     c_pr="$(_pr_cell_width)"; [ "$c_pr" -lt 1 ] && c_pr=1
     c_local="$(_local_cell_width)"; [ "$c_local" -lt 1 ] && c_local=1
     c_ahead="$(_ahead_cell_width)"; [ "$c_ahead" -lt 2 ] && c_ahead=2
-    c_behind=4 c_tip=2 c_prod=2
+    c_behind="$(_behind_cell_width)"; [ "$c_behind" -lt 3 ] && c_behind=3
+    c_tip=2 c_prod=2
     _apply_column_floors
     # Every compact column is already at its content width, so a pane too narrow
     # for all of them drops whole columns rather than clipping the row.
