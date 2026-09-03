@@ -335,9 +335,9 @@ _local_cell_width() {
 }
 
 # Ahead/behind cells are bare counts under ↑/↓ headers (no repeated arrow).
-# Floor is one leading space + two digits (width 3); grow when a count needs more.
+# Floor is one digit + one trailing space (width 2); grow when a count needs more.
 _count_cell_width() { # scans CR_AHEAD or CR_BEHIND via name prefix
-  local which="$1" w=3 i=0 n
+  local which="$1" w=2 i=0 n
   while [ "$i" -lt "${#CR_WT[@]}" ]; do
     case "$which" in
       ahead) n="${CR_AHEAD[$i]:-0}" ;;
@@ -1084,8 +1084,8 @@ local_cell() { # <tree state> -> $_cell
   esac
 }
 
-# Bare count, left-aligned with the ↑/↓ header and empty · cells. Width still
-# floors at one space + two digits and grows for larger counts.
+# Bare count, left-aligned with the ↑/↓ header and empty · cells. Width floors
+# at one digit + one space and grows for larger counts.
 count_cell() { # <count-or-empty> <width> -> $_cell
   local n="${1:-}" w="$2"
   if [ -n "$n" ] && [ "$n" != 0 ]; then
