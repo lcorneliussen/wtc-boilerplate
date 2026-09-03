@@ -69,12 +69,23 @@ command -v nvim >/dev/null 2>&1 || {
 run_nvim() {
   cd "$collection"
   sock="$(wtc_browse_socket "$name")"
-  if ! wtc_browse_alive "$name"; then
-    rm -f "$sock"
+  # Both paths reach Lua as long-bracket strings, which carry spaces and
+  # shell-special characters verbatim. `luafile $lua` did not: an Ex command
+  # splits its argument on whitespace, so a workspace under a folder with a
+  # space in its name never sourced the script.
+  set -- -c "lua vim.g.wtc_browse_root = [[$collection]]" \
+         -c "lua dofile([[$lua]])"
+  if wtc_browse_alive "$name"; then
+    # Something answers on the socket, so binding it again can only fail
+    # ("address already in use"). The socket is keyed by collection, so that
+    # something is this collection's own browse nvim — typically the herdr
+    # browse pane, with this call coming from a terminal. A second window is
+    # still useful; it just cannot be the one the status pane talks to.
+    echo "==> $name: a browse nvim already listens on $sock — opening this window without it" >&2
+    exec nvim "$@"
   fi
-  exec nvim --listen "$sock" \
-    -c "lua vim.g.wtc_browse_root = [[$collection]]" \
-    -c "luafile $lua"
+  rm -f "$sock"   # nothing answers: left over from an nvim that is gone
+  exec nvim --listen "$sock" "$@"
 }
 
 if [ "$here" = yes ]; then

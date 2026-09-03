@@ -1,18 +1,22 @@
 #!/usr/bin/env bash
 # wtc-status.sh — one-shot collection status for agents and scripts (always
-# fresh). `--tui` is a compatibility shim to the live pane.
+# fresh). `--tui [seconds]` is a compatibility shim to the live pane.
 set -euo pipefail
 WTC_STATUS_UI=oneshot
-# --tui is a compatibility shim: wtc-status-tui.sh, and anyone who still
-# types `wtc-status.sh --tui` out of older habit, gets the live pane without
-# this file needing its own copy of the dispatch below. Consumed here rather
-# than left for wtc-status-common.sh's own flag parser, which would otherwise
-# reject it as unknown.
+# `--tui` (optional refresh interval) is consumed here rather than left for
+# wtc-status-common.sh's flag parser, which would otherwise reject it as
+# unknown. A bare number after `--tui` becomes `--watch N` for the TUI.
 args=()
-for a in "$@"; do
-  case "$a" in
-    --tui) WTC_STATUS_UI=tui ;;
-    *) args+=("$a") ;;
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --tui)
+      WTC_STATUS_UI=tui
+      shift
+      case "${1:-}" in
+        [0-9]*) args+=(--watch "$1"); shift ;;
+      esac
+      ;;
+    *) args+=("$1"); shift ;;
   esac
 done
 set -- "${args[@]+"${args[@]}"}"
