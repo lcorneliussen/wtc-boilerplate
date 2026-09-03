@@ -1084,11 +1084,12 @@ local_cell() { # <tree state> -> $_cell
   esac
 }
 
-# Bare count, right-aligned in the column (header carries ↑/↓). Empty → dim ·.
+# Bare count, left-aligned with the ↑/↓ header and empty · cells. Width still
+# floors at one space + two digits and grows for larger counts.
 count_cell() { # <count-or-empty> <width> -> $_cell
   local n="${1:-}" w="$2"
   if [ -n "$n" ] && [ "$n" != 0 ]; then
-    printf -v _cell '%*s' "$w" "$n"
+    printf -v _cell '%-*s' "$w" "$n"
     return 0
   fi
   dot_cell "$w"
