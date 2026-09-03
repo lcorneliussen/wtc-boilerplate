@@ -993,6 +993,34 @@ osc8_link() { # <url> <text> -> $_osc8
   fi
 }
 
+# Underlined "#N" linking to the forge PR (Bitbucket or GitHub). Visible width
+# stays 1+${#num}; OSC-8 gives hover/⌘-click in iTerm2/herdr, and on_click
+# opens the same URL on a plain click when mouse reporting is on.
+pr_num_link() { # <slug> <num> -> $_prlink
+  local slug="${1:-}" num="${2:-}" forge="" url="" label=""
+  [ -n "$num" ] || { _prlink=""; return 0; }
+  label=$'\033[4m'"#$num"$'\033[24m'
+  if [ -n "$slug" ]; then
+    forge="$(forge_for_slug "$slug")"
+    url="$(pr_url_for "$slug" "$forge" "$num")"
+  fi
+  if [ -n "$url" ]; then
+    osc8_link "$url" "$label"
+    _prlink="$_osc8"
+  else
+    _prlink="$label"
+  fi
+}
+
+open_pr_web() { # <slug> <pr number> — browser; Bitbucket or GitHub
+  local slug="${1:-}" num="${2:-}" forge="" url=""
+  [ -n "$slug" ] && [ -n "$num" ] || return 0
+  forge="$(forge_for_slug "$slug")"
+  url="$(pr_url_for "$slug" "$forge" "$num")"
+  [ -n "$url" ] || return 0
+  (open "$url" >/dev/null 2>&1 || xdg-open "$url" >/dev/null 2>&1 || true) &
+}
+
 # Glyph + optional #build hyperlink to the Bitbucket pipeline. Failures are
 # underlined so they read as the thing to open.
 pipe_build_cell() { # <checks> <build> <url> -> $_pcell
@@ -1104,14 +1132,15 @@ draw_detail_cells() {
   local pr_num="$1" pr_checks="$2" pr_merge="$3" pr_review="$4"
   local a_disp="$5" b_disp="$6" tip_checks="$7" tip_url="$8"
   local prod_checks="$9" prod_url="${10}" tree="${11}"
-  local pr_draft="${12:-no}"
+  local pr_draft="${12:-no}" pr_slug="${13:-}"
   local row="" term_x=0 checks_g
 
   if [ -n "$pr_num" ]; then
     # D only when forge said CI was skipped for draft — never force it just
     # because the PR is a draft (drafts can still run checks).
     checks_g="$(glyph_checks "$pr_checks")"
-    printf -v _cell '#%s %s%s%s' "$pr_num" \
+    pr_num_link "$pr_slug" "$pr_num"
+    printf -v _cell '%s %s%s%s' "$_prlink" \
       "$checks_g" "$(glyph_merge "$pr_merge")" \
       "$(glyph_review "$pr_review")"
     pad=$((c_pr - (1 + ${#pr_num} + 1 + 3)))
@@ -1585,7 +1614,7 @@ draw_repo_row_compact() {
   # columns at fixed positions so they line up down the whole table.
   draw_detail_cells "$pr_num" "$pr_checks" "$pr_merge" "$pr_review" \
     "$a_disp" "$b_disp" "$tip_checks" "$tip_url" "$prod_checks" "$prod_url" "$tree" \
-    "${17:-no}"
+    "${17:-no}" "$slug"
   printf -v row '%s%*s%s' $'\033[2m└\033[0m' $((_detail_indent - 1)) '' "$_detail_row"
   out "$row"
   ROWS[$line]="$wt|$slug|$label|$pr_num"
@@ -1654,7 +1683,7 @@ draw_repos_tty() {
     fit_ellipsis "$branch" $c_branch; row="$row$_fit "
     draw_detail_cells "$pr_num" "$pr_checks" "$pr_merge" "$pr_review" \
       "$a_disp" "$b_disp" "$tip_checks" "$tip_url" "$prod_checks" "$prod_url" "$tree" \
-      "$pr_draft"
+      "$pr_draft" "$slug"
     row="${row}${_detail_row}"
     out "$row"
     ROWS[$line]="$wt|$slug|$label|$pr_num"
@@ -1744,8 +1773,9 @@ draw_prs_tty() {
           printf -v tag '%s%*s' "$_dt" "$_pad" ''
           [ "$checks" = draft ] && checks_for_glyph=NONE
         fi
-        printf -v prow '  #%s%*s%s %s%s%s%s  %s' \
-          "$num" $((prs_w_num - 1 - ${#num})) '' "$_fit" \
+        pr_num_link "$slug" "$num"
+        printf -v prow '  %s%*s%s %s%s%s%s  %s' \
+          "$_prlink" $((prs_w_num - 1 - ${#num})) '' "$_fit" \
           "$tag" \
           "$(glyph_checks "$checks_for_glyph")" "$(glyph_merge "$merge")" "$(glyph_review "$review")" \
           "$show"
@@ -1815,7 +1845,7 @@ help_block() {
   d=$'\033[2m'; z=$'\033[0m'; k=$'\033[1m'
   out ""
   out "${k}KEYS${z}    ${d}?${z} this list   ${d}a${z} archived   ${d}r${z} refresh   ${d}q${z} quit"
-  out "${k}CLICK${z}   ${d}T / P${z} Bitbucket pipeline result"
+  out "${k}CLICK${z}   ${d}#n${z} forge PR (⌘-click / OSC-8)   ${d}T / P${z} pipeline (when shown)"
   out "${k}DRAG${z}    ${d}select text as usual${z} — a click that moves is a selection, not a click"
   out ""
   out "${k}±${z}       ${d}±N${z} files not committed   $(printf '\033[2m·\033[0m') clean worktree"
@@ -1900,9 +1930,9 @@ draw_tty() {
 
 # --- clicking ---------------------------------------------------------------
 # Mouse reports only; output processing stays on (-icanon, not raw) so the
-# table still prints with normal line endings. Clicks open Bitbucket pipeline
-# results (T/P) when those columns are shown. Repo/PR forge pages are not
-# click targets.
+# table still prints with normal line endings. Clicks open forge PR pages
+# (#n — Bitbucket or GitHub) and Bitbucket pipeline results (T/P) when those
+# columns are shown. PR numbers are also OSC-8 hyperlinks.
 
 mouse_on()  { printf '\033[?1000h\033[?1006h\033[?25l'; }  # button events, SGR, no cursor
 mouse_off() { printf '\033[?1006l\033[?1000l\033[?25h'; }
@@ -1924,6 +1954,14 @@ on_click() { # <button>;<column>;<line> from an SGR mouse report
   btn="${1%%;*}"; rest="${1#*;}"; x="${rest%%;*}"; y="${rest##*;}"
   [ "$btn" = 0 ] || return 0
   case "$x$y" in *[!0-9]*) return 0 ;; esac
+  pentry="${PROWS[$y]:-}"
+  if [ -n "$pentry" ]; then
+    pslug="${pentry%%|*}"; pnum="${pentry##*|}"
+    [ -n "$pnum" ] || return 0
+    open_pr_web "$pslug" "$pnum"
+    return 0
+  fi
+  entry="${ROWS[$y]:-}"
   tip_url="${TIPURL[$y]:-}"
   prod_url="${PRODURL[$y]:-}"
   if [ "$show_tip" = yes ] && [ -n "$tip_url" ] \
@@ -1934,6 +1972,16 @@ on_click() { # <button>;<column>;<line> from an SGR mouse report
   if [ "$show_prod" = yes ] && [ -n "$prod_url" ] \
      && [ "$x" -ge "$col_prod" ] && [ "$x" -lt $((col_prod + c_prod)) ]; then
     (open "$prod_url" >/dev/null 2>&1 || xdg-open "$prod_url" >/dev/null 2>&1 || true) &
+    return 0
+  fi
+  [ -n "$entry" ] || return 0
+  rest="${entry#*|}"; slug="${rest%%|*}"; rest="${rest#*|}"
+  pr_num="${rest##*|}"
+  if [ -n "$pr_num" ] && [ "$x" -ge "$col_pr" ] && [ "$x" -lt $((col_pr + c_pr)) ]; then
+    case "${ROWKIND[$y]:-wide}" in
+      id) return 0 ;;
+    esac
+    open_pr_web "$slug" "$pr_num"
     return 0
   fi
 }
