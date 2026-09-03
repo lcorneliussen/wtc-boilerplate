@@ -23,13 +23,8 @@ Where it opens depends on who launched it:
   --here        force this terminal, even from an agent pane
   --session <n> herdr session
 
-Status-pane clicks talk to this nvim over a listen socket,
-/tmp/wtc-browse-<workspace>-<collection>.nvim, where <workspace> is the
-basename of the workspace root — the folder holding .bare/ and every
-collection, so `acme-wtc` for ~/Code/acme-wtc/main. A pair too long for
-a socket path is cut to fit and given a checksum. When a browse nvim for
-this collection is already listening there, this one opens without the
-socket and the clicks keep going to the first.
+Status-pane clicks talk to this nvim over a listen socket
+(/tmp/wtc-browse-<collection>.nvim).
 EOF
   exit "${1:-1}"
 }
@@ -82,11 +77,10 @@ run_nvim() {
          -c "lua dofile([[$lua]])"
   if wtc_browse_alive "$name"; then
     # Something answers on the socket, so binding it again can only fail
-    # ("address already in use"). The socket is keyed by workspace and
-    # collection, so that something is this collection's own browse nvim —
-    # typically the herdr browse pane, with this call coming from a terminal.
-    # A second window is still useful; it just cannot be the one the status
-    # pane talks to.
+    # ("address already in use"). The socket is keyed by collection, so that
+    # something is this collection's own browse nvim — typically the herdr
+    # browse pane, with this call coming from a terminal. A second window is
+    # still useful; it just cannot be the one the status pane talks to.
     echo "==> $name: a browse nvim already listens on $sock — opening this window without it" >&2
     exec nvim "$@"
   fi

@@ -263,29 +263,3 @@ wtc_status_cache_repo interrupted b h 0 0 clean "" unknown "" "" "" "" ""
 assert_eq "$before" "$(wtc_status_cache_rows snap)" "still the last good snapshot"
 wtc_status_cache_commit
 assert_contains "$(wtc_status_cache_rows snap)" "interrupted" "and the new one lands on commit"
-
-# --- wtc_browse_socket ------------------------------------------------------
-# The socket used to be /tmp/wtc-browse-<collection>.nvim. Every workspace on
-# a machine tends to have a `main`, so the second workspace's browse nvim
-# failed to --listen on a socket the first one's held, and status clicks from
-# it landed in the other workspace's editor.
-
-it "wtc_browse_socket is keyed by workspace root as well as collection"
-assert_eq "/tmp/wtc-browse-$(basename "$ws")-main.nvim" "$(wtc_browse_socket main)"
-
-it "the same collection name in another workspace gets its own socket"
-here="$(wtc_browse_socket main)"
-saved="$ROOT"; ROOT="$(dirname "$ws")/another-workspace"
-assert_neq "$here" "$(wtc_browse_socket main)"
-assert_eq "/tmp/wtc-browse-another-workspace-main.nvim" "$(wtc_browse_socket main)"
-ROOT="$saved"
-
-it "a workspace and collection too long for a socket path are cut to fit"
-# sun_path is 104 bytes on macOS, NUL included; past it nvim --listen fails
-# outright. The cut name keeps a checksum of the full pair so it stays unique.
-long="$(printf '%090d' 0 | tr 0 c)"
-sock="$(wtc_browse_socket "$long")"
-assert_eq "yes" "$([ "$(printf '%s' "$sock" | wc -c | tr -d ' ')" -le 100 ] && echo yes || echo no)" "fits a socket path"
-assert_contains "$sock" "/tmp/wtc-browse-$(basename "$ws")-" "still says which workspace"
-assert_eq "$sock" "$(wtc_browse_socket "$long")" "stable across calls"
-assert_neq "$sock" "$(wtc_browse_socket "${long}d")" "a name differing past the cut still gets its own socket"

@@ -147,7 +147,7 @@ pane_state() {
     return 0
   fi
   # A script's foreground process is its interpreter, so name the script:
-  # a status pane reads "wtc-status.sh", not "bash".
+  # a status pane reads "wtc-status-tui.sh", not "bash".
   _show=""
   # shellcheck disable=SC2086
   for _w in $_cmd; do

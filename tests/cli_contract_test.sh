@@ -25,12 +25,15 @@ for f in "$HARNESS_SRC"/tools/*.sh "$HARNESS_SRC"/hooks/*.sh; do
   src_scripts="$src_scripts $f"
 done
 
-# Executable tools: everything with a CLI. lib.sh is excluded because its first
-# line says "source this, don't execute it" — it has no argv contract to keep.
+# Executable tools: everything with a CLI. lib.sh and *-common.sh are excluded
+# because their first lines say "source this, don't execute" — they have no
+# argv contract to keep (and running them only prints that error).
 cli_tools=""
 for f in "$fixture_tools"/*.sh; do
   [ -f "$f" ] || continue
-  case "$(basename "$f")" in lib.sh) continue ;; esac
+  case "$(basename "$f")" in
+    lib.sh|*-common.sh) continue ;;
+  esac
   cli_tools="$cli_tools $f"
 done
 
