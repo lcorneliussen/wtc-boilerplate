@@ -287,13 +287,13 @@ _repo_name_width() {
   printf '%s' "$w"
 }
 
-_pr_cell_width() { # "#<num> <3 glyphs> <term>" — floor fits # + 2 digits
-  # Layout: '#' + digits + ' ' + checks + merge + review + ' ' + term
-  # = 6 + len(num). Floor 9 covers the usual two-digit PR numbers.
-  local w=9 n
+_pr_cell_width() { # "#<num> <3 glyphs>" — floor fits # + 2 digits
+  # Layout: '#' + digits + ' ' + checks + merge + review = 5 + len(num).
+  # Floor 7 covers the usual two-digit PR numbers.
+  local w=7 n
   for n in ${CR_PR_NUM[@]+"${CR_PR_NUM[@]}"}; do
     [ -n "$n" ] || continue
-    [ $((6 + ${#n})) -gt "$w" ] && w=$((6 + ${#n}))
+    [ $((5 + ${#n})) -gt "$w" ] && w=$((5 + ${#n}))
   done
   printf '%s' "$w"
 }
@@ -485,7 +485,6 @@ PROWS=("")  # PROWS[<screen line>] = "<slug>|<pr number>" for the PRS section
 line=0      # lines printed so far, i.e. the screen line of the last one
 # The PRS section is a fixed layout, so its two click zones are constants.
 prs_x_num=3 prs_w_num=6 prs_x_term=0
-TERM_GLYPH="❯"   # visual separator after PR glyphs (not a click target)
 
 
 # Cached repo rows — populated by load_snapshot, consumed by draw_repos_tty.
@@ -1108,17 +1107,15 @@ draw_detail_cells() {
   local row="" term_x=0 checks_g
 
   if [ -n "$pr_num" ]; then
-    term_x=$((col_pr + 1 + ${#pr_num}))
     # D only when forge said CI was skipped for draft — never force it just
     # because the PR is a draft (drafts can still run checks).
     checks_g="$(glyph_checks "$pr_checks")"
-    printf -v _cell '#%s %s%s%s %s' "$pr_num" \
+    printf -v _cell '#%s %s%s%s' "$pr_num" \
       "$checks_g" "$(glyph_merge "$pr_merge")" \
-      "$(glyph_review "$pr_review")" "$TERM_GLYPH"
-    pad=$((c_pr - (1 + ${#pr_num} + 1 + 3 + 1 + 1)))
+      "$(glyph_review "$pr_review")"
+    pad=$((c_pr - (1 + ${#pr_num} + 1 + 3)))
     [ "$pad" -gt 0 ] && printf -v _cell '%s%*s' "$_cell" "$pad" ''
   else
-    term_x=0
     dot_cell $c_pr
   fi
   row="$_cell "
@@ -1746,11 +1743,11 @@ draw_prs_tty() {
           printf -v tag '%s%*s' "$_dt" "$_pad" ''
           [ "$checks" = draft ] && checks_for_glyph=NONE
         fi
-        printf -v prow '  #%s%*s%s %s%s%s%s %s  %s' \
+        printf -v prow '  #%s%*s%s %s%s%s%s  %s' \
           "$num" $((prs_w_num - 1 - ${#num})) '' "$_fit" \
           "$tag" \
           "$(glyph_checks "$checks_for_glyph")" "$(glyph_merge "$merge")" "$(glyph_review "$review")" \
-          "$TERM_GLYPH" "$show"
+          "$show"
         out "$prow"
       fi
     fi
