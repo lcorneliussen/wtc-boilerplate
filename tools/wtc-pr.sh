@@ -15,7 +15,8 @@ only used later to enrich status (state/title), never to discover which PRs
 belong here.
 
   enlist   add/update a row after you open a PR (draft or ready)
-  unlist   drop a row (merged, closed, or wrong enlistment)
+  unlist   drop a row (closed, wrong enlistment — not needed after merge;
+           catch-up keeps MERGED rows so status can archive them)
   list     show enlisted rows
   path     print the .wtc-prs path
 

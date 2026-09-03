@@ -188,7 +188,7 @@ pop_catch_up_stash() { # <worktree> <label>
 }
 
 catch_up_worktree() { # <collection-name> <worktree> <repo>
-  local coll_name="$1" wt="$2" repo="$3" ref label branch behind pr_state extra enlisted num
+  local coll_name="$1" wt="$2" repo="$3" ref label branch behind pr_state extra
   ref="$(default_ref_for "$repo")"
   label="$(basename "$wt")"
   [ "$label" = harness ] && label="harness($repo)"
@@ -231,11 +231,9 @@ catch_up_worktree() { # <collection-name> <worktree> <repo>
       else
         git -C "$wt" checkout --detach "$ref"
         git -C "$wt" branch -d "$branch" 2>/dev/null || warn "$coll_name/$label: branch -d $branch refused"
-        enlisted="$(wtc_pr_enlisted_for "$coll_name" "$repo" "$branch" | head -n1)"
-        if [ -n "$enlisted" ]; then
-          num="${enlisted%%$'\t'*}"
-          wtc_pr_unlist "$coll_name" "$repo" "$num" >/dev/null 2>&1 || true
-        fi
+        # Keep the .wtc-prs row: status ages MERGED into the archived toggle
+        # after 48 weekday-hours. Unlisting here emptied the only store the
+        # PRS section reads, so catch-up wiped the archive fodder.
         log "  $coll_name/$label: merged PR — detached at $ref, pruned $branch"
       fi
       pop_catch_up_stash "$wt" "$label" || true
