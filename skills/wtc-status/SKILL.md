@@ -9,8 +9,9 @@ Answers "what is in flight" across the workspace, without touching anything.
 Read-only.
 
 Ported from the Steep reference status stack (`port/status-from-steep`) —
-LOCAL columns, compact two-line rows, `.wtc-status.json`/`.md` snapshots,
-forge-only clicks. The previous boilerplate-native implementation is kept as
+LOCAL columns, compact two-line rows, `.wtc-status.json`/`.md` snapshots.
+Clicks open Bitbucket pipeline glyphs (`T`/`P`) when those columns are shown.
+The previous boilerplate-native implementation is kept as
 `tools/wtc-status-legacy.sh` / `wtc-status-legacy-tui.sh` for reference; it is
 not wired into `wtc-open.sh` or `retire.sh`.
 
@@ -52,11 +53,11 @@ running `wtc-status-tui.sh`. **Don't run a watch loop to answer a
 question** — take the snapshot, answer, stop.
 
 The collection table is clickable where both ends have a terminal — that's for
-the human reading the pane, not for you. Every click opens the forge — the PR
-page (number or `❯`), the branch page (`REPO`), or a pipeline (`T`/`P`, when
-enabled) — nothing local (no nvim, no Octo, no lazygit). `?` toggles a key and
-icon reference, `a` toggles merged PRs past 48 weekday-hours, `r` and the
-watch interval reload in the background while the cached table stays visible.
+the human reading the pane, not for you. Clicks open Bitbucket pipeline
+results (`T`/`P`, when enabled). Repo names and PR numbers are not click
+targets. `?` toggles a key and icon reference, `a` toggles merged PRs past
+48 weekday-hours, `r` and the watch interval reload in the background while
+the cached table stays visible.
 
 ## Reading it
 
