@@ -48,6 +48,11 @@ removes it along with the collection.
                     on claude.ai, named for the collection. Start-time only —
                     a session started without it cannot be attached later
   --no-agent        create the panes but start no agent
+  --no-first-prompt start the agent but do not hand it its first prompt.
+                    On a fresh collection (HANDOFF.md still present) the
+                    agent is otherwise told to run /wtc-start as soon as it
+                    is ready, and the submission is checked — the agent has
+                    to be seen working on it, not just holding the text
   --no-status       leave the status pane at a shell prompt (it is otherwise
                     (re)started whenever that pane is idle)
   --no-browse       leave the browse pane at a shell prompt. By default it
@@ -63,6 +68,7 @@ EOF
 
 all=no list=no dry_run=no session="" agent_kind="" agent_kind_set=no start_agent=yes focus=no
 agent_args="" agent_args_set=no remote_control=yes start_browse=yes start_status=yes
+first_prompt=yes
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) all=yes; shift ;;
@@ -73,6 +79,7 @@ while [ $# -gt 0 ]; do
     --no-remote-control) remote_control=no; shift ;;
     --dry-run) dry_run=yes; shift ;;
     --no-agent) start_agent=no; shift ;;
+    --no-first-prompt) first_prompt=no; shift ;;
     --no-browse) start_browse=no; shift ;;
     --no-status) start_status=no; shift ;;
     --focus) focus=yes; shift ;;
@@ -345,10 +352,23 @@ open_collection() { # <collection>
       agent)   note "agent live ($(state_label $st))" ;;
       running) note "agent busy (${st#running }) — left alone" ;;
       *)
+        # A collection that still has its launch note has not been started:
+        # the agent's first move is /wtc-start, and nobody should have to
+        # type it into the pane. Only on this path — an agent that is
+        # already live keeps whatever it is doing.
+        want_first=no
+        [ "$first_prompt" = yes ] && [ -f "$dir/HANDOFF.md" ] && want_first=yes
         if [ "$dry_run" = yes ]; then
           note "agent empty → would start $agent_kind"
+          [ "$want_first" = no ] || note "would submit $(first_prompt_text)"
         elif start_agent_in_pane; then
-          note "agent started ($agent_kind)"
+          if [ "$want_first" = no ]; then
+            note "agent started ($agent_kind)"
+          elif first_prompt_in_pane; then
+            note "agent started ($agent_kind), $(first_prompt_text) running"
+          else
+            note "agent started ($agent_kind) — first prompt not taken, type it"
+          fi
         else
           note "agent start failed"
         fi
@@ -466,6 +486,37 @@ start_agent_in_pane() {
     sleep 1
   done
   return 0
+}
+
+# What a fresh collection's agent is told first. Claude runs the skill by its
+# slash name; other kinds get the same thing in words, since their skill
+# surfaces differ and the words are enough to make the right one fire.
+first_prompt_text() {
+  case "$agent_kind" in
+    claude) printf '%s' "/wtc-start" ;;
+    *) printf '%s' "Run the wtc-start skill (harness/skills/wtc-start/SKILL.md): read HANDOFF.md at the collection root, then start." ;;
+  esac
+}
+
+# Hand the agent its first prompt and do not trust the send. Typing a slash
+# command into Claude opens its command palette, and there the first Enter
+# completes the command rather than sending it — so the text can sit in the
+# chat entry looking submitted while the agent stays idle. herdr's prompt
+# surface does add an Enter, but the only proof is the agent going to work:
+# wait for exactly that, and when herdr reports the submission stalled, the
+# palette has eaten the Enter and one more is what is owed.
+first_prompt_in_pane() { # -> 0 once the agent is working on it
+  _fp="$(first_prompt_text)"
+  _out="$(herdr --session "$session" agent prompt "$WTC_AGENT_NAME" "$_fp" \
+            --wait --until working --timeout 20000 2>&1)" && return 0
+  case "$_out" in
+    *agent_prompt_stalled*)
+      herdr --session "$session" agent send-keys "$WTC_AGENT_NAME" enter >/dev/null 2>&1 || return 1
+      herdr --session "$session" agent wait "$WTC_AGENT_NAME" \
+        --until working --timeout 10000 >/dev/null 2>&1
+      ;;
+    *) return 1 ;;
+  esac
 }
 
 for c in $collections; do
