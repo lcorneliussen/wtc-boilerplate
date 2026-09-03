@@ -287,11 +287,27 @@ _repo_name_width() {
   printf '%s' "$w"
 }
 
-_pr_cell_width() { # "#<num> <3 glyphs> <term>" -> 7 columns plus the number
-  local w=0 n
+_pr_cell_width() { # "#<num> <3 glyphs> <term>" — floor fits # + 2 digits
+  # Layout: '#' + digits + ' ' + checks + merge + review + ' ' + term
+  # = 6 + len(num). Floor 9 covers the usual two-digit PR numbers.
+  local w=9 n
   for n in ${CR_PR_NUM[@]+"${CR_PR_NUM[@]}"}; do
     [ -n "$n" ] || continue
-    [ $((7 + ${#n})) -gt "$w" ] && w=$((7 + ${#n}))
+    [ $((6 + ${#n})) -gt "$w" ] && w=$((6 + ${#n}))
+  done
+  printf '%s' "$w"
+}
+
+# PRS "#NN" field: '#' + digits + trailing space, min two digits, grows.
+_prs_num_width() {
+  local w=4 n  # "#28 " — one space after the number before the repo
+  for n in ${CR_PR_NUM[@]+"${CR_PR_NUM[@]}"}; do
+    [ -n "$n" ] || continue
+    [ $((2 + ${#n})) -gt "$w" ] && w=$((2 + ${#n}))
+  done
+  for n in ${PR_ROW_NUM[@]+"${PR_ROW_NUM[@]}"}; do
+    [ -n "$n" ] || continue
+    [ $((2 + ${#n})) -gt "$w" ] && w=$((2 + ${#n}))
   done
   printf '%s' "$w"
 }
@@ -352,12 +368,13 @@ layout() { # recompute the columns for the terminal as it is now
   show_tip=$pipe_enabled show_prod=$pipe_enabled
   if [ "$show_coll" = yes ]; then c_coll=18; else c_coll=0; fi
   c_repo="$(_repo_name_width)"; [ "$c_repo" -lt 4 ] && c_repo=4
-  c_pr="$(_pr_cell_width)"; [ "$c_pr" -lt 7 ] && c_pr=7
+  c_pr="$(_pr_cell_width)"
   c_local="$(_local_cell_width)"; [ "$c_local" -lt 1 ] && c_local=1
   c_ahead="$(_ahead_cell_width)"
   c_behind="$(_behind_cell_width)"
   c_branch="$(_branch_width)"; [ "$c_branch" -lt 6 ] && c_branch=6
   c_tip=2 c_prod=2
+  prs_w_num="$(_prs_num_width)"
   _apply_column_floors
 
   # Narrow panes / live status pane: two lines per repo (identity, then columns).
@@ -372,6 +389,7 @@ layout() { # recompute the columns for the terminal as it is now
     c_ahead="$(_ahead_cell_width)"
     c_behind="$(_behind_cell_width)"
     c_tip=2 c_prod=2
+    prs_w_num="$(_prs_num_width)"
     _apply_column_floors
     # Every compact column is already at its content width, so a pane too narrow
     # for all of them drops whole columns rather than clipping the row.
@@ -831,7 +849,8 @@ query($owner:String!,$name:String!,$branch:String!){
 PR_SHAPE='.data.repository.pullRequests.nodes[0] // empty | [
     (.number|tostring),
     .state,
-    (if .isDraft then "draft" else (.commits.nodes[0].commit.statusCheckRollup.state // "NONE") end),
+    ((.commits.nodes[0].commit.statusCheckRollup.state // "NONE") as $c
+      | if .isDraft and ($c == "NONE") then "draft" else $c end),
     (.mergeStateStatus // "UNKNOWN"),
     (([.reviewThreads.nodes[] | select((.isResolved|not) and (.isOutdated|not))] | length) as $open
       | if $open > 0 then ($open|tostring)
@@ -904,6 +923,7 @@ draft = bool(match.get("draft"))
 if draft and state == "OPEN":
     state = "DRAFT"
 title = (match.get("title") or "").replace("\t", " ").replace("\n", " ")
+# D in the checks slot means CI was skipped because of draft — not "is draft".
 checks = "draft" if draft else "NONE"
 review = "none"
 open(out, "w").write("\t".join([str(pid), state, checks, "UNKNOWN", review, title]) + "\n")
@@ -958,7 +978,7 @@ glyph_checks() { # <state> -> one column
     SUCCESS)                      printf '%s' "$G_OK" ;;
     FAILURE|ERROR)                printf '%s' "$G_BAD" ;;
     PENDING|EXPECTED)             printf '%s' "$G_RUN" ;;
-    draft)                        printf '\033[33mD\033[0m' ;;  # draft; PRS also prints DRAFT
+    draft)                        printf '\033[33mD\033[0m' ;;  # CI skipped because draft
     *)                            printf '%s' "$G_NONE" ;;
   esac
 }
@@ -1020,15 +1040,14 @@ glyph_review() { # <approved|changes|waiting|commented|noreviewers|merged|none|N
   esac
 }
 
-# Bold yellow DRAFT tag for the PRS title / inline when checks say draft.
-# Dim yellow "◇ draft" rather than a bold, all-caps DRAFT — still scannable
-# next to a title, but no longer reads as an alarm competing with checks/merge
-# failures. The inline PR cell never carries this: `D` in the checks slot is
-# enough there, and painting the whole title on top of it was the shoutier of
-# the two problems it caused.
+# Dim yellow "◇ draft" for the PRS row — draft *state*, separate from the
+# checks-slot D (which means CI was not triggered because of that draft).
+# Fixed-width field in draw_prs_tty so glyphs share a column with/without it.
 draft_tag() { # -> prints the PRS-section draft badge
   printf '\033[2;33m◇ draft\033[0m'
 }
+prs_w_draft=8
+
 
 # Both write to a variable rather than stdout: cells end in padding, and
 # command substitution would eat it.
@@ -1089,11 +1108,9 @@ draw_detail_cells() {
 
   if [ -n "$pr_num" ]; then
     term_x=$((col_pr + 1 + ${#pr_num}))
-    if [ "$pr_draft" = yes ] || [ "$pr_checks" = draft ]; then
-      checks_g="$(glyph_checks draft)"
-    else
-      checks_g="$(glyph_checks "$pr_checks")"
-    fi
+    # D only when forge said CI was skipped for draft — never force it just
+    # because the PR is a draft (drafts can still run checks).
+    checks_g="$(glyph_checks "$pr_checks")"
     printf -v _cell '\033[4m#%s\033[24m %s%s%s %s' "$pr_num" \
       "$checks_g" "$(glyph_merge "$pr_merge")" \
       "$(glyph_review "$pr_review")" "$TERM_GLYPH"
@@ -1717,14 +1734,24 @@ draw_prs_tty() {
           "$num" $((prs_w_num - 1 - ${#num})) '' "$_fit" "$show"
         out $'\033[2m'"$prow"$'\033[0m'
       else
-        tag=""
+        # Fixed-width draft field so checks/merge/review line up across rows.
+        # Badge = draft state; D in checks = CI skipped because of draft.
+        # When both would say the same thing, keep the badge and use · for
+        # the checks slot so the row is not DRAFT + D.
+        tag="$(printf '%*s' "$prs_w_draft" '')"
+        checks_for_glyph="$checks"
         if [ "$draft" = yes ] || [ "$checks" = draft ]; then
-          tag="$(draft_tag) "
+          _dt="$(draft_tag)"
+          ansi_vislen "$_dt"
+          _pad=$((prs_w_draft - _vlen))
+          [ "$_pad" -lt 0 ] && _pad=0
+          printf -v tag '%s%*s' "$_dt" "$_pad" ''
+          [ "$checks" = draft ] && checks_for_glyph=NONE
         fi
         printf -v prow '  \033[4m#%s\033[24m%*s%s %s%s%s%s \033[4m%s\033[24m  %s' \
           "$num" $((prs_w_num - 1 - ${#num})) '' "$_fit" \
           "$tag" \
-          "$(glyph_checks "$checks")" "$(glyph_merge "$merge")" "$(glyph_review "$review")" \
+          "$(glyph_checks "$checks_for_glyph")" "$(glyph_merge "$merge")" "$(glyph_review "$review")" \
           "$TERM_GLYPH" "$show"
         out "$prow"
       fi
@@ -1798,10 +1825,10 @@ help_block() {
   out "${k}±${z}       ${d}±N${z} files not committed   $(printf '\033[2m·\033[0m') clean worktree"
   out "${k}AHEAD${z}   ${d}N${z} under ↑ — commits on this branch not pushed"
   out "${k}BEHIND${z}  ${d}N${z} under ↓ — commits on remote not in this worktree — catch-up territory"
-  out "${k}CHECKS${z}  $(glyph_checks SUCCESS) passing   $(glyph_checks FAILURE) failing   $(glyph_checks PENDING) running   $(glyph_checks draft) draft   $(glyph_checks NONE) none"
+  out "${k}CHECKS${z}  $(glyph_checks SUCCESS) passing   $(glyph_checks FAILURE) failing   $(glyph_checks PENDING) running   $(glyph_checks draft) CI skipped (draft)   $(glyph_checks NONE) none"
   out "${k}MERGE${z}   $(glyph_merge BEHIND) behind base   $(glyph_merge DIRTY) conflict   $(glyph_merge BLOCKED) blocked   $(glyph_merge FOLLOW) post-merge tip→prod   ${d}blank${z} clean"
   out "${k}REVIEW${z}  $(glyph_review approved) approved   $(glyph_review changes) changes   $(glyph_review commented) commented   $(glyph_review waiting) waiting   $(glyph_review noreviewers) no reviewers   $(glyph_review 3) unresolved threads"
-  out "${k}DRAFT${z}   $(draft_tag) — reviewers optional until ready"
+  out "${k}DRAFT${z}   $(draft_tag) in PRS — reviewers optional; D in the PR cell only when CI did not run because of it"
   out "${k}MERGED${z}  soft-dim while following tip→prod; still on that branch → amber ⚠ (catch-up); after 48 weekday-hours → ${d}a${z} archived"
   out "${k}PIPE${z}    TIP = default_ref pipeline; PROD = production_ref when different. Glyphs link to Bitbucket (⌘-click / OSC-8)."
 }
