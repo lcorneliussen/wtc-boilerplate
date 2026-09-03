@@ -590,7 +590,8 @@ status_timing_hud() {
 }
 
 status_keys_footer() {
-  printf '? · a · r · q'
+  # Extra spaces around · so the footer reads as four keys, not one glyph run.
+  printf '?  ·  a  ·  r  ·  q'
 }
 
 
@@ -1790,6 +1791,7 @@ draw_prs_tty() {
   done
 
   if [ "$archived_n" -gt 0 ]; then
+    out ""
     if [ "$show_archived" = yes ]; then
       out $'\033[2m'"ARCHIVED"$'\033[0m'
       i=0
@@ -1799,9 +1801,10 @@ draw_prs_tty() {
         fi
         i=$((i + 1))
       done
-      out $'\033[2m'"▸ archived · a to hide"$'\033[0m'
+      out ""
+      out $'\033[2m'"▸ archived  ·  a to hide"$'\033[0m'
     else
-      out $'\033[2m'"▸ archived ($archived_n) · a to show"$'\033[0m'
+      out $'\033[2m'"▸ archived ($archived_n)  ·  a to show"$'\033[0m'
     fi
   fi
 
@@ -1824,9 +1827,10 @@ EOF
 legend() {
   local hint="" foot
   if [ "$_snapshot_stale" -gt 0 ] && [ "$row_compact" = yes ]; then
-    hint="↓$_snapshot_stale · "
+    hint="↓$_snapshot_stale  ·  "
   fi
   foot="$(status_keys_footer)"
+  out ""
   out $'\033[2m'"${hint}${foot}"$'\033[0m'
 }
 
