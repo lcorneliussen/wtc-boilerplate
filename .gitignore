@@ -14,4 +14,4 @@
 
 # Local-only notes from a fork/collection that vendors this checkout
 # (never commit — upstream must stay free of downstream product names)
-.steep-local.md
+.wtc-local.md
