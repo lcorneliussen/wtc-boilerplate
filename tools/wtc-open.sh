@@ -505,14 +505,18 @@ first_prompt_text() {
 # surface does add an Enter, but the only proof is the agent going to work:
 # wait for exactly that, and when herdr reports the submission stalled, the
 # palette has eaten the Enter and one more is what is owed.
+#
+# Addressed by pane id, not agent name: a name only refers to the pane's
+# occupant while the agent herdr started is still there, and the pane is
+# what this call just started it in (instructions/herdr.md).
 first_prompt_in_pane() { # -> 0 once the agent is working on it
   _fp="$(first_prompt_text)"
-  _out="$(herdr --session "$session" agent prompt "$WTC_AGENT_NAME" "$_fp" \
+  _out="$(herdr --session "$session" agent prompt "$agent_pane" "$_fp" \
             --wait --until working --timeout 20000 2>&1)" && return 0
   case "$_out" in
     *agent_prompt_stalled*)
-      herdr --session "$session" agent send-keys "$WTC_AGENT_NAME" enter >/dev/null 2>&1 || return 1
-      herdr --session "$session" agent wait "$WTC_AGENT_NAME" \
+      herdr --session "$session" agent send-keys "$agent_pane" enter >/dev/null 2>&1 || return 1
+      herdr --session "$session" agent wait "$agent_pane" \
         --until working --timeout 10000 >/dev/null 2>&1
       ;;
     *) return 1 ;;
