@@ -62,13 +62,17 @@ def visrstrip(s: str) -> str:
 
 
 def visfit(s: str, width: int) -> str:
-    """Fit to width using visible columns; drop OSC-8 (never emit a partial link)."""
+    """Fit to width using visible columns; keep OSC-8 when nothing is truncated.
+
+    Truncation flattens hyperlinks to their label text so we never emit a
+    partial OSC-8 sequence that would eat the rest of the pane.
+    """
     if width < 0:
         width = 0
-    # Flatten hyperlinks to their visible label text before fitting.
-    s = OSC8.sub("", s)
     if vislen(s) <= width:
         return s
+    # Truncating: drop OSC-8 wrappers, keep the visible label.
+    s = OSC8.sub("", s)
     out: list[str] = []
     vis = 0
     i = 0

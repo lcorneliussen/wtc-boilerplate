@@ -397,6 +397,22 @@ forge_for_slug() { # <owner/repo> -> github | bitbucket | unknown
   done <<EOF
 $(registry_all_names)
 EOF
+  # Unmanaged siblings (ext.*) — read origin from a matching worktree.
+  if [ -n "${ROOT:-}" ]; then
+    for _c in "$ROOT"/*/; do
+      [ -d "${_c}harness" ] || continue
+      for _wt in "$_c"*/; do
+        [ -e "${_wt}.git" ] || continue
+        _s="$(slug_for_worktree "${_wt%/}" 2>/dev/null || true)"
+        [ "$_s" = "$want" ] || continue
+        _url="$(git -C "${_wt%/}" remote get-url origin 2>/dev/null || true)"
+        case "$_url" in
+          *github.com*)    printf 'github\n'; return 0 ;;
+          *bitbucket.org*) printf 'bitbucket\n'; return 0 ;;
+        esac
+      done
+    done
+  fi
   if command -v gh >/dev/null 2>&1; then
     printf 'github\n'
   else
