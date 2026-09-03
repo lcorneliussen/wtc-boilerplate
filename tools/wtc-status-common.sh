@@ -56,7 +56,7 @@ background refresh, clickable ANSI table, age/countdown footer.
 One-shot output for agents: tools/wtc-status.sh (--json / --md / --ansi).
 
   --watch / --no-click default from $WTC_CONFIG_ROOT/wtc.env
-  r refresh · a archived · ? help · q quit · click opens the forge (GitHub)
+  r refresh · a archived · ? help · q quit · click opens T/P pipelines
 EOF
       ;;
   esac
@@ -485,7 +485,8 @@ PROWS=("")  # PROWS[<screen line>] = "<slug>|<pr number>" for the PRS section
 line=0      # lines printed so far, i.e. the screen line of the last one
 # The PRS section is a fixed layout, so its two click zones are constants.
 prs_x_num=3 prs_w_num=6 prs_x_term=0
-TERM_GLYPH="❯"   # clickable with the PR number — forge web (Bitbucket / GitHub)
+TERM_GLYPH="❯"   # visual separator after PR glyphs (not a click target)
+
 
 # Cached repo rows — populated by load_snapshot, consumed by draw_repos_tty.
 CR_COLL=(); CR_DIR=(); CR_WT=(); CR_SLUG=(); CR_LABEL=()
@@ -1111,7 +1112,7 @@ draw_detail_cells() {
     # D only when forge said CI was skipped for draft — never force it just
     # because the PR is a draft (drafts can still run checks).
     checks_g="$(glyph_checks "$pr_checks")"
-    printf -v _cell '\033[4m#%s\033[24m %s%s%s %s' "$pr_num" \
+    printf -v _cell '#%s %s%s%s %s' "$pr_num" \
       "$checks_g" "$(glyph_merge "$pr_merge")" \
       "$(glyph_review "$pr_review")" "$TERM_GLYPH"
     pad=$((c_pr - (1 + ${#pr_num} + 1 + 3 + 1 + 1)))
@@ -1160,12 +1161,9 @@ draw_detail_cells() {
   _detail_term_x=$term_x
 }
 
-cell() { # <text> <width> -> $_cell: <width> columns, the text itself underlined
+cell() { # <text> <width> -> $_cell: <width> columns
   s="${1:0:$2}"
   pad=$(( $2 - ${#s} ))
-  if [ "$click" = yes ] && [ -n "${s// /}" ]; then
-    s=$'\033[4m'"$s"$'\033[24m'   # the underline marks the text, not the padding
-  fi
   if [ "$pad" -gt 0 ]; then
     printf -v s '%s%*s' "$s" "$pad" ''
   fi
@@ -1748,7 +1746,7 @@ draw_prs_tty() {
           printf -v tag '%s%*s' "$_dt" "$_pad" ''
           [ "$checks" = draft ] && checks_for_glyph=NONE
         fi
-        printf -v prow '  \033[4m#%s\033[24m%*s%s %s%s%s%s \033[4m%s\033[24m  %s' \
+        printf -v prow '  #%s%*s%s %s%s%s%s %s  %s' \
           "$num" $((prs_w_num - 1 - ${#num})) '' "$_fit" \
           "$tag" \
           "$(glyph_checks "$checks_for_glyph")" "$(glyph_merge "$merge")" "$(glyph_review "$review")" \
@@ -1819,7 +1817,7 @@ help_block() {
   d=$'\033[2m'; z=$'\033[0m'; k=$'\033[1m'
   out ""
   out "${k}KEYS${z}    ${d}?${z} this list   ${d}a${z} archived   ${d}r${z} refresh   ${d}q${z} quit"
-  out "${k}CLICK${z}   ${d}REPO${z} forge branch   ${d}#n / $TERM_GLYPH${z} forge PR   ${d}T / P${z} pipeline"
+  out "${k}CLICK${z}   ${d}T / P${z} Bitbucket pipeline result"
   out "${k}DRAG${z}    ${d}select text as usual${z} — a click that moves is a selection, not a click"
   out ""
   out "${k}±${z}       ${d}±N${z} files not committed   $(printf '\033[2m·\033[0m') clean worktree"
@@ -1904,7 +1902,9 @@ draw_tty() {
 
 # --- clicking ---------------------------------------------------------------
 # Mouse reports only; output processing stays on (-icanon, not raw) so the
-# table still prints with normal line endings.
+# table still prints with normal line endings. Clicks open Bitbucket pipeline
+# results (T/P) when those columns are shown. Repo/PR forge pages are not
+# click targets.
 
 mouse_on()  { printf '\033[?1000h\033[?1006h\033[?25l'; }  # button events, SGR, no cursor
 mouse_off() { printf '\033[?1006l\033[?1000l\033[?25h'; }
@@ -1922,72 +1922,12 @@ tty_restore() {
   [ -n "${tty_saved:-}" ] && stty "$tty_saved" 2>/dev/null || true
 }
 
-# Open a PR or branch on the forge in the browser. No herdr / nvim / browse.
-open_pr_web() { # <slug> <branch> <pr number>
-  [ -n "$1" ] || return 0
-  owner="${1%%/*}"; nm="${1#*/}"
-  case "$(forge_for_slug "$1")" in
-    bitbucket)
-      if [ -n "$3" ]; then
-        url="$(pr_url_for "$1" bitbucket "$3")"
-      elif [ -n "$2" ]; then
-        url="https://bitbucket.org/$owner/$nm/branch/$2"
-      else
-        url="https://bitbucket.org/$owner/$nm"
-      fi
-      (open "$url" >/dev/null 2>&1 || xdg-open "$url" >/dev/null 2>&1 || true) &
-      ;;
-    github|*)
-      if [ -n "$3" ]; then
-        if command -v gh >/dev/null 2>&1; then
-          (gh pr view "$3" --repo "$1" --web >/dev/null 2>&1 &)
-        else
-          url="https://github.com/$1/pull/$3"
-          (open "$url" >/dev/null 2>&1 || xdg-open "$url" >/dev/null 2>&1 || true) &
-        fi
-      elif [ -n "$2" ]; then
-        if command -v gh >/dev/null 2>&1; then
-          (gh browse --repo "$1" --branch "$2" >/dev/null 2>&1 &)
-        else
-          url="https://github.com/$1/tree/$2"
-          (open "$url" >/dev/null 2>&1 || xdg-open "$url" >/dev/null 2>&1 || true) &
-        fi
-      else
-        url="https://github.com/$1"
-        (open "$url" >/dev/null 2>&1 || xdg-open "$url" >/dev/null 2>&1 || true) &
-      fi
-      ;;
-  esac
-}
-
 on_click() { # <button>;<column>;<line> from an SGR mouse report
   btn="${1%%;*}"; rest="${1#*;}"; x="${rest%%;*}"; y="${rest##*;}"
   [ "$btn" = 0 ] || return 0
   case "$x$y" in *[!0-9]*) return 0 ;; esac
-  pentry="${PROWS[$y]:-}"
-  if [ -n "$pentry" ]; then
-    # PRS section: number or ❯ → forge PR page.
-    pslug="${pentry%%|*}"; pnum="${pentry##*|}"
-    [ -n "$pnum" ] || return 0
-    open_pr_web "$pslug" "" "$pnum"
-    return 0
-  fi
-
-  entry="${ROWS[$y]:-}"
-  [ -n "$entry" ] || return 0
-  rest="${entry#*|}"; slug="${rest%%|*}"; rest="${rest#*|}"
-  branch="${rest%%|*}"; pr_num="${rest##*|}"
   tip_url="${TIPURL[$y]:-}"
   prod_url="${PRODURL[$y]:-}"
-
-  # Compact identity line: repo → forge branch (or repo home).
-  if [ "${ROWKIND[$y]:-wide}" = id ]; then
-    if [ "$x" -ge "$col_repo" ] && [ "$x" -lt $((col_repo + c_repo)) ]; then
-      open_pr_web "$slug" "$branch" ""
-    fi
-    return 0
-  fi
-  # Pipeline glyphs → Bitbucket Pipelines (already a forge URL).
   if [ "$show_tip" = yes ] && [ -n "$tip_url" ] \
      && [ "$x" -ge "$col_tip" ] && [ "$x" -lt $((col_tip + c_tip)) ]; then
     (open "$tip_url" >/dev/null 2>&1 || xdg-open "$tip_url" >/dev/null 2>&1 || true) &
@@ -1997,15 +1937,6 @@ on_click() { # <button>;<column>;<line> from an SGR mouse report
      && [ "$x" -ge "$col_prod" ] && [ "$x" -lt $((col_prod + c_prod)) ]; then
     (open "$prod_url" >/dev/null 2>&1 || xdg-open "$prod_url" >/dev/null 2>&1 || true) &
     return 0
-  fi
-  # PR cell (number or ❯) → forge PR, else forge branch.
-  if [ -n "$pr_num" ] && [ "$x" -ge "$col_pr" ] && [ "$x" -lt $((col_pr + c_pr)) ]; then
-    open_pr_web "$slug" "$branch" "$pr_num"
-    return 0
-  fi
-  if [ "${ROWKIND[$y]:-wide}" = wide ] \
-     && [ "$x" -ge "$col_repo" ] && [ "$x" -lt $((col_repo + c_repo)) ]; then
-    open_pr_web "$slug" "$branch" ""
   fi
 }
 
