@@ -318,31 +318,26 @@ _local_cell_width() {
   printf '%s' "$w"
 }
 
-_ahead_cell_width() {
-  local w=0 i=0 a
-  while [ "$i" -lt "${#CR_AHEAD[@]}" ]; do
-    a="${CR_AHEAD[$i]:-0}"
-    if [ "$a" != 0 ] && [ $((1 + ${#a})) -gt "$w" ]; then
-      w=$((1 + ${#a}))
+# Ahead/behind cells are bare counts under ↑/↓ headers (no repeated arrow).
+# Floor is one leading space + two digits (width 3); grow when a count needs more.
+_count_cell_width() { # scans CR_AHEAD or CR_BEHIND via name prefix
+  local which="$1" w=3 i=0 n
+  while [ "$i" -lt "${#CR_WT[@]}" ]; do
+    case "$which" in
+      ahead) n="${CR_AHEAD[$i]:-0}" ;;
+      behind) n="${CR_BEHIND[$i]:-0}" ;;
+      *) n=0 ;;
+    esac
+    if [ -n "$n" ] && [ "$n" != 0 ] && [ "${#n}" -gt "$w" ]; then
+      w=${#n}
     fi
     i=$((i + 1))
   done
   printf '%s' "$w"
 }
 
-_behind_cell_width() {
-  local w=0 i=0 b
-  while [ "$i" -lt "${#CR_BEHIND[@]}" ]; do
-    b="${CR_BEHIND[$i]:-0}"
-    if [ -n "$b" ] && [ "$b" != 0 ] && [ "${#b}" -gt "$w" ]; then
-      w=${#b}
-    fi
-    i=$((i + 1))
-  done
-  # Compact mode prefixes ↓; reserve room so the floor stays honest across modes.
-  [ "$w" -gt 0 ] && w=$((w + 1))
-  printf '%s' "$w"
-}
+_ahead_cell_width() { _count_cell_width ahead; }
+_behind_cell_width() { _count_cell_width behind; }
 
 layout() { # recompute the columns for the terminal as it is now
   # stty asks the terminal itself; tput would believe an inherited $COLUMNS.
@@ -359,11 +354,8 @@ layout() { # recompute the columns for the terminal as it is now
   c_repo="$(_repo_name_width)"; [ "$c_repo" -lt 4 ] && c_repo=4
   c_pr="$(_pr_cell_width)"; [ "$c_pr" -lt 7 ] && c_pr=7
   c_local="$(_local_cell_width)"; [ "$c_local" -lt 1 ] && c_local=1
-  c_ahead="$(_ahead_cell_width)"; [ "$c_ahead" -lt 2 ] && c_ahead=2
-  c_behind="$(_behind_cell_width)"; [ "$c_behind" -lt 2 ] && c_behind=2
-  # Wide mode prints the bare behind count (no ↓ prefix); compact adds one.
-  if [ "$c_behind" -gt 1 ]; then c_behind=$((c_behind - 1)); fi
-  [ "$c_behind" -lt 2 ] && c_behind=2
+  c_ahead="$(_ahead_cell_width)"
+  c_behind="$(_behind_cell_width)"
   c_branch="$(_branch_width)"; [ "$c_branch" -lt 6 ] && c_branch=6
   c_tip=2 c_prod=2
   _apply_column_floors
@@ -377,8 +369,8 @@ layout() { # recompute the columns for the terminal as it is now
     c_repo="$(_repo_name_width)"
     c_pr="$(_pr_cell_width)"; [ "$c_pr" -lt 1 ] && c_pr=1
     c_local="$(_local_cell_width)"; [ "$c_local" -lt 1 ] && c_local=1
-    c_ahead="$(_ahead_cell_width)"; [ "$c_ahead" -lt 2 ] && c_ahead=2
-    c_behind="$(_behind_cell_width)"; [ "$c_behind" -lt 3 ] && c_behind=3
+    c_ahead="$(_ahead_cell_width)"
+    c_behind="$(_behind_cell_width)"
     c_tip=2 c_prod=2
     _apply_column_floors
     # Every compact column is already at its content width, so a pane too narrow
@@ -1073,14 +1065,18 @@ local_cell() { # <tree state> -> $_cell
   esac
 }
 
-ahead_cell() { # <ahead or ""> <compact-label> -> $_cell
-  local a="${1:-}" lbl="${2:-}"
-  if [ -n "$a" ] && [ "$a" != 0 ]; then
-    fit "${lbl}↑$a" $c_ahead
-    _cell="$_fit"
+# Bare count, right-aligned in the column (header carries ↑/↓). Empty → dim ·.
+count_cell() { # <count-or-empty> <width> -> $_cell
+  local n="${1:-}" w="$2"
+  if [ -n "$n" ] && [ "$n" != 0 ]; then
+    printf -v _cell '%*s' "$w" "$n"
     return 0
   fi
-  dot_cell $c_ahead
+  dot_cell "$w"
+}
+
+ahead_cell() { # <ahead or ""> -> $_cell
+  count_cell "${1:-}" "$c_ahead"
 }
 
 # PR / sync / builds / tree — shared by one-line and compact second line.
@@ -1109,21 +1105,18 @@ draw_detail_cells() {
   fi
   row="$_cell "
   # Without a header row the cells have to say what they are, so compact mode
-  # keeps the ↓ T P markers inline; the wide table has the header instead.
-  # Ahead already carries ↑ in the cell; compact only needs ↓ / T / P labels.
-  local lbl_down="" lbl_tip="" lbl_prod=""
+  # keeps T/P markers inline; ↑/↓ counts stay bare (column position is enough).
+  local lbl_tip="" lbl_prod=""
   if [ "$row_compact" = yes ]; then
-    lbl_down="↓" lbl_tip="T" lbl_prod="P"
+    lbl_tip="T" lbl_prod="P"
   fi
   local_cell "$tree"; row="$row$_cell "
   if [ "$show_ahead" = yes ]; then
-    ahead_cell "$a_disp" ""
+    ahead_cell "$a_disp"
     row="$row$_cell "
   fi
   if [ "$show_behind" = yes ]; then
-    if [ -n "$b_disp" ]; then fit "$lbl_down$b_disp" $c_behind; _cell="$_fit"
-    else dot_cell $c_behind
-    fi
+    count_cell "$b_disp" "$c_behind"
     row="$row$_cell "
   fi
   build_glyph_cell "$tip_checks" "$tip_url"
@@ -1803,8 +1796,8 @@ help_block() {
   out "${k}DRAG${z}    ${d}select text as usual${z} — a click that moves is a selection, not a click"
   out ""
   out "${k}±${z}       ${d}±N${z} files not committed   $(printf '\033[2m·\033[0m') clean worktree"
-  out "${k}AHEAD${z}   ${d}↑N${z} commits on this branch not pushed"
-  out "${k}BEHIND${z}  ${d}↓N${z} commits on the remote you do not have — catch-up territory"
+  out "${k}AHEAD${z}   ${d}N${z} under ↑ — commits on this branch not pushed"
+  out "${k}BEHIND${z}  ${d}N${z} under ↓ — commits on remote not in this worktree — catch-up territory"
   out "${k}CHECKS${z}  $(glyph_checks SUCCESS) passing   $(glyph_checks FAILURE) failing   $(glyph_checks PENDING) running   $(glyph_checks draft) draft   $(glyph_checks NONE) none"
   out "${k}MERGE${z}   $(glyph_merge BEHIND) behind base   $(glyph_merge DIRTY) conflict   $(glyph_merge BLOCKED) blocked   $(glyph_merge FOLLOW) post-merge tip→prod   ${d}blank${z} clean"
   out "${k}REVIEW${z}  $(glyph_review approved) approved   $(glyph_review changes) changes   $(glyph_review commented) commented   $(glyph_review waiting) waiting   $(glyph_review noreviewers) no reviewers   $(glyph_review 3) unresolved threads"
