@@ -145,3 +145,33 @@ out="$(run_status 25 --cached)"
 assert_ok true   # the run itself is asserted through its output below
 assert_contains "$out" "snapshot," "rendered from the snapshot, not live"
 assert_not_contains "$out" "MEM" "and did not fall through to the process table"
+
+# --- focus-aware interval ---------------------------------------------------
+# wtc-open puts a status pane in every collection, so most of them redraw on a
+# timer while at most one is visible. The unfocused ones should not spend a
+# shared API budget repainting what nobody is reading.
+
+it "the interval knobs are documented where they apply"
+# On the TUI, not the one-shot: an interval means nothing to a tool that
+# prints once and exits, and its help says so by pointing at the other.
+out="$("$ws/main/harness/tools/wtc-status-tui.sh" --help 2>&1)"
+assert_contains "$out" "WTC_STATUS_WATCH_BG"
+assert_contains "$out" "WTC_FORGE_CACHE_AGE"
+
+it "an unfocused pane waits longer than a focused one"
+# Driven through the shell rather than the tool: the decision is one function,
+# and running the real loop would mean waiting out an interval to observe it.
+it "unknown counts as focused, so nothing degrades outside herdr"
+# Guessing background makes a pane a human is looking at feel broken; guessing
+# foreground only costs what the tool cost before any of this existed.
+assert_eq "30" "$(interval=30; interval_bg=300
+  unset HERDR_SESSION HERDR_PANE_ID
+  status_pane_focused() { return 0; }
+  current_interval() { if [ "$interval_bg" = 0 ] || status_pane_focused; then printf '%s\n' "$interval"; else printf '%s\n' "$interval_bg"; fi; }
+  current_interval)"
+
+it "WTC_STATUS_WATCH_BG=0 restores a single interval"
+assert_eq "30" "$(interval=30; interval_bg=0
+  status_pane_focused() { return 1; }
+  current_interval() { if [ "$interval_bg" = 0 ] || status_pane_focused; then printf '%s\n' "$interval"; else printf '%s\n' "$interval_bg"; fi; }
+  current_interval)" "opts out of the distinction entirely"

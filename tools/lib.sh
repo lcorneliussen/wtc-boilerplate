@@ -1336,6 +1336,42 @@ print("\t".join([str(d.get("id", sys.argv[2])), state, "NONE", "UNKNOWN",
 ' "$_title" "$_num" 2>/dev/null || true
 }
 
+# --- forge-call cache -------------------------------------------------------
+# Every render asks the forge about each enlisted PR. wtc-open puts a status
+# pane in every collection, each redrawing on an interval, so the same PR was
+# being fetched once per pane per interval — 2 `gh pr view` calls each time,
+# against a 5000/hour budget shared with everything else the machine does.
+#
+# The per-branch lookup below has had a 90s cache since it was written; this
+# is the same treatment for the two paths added later. Same directory, so one
+# `rm -rf` clears the lot, and every pane on the machine shares the entries.
+FORGE_CACHE="${TMPDIR:-/tmp}/wtc-status-$(id -u)"
+forge_cache_age="${WTC_FORGE_CACHE_AGE:-90}"
+
+_forge_cache_path() { # <kind> <key> -> file
+  mkdir -p "$FORGE_CACHE" 2>/dev/null || true
+  printf '%s/%s-%s\n' "$FORGE_CACHE" "$1" \
+    "$(printf '%s' "$2" | tr -c 'A-Za-z0-9._@#-' '_')"
+}
+
+# Read a cached answer, or run the command and cache what it prints.
+#
+# Only a non-empty answer is cached. The failure rows here all mean "could not
+# tell" — an unreachable forge, a missing CLI — and caching those would pin a
+# blank row in place for the whole TTL, turning a transient outage into a
+# table that stays wrong long after the network came back.
+_forge_cached() { # <kind> <key> <ttl> <cmd...>
+  _fc_f="$(_forge_cache_path "$1" "$2")"; _fc_ttl="$3"; shift 3
+  if [ -f "$_fc_f" ] && [ "$(file_age_secs "$_fc_f")" -lt "$_fc_ttl" ]; then
+    cat "$_fc_f"
+    return 0
+  fi
+  _fc_out="$("$@")"
+  [ -n "$_fc_out" ] && printf '%s\n' "$_fc_out" > "$_fc_f" 2>/dev/null
+  [ -n "$_fc_out" ] && printf '%s\n' "$_fc_out"
+  return 0
+}
+
 wtc_pr_enrich() { # <repo> <number> [fallback-title] [worktree] -> TSV line
   repo="$1" num="$2" title="${3:-}"
   IFS=$'\t' read -r slug forge <<EOF
@@ -1349,9 +1385,13 @@ EOF
   # "cannot verify" as "merged".
   forge_cli_present "$forge" || { _wtc_pr_unknown_row "$num" "$title"; return 0; }
 
+  # Keyed by slug#number, not by repo name: two collections can hold the same
+  # repo under different sibling names, and they are asking about the same PR.
   case "$forge" in
-    github)    row="$(_wtc_pr_enrich_github    "$slug" "$num" "$title")" ;;
-    bitbucket) row="$(_wtc_pr_enrich_bitbucket "$slug" "$num" "$title")" ;;
+    github)    row="$(_forge_cached pr "$slug#$num" "$forge_cache_age" \
+                        _wtc_pr_enrich_github "$slug" "$num" "$title")" ;;
+    bitbucket) row="$(_forge_cached pr "$slug#$num" "$forge_cache_age" \
+                        _wtc_pr_enrich_bitbucket "$slug" "$num" "$title")" ;;
     *)         row="" ;;
   esac
 

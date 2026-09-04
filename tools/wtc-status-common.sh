@@ -54,6 +54,15 @@ background refresh, clickable ANSI table, age/countdown footer.
 One-shot output for agents: tools/wtc-status.sh (--json / --md / --ansi).
 
   --watch / --no-click default from $WTC_CONFIG_ROOT/wtc.env
+
+  WTC_STATUS_WATCH      seconds between refreshes while the pane is focused
+                        (default 30)
+  WTC_STATUS_WATCH_BG   seconds while it is not (default 300; 0 uses the
+                        focused interval always). wtc-open puts a pane in
+                        every collection, so most are redrawing where nobody
+                        is looking; herdr says which one is current.
+  WTC_FORGE_CACHE_AGE   seconds a PR's forge answer is reused across panes
+                        (default 90)
   r refresh · a archived · ? help · q quit · click opens T/P pipelines
 EOF
       ;;
@@ -99,8 +108,12 @@ load_wtc_config
 # working without renaming every knob.
 want=both
 case "${WTC_STATUS_REPOS:-${HARNESS_STATUS_REPOS:-no}}" in yes|1|true|TRUE) want=repos ;; esac
-interval="${WTC_STATUS_WATCH:-${HARNESS_STATUS_WATCH:-60}}"
-case "$interval" in ''|*[!0-9]*) interval=60 ;; esac
+interval="${WTC_STATUS_WATCH:-${HARNESS_STATUS_WATCH:-30}}"
+case "$interval" in ''|*[!0-9]*) interval=30 ;; esac
+# What an unfocused pane waits instead. 0 disables the distinction entirely,
+# for anyone who wants the old single-interval behaviour back.
+interval_bg="${WTC_STATUS_WATCH_BG:-300}"
+case "$interval_bg" in ''|*[!0-9]*) interval_bg=300 ;; esac
 # Watching needs a terminal that can be redrawn and quit. Piped or captured,
 # one pass is the only useful answer — see the note in usage.
 watch=no
@@ -2033,9 +2046,45 @@ mouse_dragging() {
   [ $(( $(date +%s) - _press_at )) -lt 10 ]
 }
 
+# Is this pane the one being looked at?
+#
+# wtc-open puts a status pane in every collection, so on this machine 67 of
+# them redraw on a timer while at most one is visible. The focused pane should
+# feel live; the other 66 should not be spending a shared API budget and a
+# wake-up every minute to repaint something nobody is reading.
+#
+# herdr injects HERDR_SESSION and HERDR_PANE_ID into every pane, and knows
+# which pane is current. The check is a local socket call — no forge, no
+# network, nothing that counts against a rate limit.
+#
+# Unknown counts as focused, deliberately. Outside herdr, without the env, or
+# if the query fails, the answer is "assume someone is watching": guessing
+# background makes a pane a human *is* looking at feel broken, while guessing
+# foreground only costs what the tool cost before this existed.
+status_pane_focused() {
+  [ -n "${HERDR_SESSION:-}" ] && [ -n "${HERDR_PANE_ID:-}" ] || return 0
+  command -v herdr >/dev/null 2>&1 || return 0
+  _cur="$(herdr --session "$HERDR_SESSION" pane current 2>/dev/null \
+          | tr '{},' '\n\n\n' | sed -n 's/.*"pane_id":"\([^"]*\)".*/\1/p' | head -n1)"
+  [ -n "$_cur" ] || return 0
+  [ "$_cur" = "$HERDR_PANE_ID" ]
+}
+
+# The interval to wait before the next refresh, re-decided each time round:
+# a pane can be focused and unfocused many times within one long wait, and
+# asking once at startup would pin it to whichever it was when it launched.
+current_interval() {
+  if [ "$interval_bg" = 0 ] || status_pane_focused; then
+    printf '%s\n' "$interval"
+  else
+    printf '%s\n' "$interval_bg"
+  fi
+}
+
 wait_events() {
   _tick=0
-  while [ "$_tick" -lt "$interval" ]; do
+  _wait_for="$(current_interval)"
+  while [ "$_tick" -lt "$_wait_for" ]; do
     # A pending redraw normally means "stop waiting and paint it", but not
     # while the button is down: leaving would spin here until the release.
     if [ "$_redraw_only" = yes ] && ! mouse_dragging; then return 0; fi
