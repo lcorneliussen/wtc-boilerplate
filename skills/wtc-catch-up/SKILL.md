@@ -1,9 +1,30 @@
 ---
 name: wtc-catch-up
-description: Bring a worktree collection up to date with its remotes — fetch and prune every worktree owner (bare, or an unmanaged sibling's external clone), move detached worktrees onto the new development tip, return worktrees whose PR has merged to the tip and prune the local branch, merge the tip into live branches so they stop drifting and push that merge to any open PR, re-link secrets and harness skills, and refresh the collection env. Use when a collection looks stale or shows ↓ in the status table, after a PR merges, before opening a PR, after being away from a wtc, or when the user asks to sync, update, pull, or refresh the workspace.
+description: Catch up selected repositories in one or explicitly requested multiple worktree collections. Use for sync, pull, refresh, harness rollout, --all --harness-only, or --repos selection. Fetch shared owners, safely update eligible worktrees, refresh target hooks, optionally reload only status panes, and collect per-collection reports. Local dirty changes are stashed and restored; fleet sweeps leave dirty or in-progress work to owning agents.
 ---
 
 # Catch a wtc up
+
+Worktrees share bare owners, so "pull" is the wrong mental model: you fetch
+the **bares**, then move each worktree individually under rules that differ by
+what it is checked out on. Catch-up is also not git-only — files and skills
+that reached the harness or the control root after this collection was created
+never arrive on their own.
+
+Prefer `tools/catch-up.sh`: it does everything in this file in one pass, per
+collection or `--all`, and is what the rest of this skill documents.
+
+```bash
+harness/tools/catch-up.sh                 # this collection
+harness/tools/catch-up.sh --all           # every collection under the workspace root
+harness/tools/catch-up.sh --dry-run       # report only; touch nothing
+```
+
+Safe by construction: nothing here rewrites history or force-pushes. Dirty
+trees are **not** skipped — a worktree that actually has a move to make is
+stashed (including untracked files) around it, then the stash is popped. A
+worktree that is already current is left alone regardless of dirty state,
+since there is nothing to move it past.
 
 ## Selected repositories and cross-collection rollout
 
@@ -67,27 +88,6 @@ belong in the relevant PR/issue, since local reports disappear on retirement.
 
 The detailed steps below describe a local catch-up. For a fleet sweep, the
 clean-only and owner-handoff rules above take precedence over local stashing.
-
-Worktrees share bare owners, so "pull" is the wrong mental model: you fetch
-the **bares**, then move each worktree individually under rules that differ by
-what it is checked out on. Catch-up is also not git-only — files and skills
-that reached the harness or the control root after this collection was created
-never arrive on their own.
-
-Prefer `tools/catch-up.sh`: it does everything in this file in one pass, per
-collection or `--all`, and is what the rest of this skill documents.
-
-```bash
-harness/tools/catch-up.sh                 # this collection
-harness/tools/catch-up.sh --all           # every collection under the workspace root
-harness/tools/catch-up.sh --dry-run       # report only; touch nothing
-```
-
-Safe by construction: nothing here rewrites history or force-pushes. Dirty
-trees are **not** skipped — a worktree that actually has a move to make is
-stashed (including untracked files) around it, then the stash is popped. A
-worktree that is already current is left alone regardless of dirty state,
-since there is nothing to move it past.
 
 ## 1. Fetch every owner
 

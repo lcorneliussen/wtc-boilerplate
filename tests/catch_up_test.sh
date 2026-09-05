@@ -47,8 +47,11 @@ MOCK
 cat > "$mock/gh" <<'MOCK'
 #!/usr/bin/env bash
 # No PRs in this fixture. Never reach the developer's signed-in forge.
+if [ "${CATCH_TEST_GH_FAIL:-}" = yes ]; then exit 1; fi
 if [ "$1 $2" = 'pr view' ]; then
   echo '{"number":777,"state":"MERGED","title":"finished","isDraft":false}'
+elif [ "$1 $2" = 'pr list' ]; then
+  echo '[]'
 fi
 exit 0
 MOCK
@@ -83,6 +86,23 @@ for key in ['dirty','conflict','detached','operating']:
 PY
 assert_file "$root/main/.wtc-catch-up.json"
 assert_no_file "$root/operating/.wtc-catch-up.json" 'report remains at initiator'
+
+it 'unavailable PR facts cannot make an enlisted finished branch writable'
+git -C "$root/clean/harness" switch -qc lookup-failed "$base"
+printf 'agent-harness 778 lookup-failed - unknown\n' > "$root/clean/.wtc-prs"
+export CATCH_TEST_GH_FAIL=yes
+"$runner" --harness-only --json "${no_hooks[@]}" clean > "$root/unknown.json" 2> "$root/stderr"
+assert_eq 1 "$?"
+assert_eq "$base" "$(git -C "$root/clean/harness" rev-parse HEAD)"
+assert_contains "$(cat "$root/unknown.json")" 'PR state unavailable'
+it 'failed branch listing differs from verified no PR'
+rm "$root/clean/.wtc-prs"
+"$runner" --harness-only --json "${no_hooks[@]}" clean > "$root/unknown-list.json" 2> "$root/stderr"
+assert_eq 1 "$?"
+assert_eq "$base" "$(git -C "$root/clean/harness" rev-parse HEAD)"
+unset CATCH_TEST_GH_FAIL
+git -C "$root/clean/harness" checkout -q --detach "$tip"
+git -C "$root/clean/harness" branch -d lookup-failed >/dev/null
 
 it 'dry-run is read-only and accepts registry names'
 : > "$CATCH_TEST_LOG"
@@ -167,6 +187,18 @@ export CATCH_TEST_FOREGROUND=nvim
 "$runner" --harness-only --reload-status --json "${no_hooks[@]}" clean > "$root/refused.json" 2> "$root/stderr"
 assert_eq 1 "$?"
 assert_empty "$(cat "$root/pane-calls")"
+
+it 'legacy wrapper exec target remains eligible for reload'
+export CATCH_TEST_FOREGROUND='bash ./harness/tools/wtc-status-legacy.sh --tui --repos'
+"$runner" --harness-only --reload-status --json "${no_hooks[@]}" clean > "$root/legacy.json" 2> "$root/stderr"
+assert_eq 0 "$?"
+assert_contains "$(cat "$root/pane-calls")" 'pane send-keys w1:p3 ctrl+c'
+assert_ok python3 - "$root/legacy.json" <<'PY'
+import json,sys
+assert any(r['kind']=='pane' and r['outcome']=='restarted' for r in json.load(open(sys.argv[1]))['outcomes'])
+PY
+rm "$root/interrupted" "$root/restarted"
+: > "$root/pane-calls"
 
 it 'a status script name passed to an editor is not a status process'
 export CATCH_TEST_FOREGROUND='nvim ./harness/tools/wtc-status-tui.sh'

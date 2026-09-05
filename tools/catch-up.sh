@@ -146,7 +146,7 @@ except ValueError:
     sys.exit(1)
 if argv and os.path.basename(argv[0]) in ('bash', 'sh'):
     argv = argv[1:]
-names = ('wtc-status-tui.sh', 'wtc-status.sh', 'wtc-status-legacy-tui.sh')
+names = ('wtc-status-tui.sh', 'wtc-status.sh', 'wtc-status-legacy-tui.sh', 'wtc-status-legacy.sh')
 sys.exit(0 if argv and os.path.basename(argv[0]) in names else 1)
 PY
 }
@@ -163,37 +163,46 @@ except (KeyError, ValueError, TypeError, StopIteration):
     pass
 '
 }
-pr_state_for_branch() { # <collection> <repo> <branch>
-  coll="$1" repo="$2" branch="$3"
-  saw=""
+pr_state_for_branch() { # <collection> <repo> <branch>; NONE is a verified absence
+  local coll="$1" repo="$2" branch="$3" saw='' matched=no unknown=no
+  local r num b url title st slug forge payload
   while IFS=$'\t' read -r r num b url title; do
-    [ "$r" = "$repo" ] || continue
-    [ "$b" = "$branch" ] || continue
-    # Lifecycle decisions must not reuse a table's cached OPEN state after
-    # another actor merged the PR. Bypass TTL for this authoritative lookup.
+    [ "$r" = "$repo" ] && [ "$b" = "$branch" ] || continue
+    matched=yes
+    # Lifecycle decisions cannot reuse a table's cached OPEN after a merge.
     st="$(WTC_FORGE_CACHE_AGE=0 wtc_pr_enrich "$repo" "$num" "$title" "$(wtc_repo_worktree "$coll" "$repo")" \
       | awk -F'\t' '{print $2; exit}')"
-    # Empty / unknown: gh missing or view failed — do not treat as OPEN (would
-    # push) or MERGED (would prune). Keep looking / fall through.
-    [ -n "$st" ] || continue
     case "$st" in
-      OPEN|open|DRAFT|draft) printf '%s\n' "$st"; return 0 ;;
+      OPEN|open|DRAFT|draft) saw="$st" ;;
+      MERGED|merged|CLOSED|closed) [ -n "$saw" ] || saw="$st" ;;
+      *) unknown=yes ;;
     esac
-    [ -n "$saw" ] || saw="$st"
-  done <<EOF
+  done <<EOF_ROWS
 $(wtc_pr_enlist_rows "$coll")
-EOF
-  if [ -n "$saw" ]; then
-    printf '%s\n' "$saw"
-    return 0
+EOF_ROWS
+  if [ "$matched" = yes ]; then
+    if [ "$unknown" = yes ]; then printf 'UNKNOWN\n'; else printf '%s\n' "$saw"; fi
+    return
   fi
-  command -v gh >/dev/null 2>&1 || return 0
-  IFS=$'\t' read -r slug _forge <<EOF
+  command -v gh >/dev/null 2>&1 || { printf 'UNKNOWN\n'; return; }
+  IFS=$'\t' read -r slug forge <<EOF_REPO
 $(repo_slug_and_forge "$repo" "$(wtc_repo_worktree "$coll" "$repo")")
-EOF
-  [ -n "$slug" ] || return 0
-  gh pr list --repo "$slug" --head "$branch" --state all --json state \
-    --jq '.[0].state' 2>/dev/null || true
+EOF_REPO
+  if [ -z "$slug" ] || [ "$forge" != github ]; then printf 'UNKNOWN\n'; return; fi
+  if ! payload="$(gh pr list --repo "$slug" --head "$branch" --state all --json state 2>/dev/null)"; then
+    printf 'UNKNOWN\n'; return
+  fi
+  python3 - "$payload" <<'PY_STATE'
+import json, sys
+try:
+    prs = json.loads(sys.argv[1])
+    assert isinstance(prs, list)
+    state = prs[0]['state'] if prs else 'NONE'
+    assert state in ('OPEN', 'DRAFT', 'MERGED', 'CLOSED', 'NONE')
+    print(state)
+except (ValueError, TypeError, KeyError, AssertionError):
+    print('UNKNOWN')
+PY_STATE
 }
 
 
@@ -275,6 +284,7 @@ reconcile() {
   pr_state=''
   [ -z "$branch" ] || pr_state="$(pr_state_for_branch "$collection" "$repo" "$branch")"
   case "$pr_state" in
+    UNKNOWN) outcome=needs-owner; reason='PR state unavailable; branch left untouched'; return ;;
     CLOSED|closed) outcome=needs-owner; reason='closed PR branch; owner must decide continuation'; return ;;
     MERGED|merged)
       extra="$(git -C "$wt" rev-list --count "$target..HEAD")"
