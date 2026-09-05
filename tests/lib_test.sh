@@ -263,3 +263,85 @@ wtc_status_cache_repo interrupted b h 0 0 clean "" unknown "" "" "" "" ""
 assert_eq "$before" "$(wtc_status_cache_rows snap)" "still the last good snapshot"
 wtc_status_cache_commit
 assert_contains "$(wtc_status_cache_rows snap)" "interrupted" "and the new one lands on commit"
+
+# --- forge-call cache -------------------------------------------------------
+# wtc-open puts a status pane in every collection, each redrawing on an
+# interval, so an uncached per-PR fetch is multiplied by panes × renders
+# against a 5000/hour budget shared with everything else on the machine.
+
+# Its own cache dir. The real one is shared per user and persists between
+# runs, so without this the second run of the suite reads entries the first
+# left behind and the call counts below are whatever happened last time.
+FORGE_CACHE="$(mktemp_dir forgecache)"
+
+it "a second call inside the TTL does not re-run the command"
+calls_file="$(mktemp_dir fc)/calls"; : > "$calls_file"
+counted() { echo x >> "$calls_file"; printf 'the answer\n'; }
+assert_eq "the answer" "$(_forge_cached test "k1" 90 counted)"
+assert_eq "the answer" "$(_forge_cached test "k1" 90 counted)"
+assert_eq "1" "$(wc -l < "$calls_file" | tr -d ' ')" "ran once for two calls"
+
+it "a zero TTL always re-runs"
+: > "$calls_file"
+_forge_cached test "k2" 0 counted >/dev/null
+_forge_cached test "k2" 0 counted >/dev/null
+assert_eq "2" "$(wc -l < "$calls_file" | tr -d ' ')"
+
+it "an empty answer is not cached"
+# The failure rows all mean "could not tell" — an unreachable forge, a missing
+# CLI. Caching one pins a blank row in place for the whole TTL, turning a
+# transient outage into a table that stays wrong after the network came back.
+: > "$calls_file"
+empty_then() { echo x >> "$calls_file"; printf ''; }
+_forge_cached test "k3" 90 empty_then >/dev/null
+_forge_cached test "k3" 90 empty_then >/dev/null
+assert_eq "2" "$(wc -l < "$calls_file" | tr -d ' ')" "retried rather than caching the blank"
+
+it "different keys do not collide"
+: > "$calls_file"
+assert_eq "the answer" "$(_forge_cached test "a/b#1" 90 counted)"
+assert_eq "the answer" "$(_forge_cached test "a/b#2" 90 counted)"
+assert_eq "2" "$(wc -l < "$calls_file" | tr -d ' ')"
+
+it "a key with path characters becomes one safe filename"
+f="$(_forge_cache_path pr 'owner/repo#42')"
+assert_not_contains "${f#"$FORGE_CACHE/"}" "/" "no directory separator survives"
+assert_contains "$f" "owner_repo#42"
+
+
+it "cache TTLs accept leading zeros and default invalid values"
+for ttl in 090 abc; do
+  : > "$calls_file"
+  _forge_cached test "ttl-$ttl" "$ttl" counted >/dev/null
+  _forge_cached test "ttl-$ttl" "$ttl" counted >/dev/null
+  assert_eq "1" "$(wc -l < "$calls_file" | tr -d ' ')" "TTL $ttl reuses the answer"
+done
+: > "$calls_file"
+_forge_cached test ttl-zero 00 counted >/dev/null
+_forge_cached test ttl-zero 00 counted >/dev/null
+assert_eq "2" "$(wc -l < "$calls_file" | tr -d ' ')" "00 disables reuse"
+
+it "cache replacement keeps the previous answer visible until publication"
+f="$(_forge_cache_path test atomic)"
+printf 'previous answer\n' > "$f"
+# Inspect the publication boundary deterministically, without a race or sleep.
+# The old file must still be complete, and the replacement must be complete.
+mv() {
+  if [ "$(cat "$3")" = "previous answer" ] && [ "$(cat "$2")" = "the answer" ]; then
+    printf 'atomic\n' > "$calls_file"
+  fi
+  command mv "$@"
+}
+: > "$calls_file"
+_forge_cached test atomic 0 counted >/dev/null
+unset -f mv
+assert_eq "atomic" "$(cat "$calls_file")" "old and new answers coexist until rename"
+assert_eq "the answer" "$(cat "$f")" "the new answer was published"
+
+it "failed commands with partial output are not cached"
+partial_failure() { printf 'partial answer\n'; return 1; }
+assert_empty "$(_forge_cached test failed 90 partial_failure)"
+assert_eq "the answer" "$(_forge_cached test failed 90 counted)"
+
+it "an unwritable cache still returns the fresh answer"
+assert_eq "the answer" "$(FORGE_CACHE=/dev/null/not-a-directory _forge_cached test unavailable 90 counted)"

@@ -145,3 +145,59 @@ out="$(run_status 25 --cached)"
 assert_ok true   # the run itself is asserted through its output below
 assert_contains "$out" "snapshot," "rendered from the snapshot, not live"
 assert_not_contains "$out" "MEM" "and did not fall through to the process table"
+
+# --- focus-aware interval ---------------------------------------------------
+# wtc-open puts a status pane in every collection, so most of them redraw on a
+# timer while at most one is visible. The unfocused ones should not spend a
+# shared API budget repainting what nobody is reading.
+
+it "the interval knobs are documented where they apply"
+# On the TUI, not the one-shot: an interval means nothing to a tool that
+# prints once and exits, and its help says so by pointing at the other.
+out="$("$ws/main/harness/tools/wtc-status-tui.sh" --help 2>&1)"
+assert_contains "$out" "WTC_STATUS_WATCH_BG"
+assert_contains "$out" "WTC_FORGE_CACHE_AGE"
+
+# Source the real common implementation in a child: it sets shell options and
+# traps, which must not replace the test runner's tally/cleanup trap.
+status_eval() {
+  WTC_CONFIG_ROOT="$ws/test-config" bash -c '
+    . "$1" --repos --no-fetch
+    eval "$2"
+  ' status-test "$ws/main/harness/tools/wtc-status-common.sh" "$1"
+}
+
+it "an unfocused pane waits longer than a focused one"
+assert_eq "300" "$(status_eval 'status_pane_focused() { return 1; }; current_interval')"
+assert_eq "30" "$(status_eval 'status_pane_focused() { return 0; }; current_interval')"
+
+it "unknown counts as focused, so nothing degrades outside herdr"
+assert_eq "30" "$(status_eval 'unset HERDR_SESSION HERDR_PANE_ID; current_interval')"
+assert_eq "30" "$(status_eval '
+  HERDR_SESSION=test HERDR_PANE_ID=test
+  herdr() { return 1; }
+  current_interval')" "a failed focus query also uses the focused interval"
+
+it "WTC_STATUS_WATCH_BG=00 restores a single interval"
+assert_eq "30" "$(WTC_STATUS_WATCH_BG=00 status_eval '
+  status_pane_focused() { return 1; }; current_interval')"
+
+it "background intervals accept leading zeros and reject non-numbers"
+assert_eq "90" "$(WTC_STATUS_WATCH_BG=090 status_eval '
+  status_pane_focused() { return 1; }; current_interval')"
+assert_eq "300" "$(WTC_STATUS_WATCH_BG=abc status_eval '
+  status_pane_focused() { return 1; }; current_interval')"
+
+it "focusing a pane during its background wait advances the refresh"
+# Stub only event sources and drawing; run the actual wait and interval code.
+# read simulates one elapsed tick without sleeping. Focus changes at tick 2,
+# after the focused deadline, so waiting should end there instead of tick 300.
+assert_eq "2 yes" "$(status_eval '
+  interval=1
+  status_pane_focused() { [ "${_tick:-0}" -ge 2 ]; }
+  read() { return 1; }
+  poll_refresh_complete() { return 1; }
+  update_status_clock() { :; }
+  _redraw_only=no _refresh_pending=no
+  wait_events
+  printf "%s %s\n" "$_tick" "$_refresh_pending"')"
