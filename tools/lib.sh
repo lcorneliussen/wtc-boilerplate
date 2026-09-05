@@ -522,7 +522,7 @@ load_wtc_config() {
   : "${WTC_AGENT_KIND:=claude}"
   : "${WTC_AGENT_ARGS:=}"
   : "${WTC_STATUS_REPOS:=no}"
-  : "${WTC_STATUS_WATCH:=60}"
+  : "${WTC_STATUS_WATCH:=${HARNESS_STATUS_WATCH:-30}}"
   : "${WTC_STATUS_NO_CLICK:=no}"
 }
 
@@ -1346,7 +1346,6 @@ print("\t".join([str(d.get("id", sys.argv[2])), state, "NONE", "UNKNOWN",
 # is the same treatment for the two paths added later. Same directory, so one
 # `rm -rf` clears the lot, and every pane on the machine shares the entries.
 FORGE_CACHE="${TMPDIR:-/tmp}/wtc-status-$(id -u)"
-forge_cache_age="${WTC_FORGE_CACHE_AGE:-90}"
 
 _forge_cache_path() { # <kind> <key> -> file
   mkdir -p "$FORGE_CACHE" 2>/dev/null || true
@@ -1361,13 +1360,21 @@ _forge_cache_path() { # <kind> <key> -> file
 # blank row in place for the whole TTL, turning a transient outage into a
 # table that stays wrong long after the network came back.
 _forge_cached() { # <kind> <key> <ttl> <cmd...>
+  local _fc_f _fc_ttl _fc_out _fc_tmp
   _fc_f="$(_forge_cache_path "$1" "$2")"; _fc_ttl="$3"; shift 3
+  case "$_fc_ttl" in ''|*[!0-9]*) _fc_ttl=90 ;; esac
+  _fc_ttl=$((10#$_fc_ttl))
   if [ -f "$_fc_f" ] && [ "$(file_age_secs "$_fc_f")" -lt "$_fc_ttl" ]; then
     cat "$_fc_f"
     return 0
   fi
-  _fc_out="$("$@")"
-  [ -n "$_fc_out" ] && printf '%s\n' "$_fc_out" > "$_fc_f" 2>/dev/null
+  _fc_out="$("$@")" || return 0
+  if [ -n "$_fc_out" ] && _fc_tmp="$(mktemp "${_fc_f}.XXXXXX" 2>/dev/null)"; then
+    # Publish a complete answer in one rename; other panes may be reading.
+    if ! { printf '%s\n' "$_fc_out" > "$_fc_tmp" && mv -f "$_fc_tmp" "$_fc_f"; } 2>/dev/null; then
+      rm -f "$_fc_tmp" 2>/dev/null || true
+    fi
+  fi
   [ -n "$_fc_out" ] && printf '%s\n' "$_fc_out"
   return 0
 }
@@ -1388,9 +1395,9 @@ EOF
   # Keyed by slug#number, not by repo name: two collections can hold the same
   # repo under different sibling names, and they are asking about the same PR.
   case "$forge" in
-    github)    row="$(_forge_cached pr "$slug#$num" "$forge_cache_age" \
+    github)    row="$(_forge_cached pr "$slug#$num" "${WTC_FORGE_CACHE_AGE:-90}" \
                         _wtc_pr_enrich_github "$slug" "$num" "$title")" ;;
-    bitbucket) row="$(_forge_cached pr "$slug#$num" "$forge_cache_age" \
+    bitbucket) row="$(_forge_cached pr "$slug#$num" "${WTC_FORGE_CACHE_AGE:-90}" \
                         _wtc_pr_enrich_bitbucket "$slug" "$num" "$title")" ;;
     *)         row="" ;;
   esac

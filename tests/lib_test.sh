@@ -307,3 +307,41 @@ it "a key with path characters becomes one safe filename"
 f="$(_forge_cache_path pr 'owner/repo#42')"
 assert_not_contains "${f#"$FORGE_CACHE/"}" "/" "no directory separator survives"
 assert_contains "$f" "owner_repo#42"
+
+
+it "cache TTLs accept leading zeros and default invalid values"
+for ttl in 090 abc; do
+  : > "$calls_file"
+  _forge_cached test "ttl-$ttl" "$ttl" counted >/dev/null
+  _forge_cached test "ttl-$ttl" "$ttl" counted >/dev/null
+  assert_eq "1" "$(wc -l < "$calls_file" | tr -d ' ')" "TTL $ttl reuses the answer"
+done
+: > "$calls_file"
+_forge_cached test ttl-zero 00 counted >/dev/null
+_forge_cached test ttl-zero 00 counted >/dev/null
+assert_eq "2" "$(wc -l < "$calls_file" | tr -d ' ')" "00 disables reuse"
+
+it "cache replacement keeps the previous answer visible until publication"
+f="$(_forge_cache_path test atomic)"
+printf 'previous answer\n' > "$f"
+# Inspect the publication boundary deterministically, without a race or sleep.
+# The old file must still be complete, and the replacement must be complete.
+mv() {
+  if [ "$(cat "$3")" = "previous answer" ] && [ "$(cat "$2")" = "the answer" ]; then
+    printf 'atomic\n' > "$calls_file"
+  fi
+  command mv "$@"
+}
+: > "$calls_file"
+_forge_cached test atomic 0 counted >/dev/null
+unset -f mv
+assert_eq "atomic" "$(cat "$calls_file")" "old and new answers coexist until rename"
+assert_eq "the answer" "$(cat "$f")" "the new answer was published"
+
+it "failed commands with partial output are not cached"
+partial_failure() { printf 'partial answer\n'; return 1; }
+assert_empty "$(_forge_cached test failed 90 partial_failure)"
+assert_eq "the answer" "$(_forge_cached test failed 90 counted)"
+
+it "an unwritable cache still returns the fresh answer"
+assert_eq "the answer" "$(FORGE_CACHE=/dev/null/not-a-directory _forge_cached test unavailable 90 counted)"

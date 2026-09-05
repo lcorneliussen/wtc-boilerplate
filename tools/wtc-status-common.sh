@@ -114,6 +114,7 @@ case "$interval" in ''|*[!0-9]*) interval=30 ;; esac
 # for anyone who wants the old single-interval behaviour back.
 interval_bg="${WTC_STATUS_WATCH_BG:-300}"
 case "$interval_bg" in ''|*[!0-9]*) interval_bg=300 ;; esac
+interval_bg=$((10#$interval_bg))
 # Watching needs a terminal that can be redrawn and quit. Piped or captured,
 # one pass is the only useful answer — see the note in usage.
 watch=no
@@ -2070,7 +2071,7 @@ status_pane_focused() {
   [ "$_cur" = "$HERDR_PANE_ID" ]
 }
 
-# The interval to wait before the next refresh, re-decided each time round:
+# The interval to wait before the next refresh, re-decided during the wait:
 # a pane can be focused and unfocused many times within one long wait, and
 # asking once at startup would pin it to whichever it was when it launched.
 current_interval() {
@@ -2083,8 +2084,7 @@ current_interval() {
 
 wait_events() {
   _tick=0
-  _wait_for="$(current_interval)"
-  while [ "$_tick" -lt "$_wait_for" ]; do
+  while [ "$_tick" -lt "$(current_interval)" ]; do
     # A pending redraw normally means "stop waiting and paint it", but not
     # while the button is down: leaving would spin here until the release.
     if [ "$_redraw_only" = yes ] && ! mouse_dragging; then return 0; fi
