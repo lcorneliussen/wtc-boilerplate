@@ -432,8 +432,8 @@ production_ref_for() { # <repo-name> -> default_ref_for "$1"
 # (WTC_STATUS_PIPE; see wtc-status-common.sh). Kept as real stubs, not
 # missing functions, so a fork that does wire a pipeline just replaces this
 # one place: same cache dir, same <slug> <branch> -> "build\tchecks\tcommit\turl"
-# TSV shape. wtc-status-common.sh only calls either when forge_for_slug says
-# bitbucket.
+# TSV shape. The status renderer calls these for every nonempty slug; the
+# adapter decides which forges it supports and returns nothing for the rest.
 PIPE_CACHE="${TMPDIR:-/tmp}/wtc-pipe-$(id -u)"
 pipe_fetch_bg() { # <slug> <branch> -> no-op (stub)
   return 0
@@ -867,10 +867,26 @@ herdr_ensure_browse_pane() { # <session> <workspace> <cwd> -> pane id
 
 herdr_ensure_tui_pane() { herdr_ensure_browse_pane "$@"; } # leftover name
 
-# Socket for the collection's browse nvim (--listen). Short path: macOS
-# unix-socket names are capped around 104 bytes.
+# Socket for the collection's browse nvim (--listen). Keyed by the workspace
+# root's basename as well as the collection: every workspace tends to have a
+# `main`, and one shared /tmp/wtc-browse-main.nvim meant the second
+# workspace's browse pane died with "address already in use" while its status
+# clicks reached the first one's editor. The root's basename already names the
+# herdr session, so it is already assumed unique per machine.
+#
+# A unix socket path is capped at 104 bytes on macOS (108 on Linux), NUL
+# included, and past that `nvim --listen` fails outright. So a workspace and
+# collection pair too long for it gets a name cut to fit plus a checksum of
+# the full pair — still unique and stable, no longer readable, which is the
+# right trade for a name nobody types.
 wtc_browse_socket() { # <collection-name>
-  printf '/tmp/wtc-browse-%s.nvim' "$1"
+  local _bs _bsum
+  _bs="/tmp/wtc-browse-$(basename "$ROOT")-$1.nvim"
+  if [ "$(printf '%s' "$_bs" | wc -c | tr -d ' ')" -gt 100 ]; then
+    _bsum="$(printf '%s/%s' "$ROOT" "$1" | cksum | cut -d' ' -f1)"
+    _bs="/tmp/wtc-browse-$(printf '%s-%s' "$(basename "$ROOT")" "$1" | LC_ALL=C cut -c1-60)-$_bsum.nvim"
+  fi
+  printf '%s' "$_bs"
 }
 
 wtc_browse_alive() { # <collection-name> — 0 if a browse nvim is answering
@@ -1347,10 +1363,20 @@ print("\t".join([str(d.get("id", sys.argv[2])), state, "NONE", "UNKNOWN",
 # `rm -rf` clears the lot, and every pane on the machine shares the entries.
 FORGE_CACHE="${TMPDIR:-/tmp}/wtc-status-$(id -u)"
 
+_private_cache_dir() { # <directory> — create/tighten only an owned real directory
+  local _cache_dir="$1"
+  [ -n "$_cache_dir" ] && [ ! -L "$_cache_dir" ] || return 1
+  if [ ! -d "$_cache_dir" ]; then
+    (umask 077; mkdir -p "$_cache_dir") 2>/dev/null || return 1
+  fi
+  [ ! -L "$_cache_dir" ] && [ -d "$_cache_dir" ] && [ -O "$_cache_dir" ] || return 1
+  chmod 700 "$_cache_dir" 2>/dev/null
+}
+
 _forge_cache_path() { # <kind> <key> -> file
-  mkdir -p "$FORGE_CACHE" 2>/dev/null || true
+  _private_cache_dir "$FORGE_CACHE" || return 1
   printf '%s/%s-%s\n' "$FORGE_CACHE" "$1" \
-    "$(printf '%s' "$2" | tr -c 'A-Za-z0-9._@#-' '_')"
+    "$(printf '%s' "$2" | LC_ALL=C tr -c 'A-Za-z0-9._@#-' '_')"
 }
 
 # Read a cached answer, or run the command and cache what it prints.
@@ -1361,15 +1387,19 @@ _forge_cache_path() { # <kind> <key> -> file
 # table that stays wrong long after the network came back.
 _forge_cached() { # <kind> <key> <ttl> <cmd...>
   local _fc_f _fc_ttl _fc_out _fc_tmp
-  _fc_f="$(_forge_cache_path "$1" "$2")"; _fc_ttl="$3"; shift 3
+  _fc_f="$(_forge_cache_path "$1" "$2")" || _fc_f=""
+  _fc_ttl="$3"; shift 3
   case "$_fc_ttl" in ''|*[!0-9]*) _fc_ttl=90 ;; esac
   _fc_ttl=$((10#$_fc_ttl))
-  if [ -f "$_fc_f" ] && [ "$(file_age_secs "$_fc_f")" -lt "$_fc_ttl" ]; then
-    cat "$_fc_f"
+  # Cache cleanup can remove a file after the existence/age checks. A failed
+  # read is a miss, including for callers running under set -e.
+  if [ -f "$_fc_f" ] && [ "$(file_age_secs "$_fc_f")" -lt "$_fc_ttl" ] && \
+     _fc_out="$(cat "$_fc_f" 2>/dev/null)"; then
+    printf '%s\n' "$_fc_out"
     return 0
   fi
   _fc_out="$("$@")" || return 0
-  if [ -n "$_fc_out" ] && _fc_tmp="$(mktemp "${_fc_f}.XXXXXX" 2>/dev/null)"; then
+  if [ -n "$_fc_f" ] && [ -n "$_fc_out" ] && _fc_tmp="$(mktemp "${_fc_f}.XXXXXX" 2>/dev/null)"; then
     # Publish a complete answer in one rename; other panes may be reading.
     if ! { printf '%s\n' "$_fc_out" > "$_fc_tmp" && mv -f "$_fc_tmp" "$_fc_f"; } 2>/dev/null; then
       rm -f "$_fc_tmp" 2>/dev/null || true
