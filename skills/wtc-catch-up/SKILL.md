@@ -1,6 +1,6 @@
 ---
 name: wtc-catch-up
-description: Bring a worktree collection up to date with its remotes — fetch and prune every worktree owner (bare, or an unmanaged sibling's external clone), move detached worktrees onto the new development tip, return worktrees whose PR has merged to the tip and prune the local branch, merge the tip into live branches so they stop drifting and push that merge to any open PR, re-link secrets and harness skills, and refresh the collection env. Use when a collection looks stale or shows ↓ in the status table, after a PR merges, before opening a PR, after being away from a wtc, or when the user asks to sync, update, pull, or refresh the workspace.
+description: Catch up selected repositories in one or explicitly requested multiple worktree collections. Use for sync, pull, refresh, harness rollout, --all --harness-only, or --repos selection. Fetch shared owners, safely update eligible worktrees, refresh target hooks, optionally reload only status panes, and collect per-collection reports. Local dirty changes are stashed and restored; fleet sweeps leave dirty or in-progress work to owning agents.
 ---
 
 # Catch a wtc up
@@ -20,11 +20,73 @@ harness/tools/catch-up.sh --all           # every collection under the workspace
 harness/tools/catch-up.sh --dry-run       # report only; touch nothing
 ```
 
-Safe by construction: nothing here rewrites history or force-pushes. Dirty
-trees are **not** skipped — a worktree that actually has a move to make is
-stashed (including untracked files) around it, then the stash is popped. A
-worktree that is already current is left alone regardless of dirty state,
-since there is nothing to move it past.
+Nothing here rewrites history or force-pushes. Local catch-up stashes dirty
+work (including untracked files) around an update and restores it afterward.
+A local worktree already at the tip needs no move. Cross-collection sweeps
+and `--clean-only` leave dirty trees with their owner, as described below.
+
+## Selected repositories and cross-collection rollout
+
+Use `harness/tools/catch-up.sh` for a repeatable catch-up and a collected
+report. Cross-collection writes require the user's explicit scope; a local
+catch-up does not authorize `--all`.
+
+```bash
+harness/tools/catch-up.sh --all --harness-only --dry-run --json
+harness/tools/catch-up.sh --all --harness-only --reload-status
+harness/tools/catch-up.sh --repos harness,widget --clean-only --json
+harness/tools/catch-up.sh --all --repos widget --report /path/to/rollout.json
+```
+
+`--repos` accepts comma-separated registry or sibling names; `harness` always
+selects the `harness/` sibling, including forks whose registry uses another
+name. Selection limits both fetches and worktree changes. Shared selected
+owners are fetched once for the entire sweep. A name matching no checked-out
+repository is an error before mutations. Dry-run uses local refs and performs
+no fetch, hook, worktree or pane writes; an explicit `--report` still saves
+the requested report.
+
+`--all` defaults to clean worktrees only. Dirty trees, worktrees in a Git
+operation, and detached commits not contained in the default tip remain
+untouched with `needs-owner` outcomes. Clean live branches may merge the tip;
+conflicts are aborted back to the original tree and handed to their owning
+collection. Keep the existing stash/update/restore behavior for a local
+invocation unless `--clean-only` is requested. Never remove untracked files
+to make a rollout proceed.
+
+Collection-root skills, MCP and environment hooks run only when the selected
+harness updates successfully or is already current. Secret linking is scoped
+to each successful selected repo. Missing optional target hooks are reported
+as skipped; do not substitute another collection's generator. This keeps
+older forks usable without assuming they ship `refresh-env.sh` or every hook.
+
+`--reload-status` is explicit authorization to interrupt and restart eligible
+status panes. It finds the configured herdr session and workspace, verifies
+the `status` pane contains a status command or idle shell, and refuses agent
+occupants and unrelated processes. It never restarts browse/agent panes or
+creates workspaces. Clean, already-current harnesses are eligible too. A
+restart is reported only after the status process is observed; unavailable
+sessions, missing panes and failed restarts remain visible in the report.
+
+The tool pins its initiating implementation while targets update, so an
+initiator self-update cannot replace the running sweep. Every repo result
+records source, target and resulting SHAs. Fetches, hooks and pane results
+are separate rows, including failures. Normal runs save JSON and a readable
+`.md` companion in the initiating collection (`.wtc-catch-up.json` by default),
+even after partial failure; `--json` also emits the JSON on stdout. Nonzero
+exit means some work failed or needs its owner, not that all updates failed.
+
+Collect `needs-owner` rows in the initiating session. Give each owning
+collection agent its repo, source/target SHAs, reason and report location
+through an available authorized messaging channel; keep writes in that
+owner's collection with its existing writer. If no live messaging mechanism
+is available, report the explicit handoff needed. A report file cannot wake
+an idle agent. On resumption, inspect current state before resolving, pushing
+or retrying; don't replay the fleet operation blindly. Durable follow-ups
+belong in the relevant PR/issue, since local reports disappear on retirement.
+
+The detailed steps below describe a local catch-up. For a fleet sweep, the
+clean-only and owner-handoff rules above take precedence over local stashing.
 
 ## 1. Fetch every owner
 
