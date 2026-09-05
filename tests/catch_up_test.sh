@@ -127,6 +127,14 @@ PY
 it 'unknown selection fails before fetching'
 assert_fails "$runner" --all --repos typo --json "${no_hooks[@]}"
 assert_empty "$(cat "$CATCH_TEST_LOG")"
+it 'an inherited source-dir variable cannot redirect or bypass the pinned runner'
+WTC_CATCH_UP_SOURCE_DIR="$root/nonexistent" "$runner" --harness-only --dry-run --json "${no_hooks[@]}" clean > "$root/pin.json" 2> "$root/stderr"
+assert_eq 0 "$?"
+assert_ok python3 - "$root/pin.json" "$root/main" <<'PY'
+import json,sys
+p=json.load(open(sys.argv[1])); assert p['initiator']==sys.argv[2]
+assert any(r['kind']=='repo' and r['collection']=='clean' for r in p['outcomes'])
+PY
 it 'missing option arguments consistently return usage errors'
 assert_status 2 "$runner" --repos
 assert_status 2 "$runner" --report
@@ -181,7 +189,7 @@ case "$1 $2" in
     else echo '{"result":{"panes":[{"label":"status","pane_id":"w1:p3"},{"label":"browse","pane_id":"w1:p2"},{"label":"agent","pane_id":"w1:p1","agent":"codex"}]}}'; fi ;;
   'pane process-info')
     if [ -f "$CATCH_TEST_ROOT/restarted" ]; then command='bash ./harness/tools/wtc-status-tui.sh'
-    elif [ -f "$CATCH_TEST_ROOT/interrupted" ]; then command=zsh
+    elif [ -f "$CATCH_TEST_ROOT/interrupted" ]; then command="${CATCH_TEST_SHELL:-zsh}"
     else command="${CATCH_TEST_FOREGROUND:-bash ./harness/tools/wtc-status-tui.sh}"; fi
     # Renderer child deliberately precedes the actual process-group leader.
     python3 - "$command" <<'PY'
@@ -220,6 +228,23 @@ assert_not_contains "$(cat "$root/pane-calls")" 'pane run'
 assert_contains "$(cat "$root/agent-arrived.json")" 'agent appeared'
 unset CATCH_TEST_AGENT_APPEARS
 rm "$root/interrupted"
+: > "$root/pane-calls"
+
+it 'Nu receives a directly invoked absolute script without Bash command chaining'
+export CATCH_TEST_SHELL=nu
+"$runner" --harness-only --reload-status --json "${no_hooks[@]}" clean > "$root/nu.json" 2> "$root/stderr"
+assert_eq 0 "$?"
+# Nu is not installed here. This validates the documented literal syntax,
+# not actual Nu execution. JSON quoting round-trips the complete path.
+assert_ok python3 - "$root/pane-calls" "$root/clean/harness/tools/wtc-status-tui.sh" <<'PY'
+import json,sys
+line=next(x for x in open(sys.argv[1]).read().splitlines() if x.startswith('pane run '))
+command=line.split(' ',3)[3]
+assert command.startswith('bash "') and '&&' not in command
+assert json.loads(command[len('bash '):])==sys.argv[2]
+PY
+unset CATCH_TEST_SHELL
+rm "$root/interrupted" "$root/restarted"
 : > "$root/pane-calls"
 
 it 'unrelated foreground process is never interrupted'

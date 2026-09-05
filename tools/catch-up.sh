@@ -4,13 +4,15 @@ set -euo pipefail
 
 # A selected initiating harness may replace these files during the sweep.
 # Execute a private copy; target hooks still come from each updated harness.
-if [ -z "${WTC_CATCH_UP_SOURCE_DIR:-}" ]; then
-  rollout_source="$(cd "$(dirname "$0")" && pwd)"
+rollout_location="$(cd "$(dirname "$0")" && pwd)"
+if [ ! -f "$rollout_location/.catch-up-source" ]; then
+  rollout_source="$rollout_location"
   rollout_runner="$(mktemp -d "${TMPDIR:-/tmp}/wtc-catch-up-runner.XXXXXX")"
   trap 'rm -rf "$rollout_runner"' EXIT
   cp "$rollout_source/catch-up.sh" "$rollout_source/lib.sh" "$rollout_source/catch-up-report.py" "$rollout_runner/"
+  printf '%s\n' "$rollout_source" > "$rollout_runner/.catch-up-source"
   rollout_exit=0
-  WTC_CATCH_UP_SOURCE_DIR="$rollout_source" bash "$rollout_runner/catch-up.sh" "$@" || rollout_exit=$?
+  bash "$rollout_runner/catch-up.sh" "$@" || rollout_exit=$?
   exit "$rollout_exit"
 fi
 
@@ -61,9 +63,8 @@ while [ $# -gt 0 ]; do
   esac
 done
 case "$selector" in ,*|*,|*,,*|*[!a-zA-Z0-9_.,/-]*) echo 'invalid repository selector' >&2; exit 2 ;; esac
-execution_dir="$(cd "$(dirname "$0")" && pwd)"
-script_dir="$WTC_CATCH_UP_SOURCE_DIR"
-unset WTC_CATCH_UP_SOURCE_DIR
+execution_dir="$rollout_location"
+script_dir="$(cat "$execution_dir/.catch-up-source")"
 HARNESS_DIR="$(dirname "$script_dir")"
 # shellcheck source=lib.sh
 . "$execution_dir/lib.sh"
@@ -148,6 +149,16 @@ if argv and os.path.basename(argv[0]) in ('bash', 'sh'):
     argv = argv[1:]
 names = ('wtc-status-tui.sh', 'wtc-status.sh', 'wtc-status-legacy-tui.sh', 'wtc-status-legacy.sh')
 sys.exit(0 if argv and os.path.basename(argv[0]) in names else 1)
+PY
+}
+status_launch_command() { # verified idle shell, absolute script path
+  python3 - "$1" "$2" <<'PY'
+import json, os, shlex, sys
+shell = os.path.basename(sys.argv[1].lstrip('-'))
+# Nu's ordinary double-quoted strings do not interpolate. Unlike Bash's %q,
+# these escapes are accepted by Nu; leave Unicode characters literal.
+path = json.dumps(sys.argv[2], ensure_ascii=False) if shell == 'nu' else shlex.quote(sys.argv[2])
+print('bash ' + path)
 PY
 }
 pane_command() { # session pane; use the foreground group leader, not a renderer child
@@ -390,7 +401,9 @@ reload_pane() {
   if [ -z "$command" ] || ! herdr_cmdline_is_shell "$command"; then
     row pane "$collection" status needs-owner "pane $pane did not become a verified shell" '' '' ''; return
   fi
-  printf -v status_command 'cd %q && ./harness/tools/wtc-status-tui.sh' "$ROOT/$collection"
+  # The entrypoint derives its collection from BASH_SOURCE, so no cwd change
+  # or shell-specific command chaining is needed in the pane.
+  status_command="$(status_launch_command "$command" "$HARNESS_DIR/tools/wtc-status-tui.sh")"
   if herdr --session "$session" pane run "$pane" "$status_command" >/dev/null; then
     for attempt in 1 2 3 4 5; do
       if ! command="$(pane_command "$session" "$pane")"; then
