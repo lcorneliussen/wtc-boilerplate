@@ -1,5 +1,9 @@
 # Follow the work through shipment
 
+All external writes in this workflow must follow
+[publication privacy](publication-privacy.md). Keep private downstream identities
+and delivery links in private records, including during delegation and handoff.
+
 Catch-up brings changes from outside this session into the collection.
 Follow-through carries work this session initiated or was assigned through
 review, integration, and the task's agreed delivery outcome. It calls catch-up

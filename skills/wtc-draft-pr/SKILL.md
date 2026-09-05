@@ -3,6 +3,11 @@ name: wtc-draft-pr
 description: Open or update a draft pull request for work in progress in a worktree collection — branch correctly, catch up against the remote, push, and publish a draft PR without summoning reviewers or review bots. Use when the user wants work visible, wants CI to run on it, or wants to park a branch for later without asking anyone to review it yet. When the change is ready for actual review, use wtc-pr instead.
 ---
 
+
+Before any external write, apply [publication privacy](../../instructions/publication-privacy.md)
+to the exact payload and destination. Public upstream records must not identify
+private downstream projects or link to their delivery records. Keep that tracking
+private, and pass the same restriction to every delegated follower.
 # Open or advance a draft PR
 
 Same machinery as `wtc-pr`, one difference that matters: **a draft does not

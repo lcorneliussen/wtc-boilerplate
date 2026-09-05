@@ -26,6 +26,13 @@ everything; a **collection root** is one task; its **repo siblings** are the
 worktrees inside it; its **collection siblings** are the neighbouring
 collections — other tasks, not your working set.
 
+## Public and private audiences
+
+Before publishing any issue, PR, reply, commit or artifact, follow
+`harness/instructions/publication-privacy.md`. Keep private project identities,
+adoption relationships and delivery links out of public upstream records. This
+also applies to delegated agents and to explanations of a privacy cleanup.
+
 ## Read in this order
 
 1. **`WTC-SCOPE.md`** — the task, the repos that belong to it, what is

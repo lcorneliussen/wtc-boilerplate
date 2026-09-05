@@ -3,6 +3,11 @@ name: wtc-pr
 description: Open or advance a review-ready pull request for work in a worktree collection — catch up against the remote, branch correctly if needed, push, open or un-draft the PR, request review, then follow its checks, wait for the review bots to actually report, and address what they find with fixes, replies, and resolved threads. Use when the user asks to open a PR, mark one ready, ship or land a change, chase a red build, or answer review feedback. For ongoing ownership through main builds and delivery, use wtc-follow. For work in progress that should not summon reviewers yet, use wtc-draft-pr instead.
 ---
 
+
+Before any external write, apply [publication privacy](../../instructions/publication-privacy.md)
+to the exact payload and destination. Public upstream records must not identify
+private downstream projects or link to their delivery records. Keep that tracking
+private, and pass the same restriction to every delegated follower.
 # Open or advance a review-ready PR
 
 This skill opens and advances review-ready PRs. Opening or advancing one starts

@@ -3,6 +3,11 @@ name: wtc-follow
 description: Follow work initiated or assigned to this session from a review-ready PR through checks, conversations, merge, main builds and required delivery follow-ups. Use for follow PR, follow-through, or relevant status/check/review updates for owned work. Use wtc-catch-up to bring outside changes into the collection, and wtc-status for read-only status requests.
 ---
 
+
+Before any external write, apply [publication privacy](../../instructions/publication-privacy.md)
+to the exact payload and destination. Public upstream records must not identify
+private downstream projects or link to their delivery records. Keep that tracking
+private, and pass the same restriction to every delegated follower.
 # Follow owned work through delivery
 
 Locate the collection via `WTC-SCOPE.md` and its `harness/`, read the affected
