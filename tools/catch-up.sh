@@ -342,14 +342,20 @@ reload_pane() {
     row pane "$collection" status skipped 'herdr unavailable; no pane control attempted' '' '' ''; return
   fi
   session="${HERDR_SESSION:-$(herdr_session_name)}"
-  ws="$(herdr_ws_id "$session" "$collection")"
+  if ! ws="$(herdr_ws_id "$session" "$collection")"; then
+    row pane "$collection" status failed 'herdr workspace lookup failed; no pane control attempted' '' '' ''; return
+  fi
   if [ -z "$ws" ]; then row pane "$collection" status skipped 'no matching herdr workspace' '' '' ''; return; fi
-  rows="$(herdr_pane_rows "$session" "$ws")"
+  if ! rows="$(herdr_pane_rows "$session" "$ws")"; then
+    row pane "$collection" status failed 'herdr pane lookup failed; no pane control attempted' '' '' ''; return
+  fi
   pane="$(herdr_row_col "$rows" status 2)"
   agent="$(herdr_row_col "$rows" status 3)"
   if [ -z "$pane" ]; then row pane "$collection" status skipped 'no status pane' '' '' ''; return; fi
   if [ -n "$agent" ]; then row pane "$collection" status needs-owner 'status-labelled pane contains an agent; untouched' '' '' ''; return; fi
-  command="$(pane_command "$session" "$pane")"
+  if ! command="$(pane_command "$session" "$pane")"; then
+    row pane "$collection" status failed 'foreground lookup failed; no pane control attempted' '' '' ''; return
+  fi
   if [ -z "$command" ]; then row pane "$collection" status needs-owner 'foreground process unknown; untouched' '' '' ''; return; fi
   if ! status_process "$command" && ! herdr_cmdline_is_shell "$command"; then
     row pane "$collection" status needs-owner 'status pane runs an unrelated process; untouched' '' '' ''; return
@@ -364,17 +370,26 @@ reload_pane() {
   # Fail closed: the shared idle helper treats missing process data as idle.
   # Here an empty response must never permit typing over an unknown occupant.
   for attempt in 1 2 3 4 5; do
-    command="$(pane_command "$session" "$pane")"
+    if ! command="$(pane_command "$session" "$pane")"; then
+      row pane "$collection" status failed "foreground lookup failed after interrupting $pane" '' '' ''; return
+    fi
     if [ -n "$command" ] && herdr_cmdline_is_shell "$command"; then break; fi
     sleep 1
   done
-  if [ -z "$command" ] || ! herdr_cmdline_is_shell "$command" || herdr_pane_has_agent "$session" "$pane"; then
+  if ! rows="$(herdr_pane_rows "$session" "$ws")"; then
+    row pane "$collection" status failed "pane lookup failed before restarting $pane" '' '' ''; return
+  fi
+  if [ -z "$command" ] || ! herdr_cmdline_is_shell "$command" \
+     || [ "$(herdr_row_col "$rows" status 2)" != "$pane" ] \
+     || [ -n "$(herdr_row_col "$rows" status 3)" ]; then
     row pane "$collection" status needs-owner "pane $pane did not become a verified shell" '' '' ''; return
   fi
   printf -v status_command 'cd %q && ./harness/tools/wtc-status-tui.sh' "$ROOT/$collection"
   if herdr --session "$session" pane run "$pane" "$status_command" >/dev/null; then
     for attempt in 1 2 3 4 5; do
-      command="$(pane_command "$session" "$pane")"
+      if ! command="$(pane_command "$session" "$pane")"; then
+        row pane "$collection" status failed "foreground lookup failed after restarting $pane" '' '' ''; return
+      fi
       if status_process "$command"; then
         row pane "$collection" status restarted "observed status process in $pane; ongoing health not monitored" '' '' ''; return
       fi

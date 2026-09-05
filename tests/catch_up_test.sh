@@ -146,6 +146,9 @@ git -C "$root/clean/harness" restore tools/link-secrets.sh
 cat > "$mock/herdr" <<'MOCK'
 #!/usr/bin/env bash
 shift 2 # --session name
+case "${CATCH_TEST_HERDR_FAIL:-}:$1 $2" in
+  'workspace:workspace list'|'panes:pane list'|'process:pane process-info') exit 1 ;;
+esac
 case "$1 $2" in
   'workspace list') echo '{"result":{"workspaces":[{"label":"clean","workspace_id":"w1"}]}}' ;;
   'pane list') echo '{"result":{"panes":[{"label":"status","pane_id":"w1:p3"},{"label":"browse","pane_id":"w1:p2"},{"label":"agent","pane_id":"w1:p1","agent":"codex"}]}}' ;;
@@ -218,6 +221,20 @@ rows={r['collection']:r for r in json.load(open(sys.argv[1]))['outcomes'] if r['
 assert rows['clean']['outcome']=='failed'
 assert rows['main']['outcome']=='current'
 PY
+
+for failure in workspace panes process; do
+  it "herdr $failure failure is reported without losing later repo outcomes"
+  export CATCH_TEST_HERDR_FAIL="$failure"
+  "$runner" --harness-only --reload-status --json "${no_hooks[@]}" clean main > "$root/herdr-failed.json" 2> "$root/stderr"
+  assert_eq 1 "$?"
+  assert_ok python3 - "$root/herdr-failed.json" <<'PY'
+import json,sys
+rows=json.load(open(sys.argv[1]))['outcomes']
+assert any(r['kind']=='repo' and r['collection']=='main' for r in rows)
+assert any(r['kind']=='pane' and r['collection']=='clean' and r['outcome']=='failed' for r in rows)
+PY
+done
+unset CATCH_TEST_HERDR_FAIL
 
 it 'target registry identity does not depend on initiating shell environment'
 sed 's/agent-harness/custom-harness/g' "$root/clean/harness/.harness-repos.yml" > "$root/registry"
