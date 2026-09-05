@@ -1,13 +1,15 @@
 ---
 name: wtc-pr
-description: Open or advance a review-ready pull request for work in a worktree collection — catch up against the remote, branch correctly if needed, push, open or un-draft the PR, request review, then follow its checks, wait for the review bots to actually report, and address what they find with fixes, replies, and resolved threads. Use when the user asks to open a PR, mark one ready, ship or land a change, chase a red build, or answer review feedback. For work in progress that should not summon reviewers yet, use wtc-draft-pr instead.
+description: Open or advance a review-ready pull request for work in a worktree collection — catch up against the remote, branch correctly if needed, push, open or un-draft the PR, request review, then follow its checks, wait for the review bots to actually report, and address what they find with fixes, replies, and resolved threads. Use when the user asks to open a PR, mark one ready, ship or land a change, chase a red build, or answer review feedback. For ongoing ownership through main builds and delivery, use wtc-follow. For work in progress that should not summon reviewers yet, use wtc-draft-pr instead.
 ---
 
 # Open or advance a review-ready PR
 
-This skill is **resumable, not one-shot.** Run it whenever; it looks at where
-the work actually stands and does the outstanding part. Nothing outstanding is
-a valid outcome — say so and stop.
+This skill opens and advances review-ready PRs. Opening or advancing one starts
+[wtc-follow](../wtc-follow/SKILL.md) ownership for this session: resume on its
+status/check/review updates and carry it through main builds and the task's
+required delivery steps. Nothing actionable before a human checkpoint is a
+valid outcome; it is not a claim that the work has shipped.
 
 Work per repo. In a cross-repo wtc, run it once per sibling that has changes,
 newest dependency first; each repo gets its own branch and its own PR under
@@ -37,7 +39,8 @@ what may be committed from where.
 |---|---|
 | No PR, on an issue branch with commits | §3 → §4 → §5 (create) |
 | **Detached at the tip** (the resting state) | §2.1 — create the branch, that is what this moment is for |
-| **Merged or closed** PR | The branch is finished. §2.1 for a fresh one; `wtc-catch-up` returns this worktree to the tip and prunes the local ref. Never reopen, never commit onto it. |
+| **Merged** PR | The branch is finished. Resume `wtc-follow` for main checks and required delivery/follow-ups, then catch up. Never commit onto it. |
+| **Closed, unmerged** PR | Stop branch writes and determine whether the task was abandoned or superseded. Record/handoff remaining work; do not silently reopen it. |
 | Open **draft** | §3 → §4, then §5.2 (mark ready) → §6 |
 | Open, ready for review | §3 → §4 (push anything outstanding) → §6 |
 
@@ -162,39 +165,19 @@ the change is genuinely reviewable — otherwise this is a `wtc-draft-pr` job.
 
 This is the part that makes the skill worth invoking twice.
 
-### 6.0 Never block the conversation on a build
+### 6.0 Resume without blocking the conversation
 
-CI takes ten minutes and review bots take their own time. None of that is a
-reason for the user to sit and watch you sit and watch. **Nothing that waits may
-run in the foreground** — no `sleep`, no `gh pr checks --watch`, no polling loop
-in the turn you are answering from. Waiting in a *background* job is the point,
-and the loop below sleeps freely because nobody is blocked on it. Start the
-wait, say what you started, and carry on. Three mechanisms, three jobs:
+Follow [wtc-follow](../wtc-follow/SKILL.md) and its
+[policy](../../instructions/pr-follow-through.md) for status freshness,
+notifications, ownership and stopping conditions. Reuse fresh snapshots for
+triage and query the affected PR directly after a new event. A cached green
+rollup does not replace current checks, reviews and conversations.
 
-| You want | Use | Why |
-|---|---|---|
-| One "it finished" | `Bash(run_in_background)` with a loop that exits when the run completes | One notification, no extra context, and the harness re-invokes you when it exits |
-| To react to each check as it lands | `Monitor` | One event per check, so a red at minute two does not wait for the green at minute ten |
-| The whole follow-through done for you | a subagent | It reads failing logs, records flakes and answers threads without any of that landing in this context |
-
-The one-shot wait, which is the default:
-
-```bash
-until s=$(gh run view <run-id> --json status --jq .status); [ "$s" = completed ]; do sleep 45; done
-gh run view <run-id> --json conclusion --jq .conclusion
-```
-
-Started in the background, that costs one notification and nothing else.
-
-**Then keep going.** Starting a wait is not a reason to stop working: pick up
-the next repo, answer the question that was asked, or hand back. The user finds
-out when it lands, because the notification arrives whether or not you were
-watching for it. Reporting "waiting for CI" and stopping is the failure this
-section exists to prevent.
-
-If a wakeup is scheduled instead, make it a long fallback (20 minutes or more)
-for the case where the run hangs and no notification ever comes — not a
-short-interval poll for work the harness already tracks.
+Use an available completion-notification mechanism for waits; verify that it
+really wakes this session. `Bash(run_in_background)` and `Monitor` are options
+only in hosts that expose them, not portable guarantees. An ordinary detached
+shell process is not evidence of automatic continuation. Continue independent
+work while waiting, and report the actual continuation mechanism or its absence.
 
 ### 6.0.1 When a subagent is the right answer
 
@@ -339,8 +322,11 @@ nothing else will tell you it needs asking again.
 
 ### 6.5 Merging is a separate decision
 
-When checks are green and the PR is approved, **report that and stop.** Merge
-only when the user asks, and then:
+When checks on the current head are green, feedback is settled, and required
+approvals are present, prepare the merge checkpoint with the PR, head/base,
+checks and reviewer evidence. Merge only when authorized by the user (including
+authorization already given); otherwise report the remaining human action.
+A clean bot review is not itself a human approval. When authorized:
 
 ```bash
 gh pr merge <n> --merge     # merge commit — never --squash, never --rebase
@@ -352,7 +338,10 @@ Merge commits are policy: individual commits stay queryable via
 **After merge, the branch is done**: no new commits on it, ever. The **remote**
 branch is never deleted — it is the permanent per-issue record, so leave
 GitHub's "Delete branch on merge" off. The **local** ref is disposable;
-`wtc-catch-up` returns the worktree to the tip and prunes it.
+`wtc-catch-up` returns the worktree to the tip and prunes it. Continue with
+[wtc-follow](../wtc-follow/SKILL.md): verify main checks for the merge SHA and
+any required deployment or downstream steps. A merged PR does not end that
+ownership, including when the human merged it during a pending review.
 
 ## 7. Close the loop outside git
 

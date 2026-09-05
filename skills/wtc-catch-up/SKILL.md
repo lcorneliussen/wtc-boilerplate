@@ -5,6 +5,12 @@ description: Bring a worktree collection up to date with its remotes — fetch a
 
 # Catch a wtc up
 
+Catch-up integrates work from outside this session. For the session's owned
+PRs, [wtc-follow](../wtc-follow/SKILL.md) carries review, main builds and delivery
+to completion. After catch-up pushes a live branch merge or returns a merged
+branch to the tip, hand those new checks/remaining delivery gates back to its
+existing follower. Catch-up alone does not establish that the task shipped.
+
 Worktrees share bare owners, so "pull" is the wrong mental model: you fetch
 the **bares**, then move each worktree individually under rules that differ by
 what it is checked out on. Catch-up is also not git-only — files and skills
@@ -174,7 +180,10 @@ catch-up is not the moment to be making that call:
 git -C <wt> merge --abort
 ```
 
-Then report the conflicting paths and let the user decide.
+Report the conflicting paths to the branch owner. For work this session owns,
+return to `wtc-follow` / `wtc-pr` to resolve routine conflicts, validate and
+push. Ask the user only for a semantic or scope decision the task does not
+already settle; catch-up itself does not choose sides for another owner.
 
 ### 3.3.1 If the branch has a PR (open or draft), push the merge
 

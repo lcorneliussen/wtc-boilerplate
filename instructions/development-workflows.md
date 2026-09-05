@@ -86,6 +86,17 @@ and is the fallback for a branch that was never enlisted.
 
 Procedure: skill `wtc-catch-up`. Script: `tools/catch-up.sh`.
 
+## Ownership after push and merge
+
+The initiating or assigned session follows review-ready work through its
+agreed delivery outcome. Catch-up integrates incoming changes; follow-through
+resumes on relevant status/review/check events, settles feedback and builds,
+prepares human checkpoints, and verifies main and required delivery after
+merge. Follow [pr-follow-through.md](pr-follow-through.md) for the lifecycle,
+cache freshness and actual notification requirements; use the `wtc-follow`
+skill to execute it. A green table row or merged branch alone does not establish
+shipment, and none of this grants permission to merge or deploy.
+
 ## Why
 
 - **Branch name as issue-mapping** — the name encodes which issue the commits
