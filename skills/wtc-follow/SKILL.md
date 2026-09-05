@@ -18,7 +18,7 @@ verification and the stopping condition. Use it for every follow pass.
 ## Resume from evidence
 
 1. Reuse this collection's status snapshot if fresh (2 minutes foreground,
-   10 background); otherwise refresh it once without fetching. Events about
+   10 background); otherwise refresh it once without fetching git remotes. Events about
    one PR go directly to that PR's current facts. See the policy for invalid
    snapshots, rate limits and authoritative checks before actions.
 2. Reuse any existing follower. Determine current head/base, PR state, checks,
