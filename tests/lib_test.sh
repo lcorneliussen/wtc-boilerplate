@@ -384,6 +384,20 @@ unset -f mv
 assert_eq "atomic" "$(cat "$calls_file")" "old and new answers coexist until rename"
 assert_eq "the answer" "$(cat "$f")" "the new answer was published"
 
+it "cache removal between checking and reading is a miss under set -e"
+out="$(bash -c '
+  set -e
+  . "$1"
+  FORGE_CACHE="$2"
+  cache_file="$(_forge_cache_path test disappearing)"
+  printf "cached answer\n" > "$cache_file"
+  cat() { rm -f "$1"; command cat "$@"; }
+  fresh() { printf "fresh answer\n"; }
+  _forge_cached test disappearing 90 fresh
+  printf "still running\n"
+' cache-race "$HARNESS_DIR/tools/lib.sh" "$FORGE_CACHE")"
+assert_eq $'fresh answer\nstill running' "$out"
+
 it "failed commands with partial output are not cached"
 partial_failure() { printf 'partial answer\n'; return 1; }
 assert_empty "$(_forge_cached test failed 90 partial_failure)"

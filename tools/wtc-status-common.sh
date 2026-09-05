@@ -2058,21 +2058,31 @@ mouse_dragging() {
 # wake-up every minute to repaint something nobody is reading.
 #
 # herdr injects HERDR_SESSION and HERDR_PANE_ID into every pane, and knows
-# which pane is current. The check is a local socket call — no forge, no
-# network, nothing that counts against a rate limit.
+# whether the requested pane is focused. The check is a local socket call —
+# no forge, no network, nothing that counts against a rate limit.
 #
 # Unknown counts as focused, deliberately. Outside herdr, without the env, or
 # if the query fails, the answer is "assume someone is watching": guessing
 # background makes a pane a human *is* looking at feel broken, while guessing
 # foreground only costs what the tool cost before this existed.
 status_pane_focused() {
-  local _cur
+  local _focused
   [ -n "${HERDR_SESSION:-}" ] && [ -n "${HERDR_PANE_ID:-}" ] || return 0
   command -v herdr >/dev/null 2>&1 || return 0
-  _cur="$(herdr --session "$HERDR_SESSION" pane current 2>/dev/null \
-          | tr '{},' '\n\n\n' | sed -n '/"pane_id":"/{s/.*"pane_id":"\([^"]*\)".*/\1/p;q;}')"
-  [ -n "$_cur" ] || return 0
-  [ "$_cur" = "$HERDR_PANE_ID" ]
+  # "current" resolves the caller's pane, even when it is hidden. Its ID is
+  # therefore not evidence of focus: only an explicit focused=false for the
+  # requested pane justifies the slower interval.
+  _focused="$(herdr --session "$HERDR_SESSION" pane current --pane "$HERDR_PANE_ID" 2>/dev/null \
+    | python3 -c '
+import json, sys
+try:
+    pane = json.load(sys.stdin)["result"]["pane"]
+    if pane.get("pane_id") == sys.argv[1] and pane.get("focused") is False:
+        print("false")
+except (ValueError, TypeError, KeyError, AttributeError):
+    pass
+' "$HERDR_PANE_ID" 2>/dev/null)" || return 0
+  [ "$_focused" != false ]
 }
 
 # The interval to wait before the next refresh, re-decided during the wait:

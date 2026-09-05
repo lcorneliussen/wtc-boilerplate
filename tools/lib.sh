@@ -1391,8 +1391,11 @@ _forge_cached() { # <kind> <key> <ttl> <cmd...>
   _fc_ttl="$3"; shift 3
   case "$_fc_ttl" in ''|*[!0-9]*) _fc_ttl=90 ;; esac
   _fc_ttl=$((10#$_fc_ttl))
-  if [ -f "$_fc_f" ] && [ "$(file_age_secs "$_fc_f")" -lt "$_fc_ttl" ]; then
-    cat "$_fc_f"
+  # Cache cleanup can remove a file after the existence/age checks. A failed
+  # read is a miss, including for callers running under set -e.
+  if [ -f "$_fc_f" ] && [ "$(file_age_secs "$_fc_f")" -lt "$_fc_ttl" ] && \
+     _fc_out="$(cat "$_fc_f" 2>/dev/null)"; then
+    printf '%s\n' "$_fc_out"
     return 0
   fi
   _fc_out="$("$@")" || return 0

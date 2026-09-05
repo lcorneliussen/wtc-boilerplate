@@ -205,13 +205,42 @@ assert_contains "$out" "cannot secure PR/pipeline cache directories"
 assert_contains "$out" "$ws/cache-link" "the error identifies the rejected cache path"
 assert_not_contains "$out" "adapter called"
 
-it "focus detection keeps the caller variable and uses the first pane match"
+it "focus detection keeps the caller variable"
 assert_eq "caller" "$(status_eval '
   HERDR_SESSION=test HERDR_PANE_ID=focused
-  _cur=caller
-  herdr() { printf "{\"pane_id\":\"focused\"},{\"pane_id\":\"other\"}\n"; }
+  _focused=caller
+  herdr() { printf "{\"result\":{\"pane\":{\"pane_id\":\"focused\",\"focused\":true}}}\n"; }
   status_pane_focused
-  printf "%s\n" "$_cur"')"
+  printf "%s\n" "$_focused"')"
+
+focus_interval() {
+  FOCUS_JSON="$1" FOCUS_RC="${2:-0}" status_eval '
+    HERDR_SESSION=test HERDR_PANE_ID=caller
+    herdr() {
+      [ "$*" = "--session test pane current --pane caller" ] || return 1
+      printf "%s\n" "$FOCUS_JSON"
+      return "$FOCUS_RC"
+    }
+    current_interval'
+}
+
+it "a matching caller pane can still be unfocused"
+# herdr resolves current relative to the caller; pane_id equality alone used
+# to make every hidden status pane refresh at the foreground interval.
+assert_eq "300" "$(focus_interval '{"result":{"pane":{"pane_id":"caller","focused":false}}}')"
+assert_eq "30" "$(focus_interval '{"result":{"pane":{"pane_id":"caller","focused":true}}}')"
+
+it "missing, malformed and unrelated focus evidence uses the foreground interval"
+for focus_json in \
+  '{"result":{"pane":{"pane_id":"caller"}}}' \
+  '{"result":{"pane":{"pane_id":"caller","focused":"false"}}}' \
+  '{"result":{"pane":{"pane_id":"other","focused":false}}}' \
+  '{"result":null}' \
+  'not JSON'; do
+  assert_eq "30" "$(focus_interval "$focus_json")"
+done
+assert_eq "30" "$(focus_interval '{"result":{"pane":{"pane_id":"caller","focused":false}}}' 1)" \
+  "a failed command cannot supply authoritative unfocused state"
 
 it "an unfocused pane waits longer than a focused one"
 assert_eq "300" "$(status_eval 'status_pane_focused() { return 1; }; current_interval')"
