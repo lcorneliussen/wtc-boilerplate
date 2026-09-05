@@ -868,7 +868,7 @@ herdr_ensure_browse_pane() { # <session> <workspace> <cwd> -> pane id
 herdr_ensure_tui_pane() { herdr_ensure_browse_pane "$@"; } # leftover name
 
 # Socket for the collection's browse nvim (--listen). Keyed by the workspace
-# root as well as the collection: every workspace on a machine tends to have a
+# root's basename as well as the collection: every workspace tends to have a
 # `main`, and one shared /tmp/wtc-browse-main.nvim meant the second
 # workspace's browse pane died with "address already in use" while its status
 # clicks reached the first one's editor. The root's basename already names the
