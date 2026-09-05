@@ -202,6 +202,7 @@ out="$(status_eval '
 ' 2>&1)"
 assert_neq "0" "$?"
 assert_contains "$out" "cannot secure PR/pipeline cache directories"
+assert_contains "$out" "$ws/cache-link" "the error identifies the rejected cache path"
 assert_not_contains "$out" "adapter called"
 
 it "focus detection keeps the caller variable and uses the first pane match"

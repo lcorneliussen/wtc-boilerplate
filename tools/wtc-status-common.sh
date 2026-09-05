@@ -1253,7 +1253,7 @@ load_snapshot() {
   progress_units "$_prog_n"
 
   _private_cache_dir "$PR_CACHE" && _private_cache_dir "$PIPE_CACHE" || {
-    echo "error: cannot secure PR/pipeline cache directories" >&2
+    printf 'error: cannot secure PR/pipeline cache directories: %s and %s\n' "$PR_CACHE" "$PIPE_CACHE" >&2
     return 1
   }
   _prog_jobs=0
