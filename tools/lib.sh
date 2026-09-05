@@ -880,6 +880,7 @@ herdr_ensure_tui_pane() { herdr_ensure_browse_pane "$@"; } # leftover name
 # the full pair — still unique and stable, no longer readable, which is the
 # right trade for a name nobody types.
 wtc_browse_socket() { # <collection-name>
+  local _bs _bsum
   _bs="/tmp/wtc-browse-$(basename "$ROOT")-$1.nvim"
   if [ "$(printf '%s' "$_bs" | wc -c | tr -d ' ')" -gt 100 ]; then
     _bsum="$(printf '%s/%s' "$ROOT" "$1" | cksum | cut -d' ' -f1)"
@@ -1362,8 +1363,18 @@ print("\t".join([str(d.get("id", sys.argv[2])), state, "NONE", "UNKNOWN",
 # `rm -rf` clears the lot, and every pane on the machine shares the entries.
 FORGE_CACHE="${TMPDIR:-/tmp}/wtc-status-$(id -u)"
 
+_private_cache_dir() { # <directory> — create/tighten only an owned real directory
+  local _cache_dir="$1"
+  [ -n "$_cache_dir" ] && [ ! -L "$_cache_dir" ] || return 1
+  if [ ! -d "$_cache_dir" ]; then
+    (umask 077; mkdir -p "$_cache_dir") 2>/dev/null || return 1
+  fi
+  [ ! -L "$_cache_dir" ] && [ -d "$_cache_dir" ] && [ -O "$_cache_dir" ] || return 1
+  chmod 700 "$_cache_dir" 2>/dev/null
+}
+
 _forge_cache_path() { # <kind> <key> -> file
-  mkdir -p "$FORGE_CACHE" 2>/dev/null || true
+  _private_cache_dir "$FORGE_CACHE" || return 1
   printf '%s/%s-%s\n' "$FORGE_CACHE" "$1" \
     "$(printf '%s' "$2" | tr -c 'A-Za-z0-9._@#-' '_')"
 }
@@ -1376,7 +1387,8 @@ _forge_cache_path() { # <kind> <key> -> file
 # table that stays wrong long after the network came back.
 _forge_cached() { # <kind> <key> <ttl> <cmd...>
   local _fc_f _fc_ttl _fc_out _fc_tmp
-  _fc_f="$(_forge_cache_path "$1" "$2")"; _fc_ttl="$3"; shift 3
+  _fc_f="$(_forge_cache_path "$1" "$2")" || _fc_f=""
+  _fc_ttl="$3"; shift 3
   case "$_fc_ttl" in ''|*[!0-9]*) _fc_ttl=90 ;; esac
   _fc_ttl=$((10#$_fc_ttl))
   if [ -f "$_fc_f" ] && [ "$(file_age_secs "$_fc_f")" -lt "$_fc_ttl" ]; then
@@ -1384,7 +1396,7 @@ _forge_cached() { # <kind> <key> <ttl> <cmd...>
     return 0
   fi
   _fc_out="$("$@")" || return 0
-  if [ -n "$_fc_out" ] && _fc_tmp="$(mktemp "${_fc_f}.XXXXXX" 2>/dev/null)"; then
+  if [ -n "$_fc_f" ] && [ -n "$_fc_out" ] && _fc_tmp="$(mktemp "${_fc_f}.XXXXXX" 2>/dev/null)"; then
     # Publish a complete answer in one rename; other panes may be reading.
     if ! { printf '%s\n' "$_fc_out" > "$_fc_tmp" && mv -f "$_fc_tmp" "$_fc_f"; } 2>/dev/null; then
       rm -f "$_fc_tmp" 2>/dev/null || true

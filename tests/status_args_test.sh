@@ -172,19 +172,37 @@ it "pipeline adapters populate GitHub tip and production snapshots"
 # real snapshot collection. Both fetching and consuming facts must reach the
 # adapters, including when a fork configures a separate production branch.
 out="$(status_eval '
+  PR_CACHE="$ROOT/private-pr-cache" PIPE_CACHE="$ROOT/private-pipe-cache"
+  mkdir -p "$PR_CACHE"
+  chmod 755 "$PR_CACHE"
   slug_for_worktree() { printf "example/widget\n"; }
   production_ref_for() { printf "origin/release\n"; }
   pipe_fetch_bg() { printf "fetch %s %s\n" "$1" "$2" >> "$ROOT/pipe-calls"; }
   pipe_facts() { printf "42\tSUCCESS\tdeadbeef\thttps://example.test/build/%s\n" "$2"; }
   load_snapshot
+  python3 -c "import os,sys; print([oct(os.stat(p).st_mode & 0o777) for p in sys.argv[1:]])" "$PR_CACHE" "$PIPE_CACHE"
   cat "$ROOT/pipe-calls" "$_snapshot_ndjson"
 ')"
+assert_contains "$out" "['0o700', '0o700']" "existing PR and newly created pipeline caches are private"
 assert_contains "$out" "fetch example/widget main"
 assert_contains "$out" "fetch example/widget release"
 assert_contains "$out" '"tip_checks": "SUCCESS"'
 assert_contains "$out" '"prod_checks": "SUCCESS"'
 assert_contains "$out" '"tip_url": "https://example.test/build/main"'
 assert_contains "$out" '"prod_url": "https://example.test/build/release"'
+
+it "snapshot collection refuses a cache symlink before calling adapters"
+out="$(status_eval '
+  mkdir "$ROOT/cache-target"
+  ln -s "$ROOT/cache-target" "$ROOT/cache-link"
+  PR_CACHE="$ROOT/cache-link"
+  pr_fetch_bg() { echo "adapter called"; }
+  pipe_fetch_bg() { echo "adapter called"; }
+  load_snapshot
+' 2>&1)"
+assert_neq "0" "$?"
+assert_contains "$out" "cannot secure PR/pipeline cache directories"
+assert_not_contains "$out" "adapter called"
 
 it "focus detection keeps the caller variable and uses the first pane match"
 assert_eq "caller" "$(status_eval '

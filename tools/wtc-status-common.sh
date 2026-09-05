@@ -1252,7 +1252,10 @@ load_snapshot() {
   fi
   progress_units "$_prog_n"
 
-  mkdir -p "$PR_CACHE" "$PIPE_CACHE" 2>/dev/null || true
+  _private_cache_dir "$PR_CACHE" && _private_cache_dir "$PIPE_CACHE" || {
+    echo "error: cannot secure PR/pipeline cache directories" >&2
+    return 1
+  }
   _prog_jobs=0
   for c in "$ROOT"/*/; do
     c="${c%/}"

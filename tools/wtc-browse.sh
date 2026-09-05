@@ -24,7 +24,8 @@ Where it opens depends on who launched it:
   --session <n> herdr session
 
 Status-pane clicks talk to this nvim over a listen socket
-(/tmp/wtc-browse-<collection>.nvim).
+(/tmp/wtc-browse-<workspace-basename>-<collection>.nvim; long names are
+shortened and checksummed to fit the platform socket-path limit).
 EOF
   exit "${1:-1}"
 }

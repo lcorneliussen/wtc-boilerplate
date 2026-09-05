@@ -21,6 +21,11 @@ assert_ok test "${#first_socket}" -le 100
 assert_neq "$first_socket" "$second_socket"
 assert_eq "$first_socket" "$(wtc_browse_socket "${long_name}a")"
 
+it "browse socket helpers do not overwrite caller variables"
+_bs=caller _bsum=checksum
+wtc_browse_socket "$long_name" >/dev/null
+assert_eq "caller checksum" "$_bs $_bsum"
+
 # --- registry parsing -------------------------------------------------------
 # The registry is parsed with awk on a shape that is load-bearing (a block
 # starts at `- name:`, every other field is `key: value`). These tests are what
@@ -289,6 +294,27 @@ assert_contains "$(wtc_status_cache_rows snap)" "interrupted" "and the new one l
 # left behind and the call counts below are whatever happened last time.
 FORGE_CACHE="$(mktemp_dir forgecache)"
 
+cache_mode() { python3 -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$1"; }
+
+it "forge cache directories are private on creation and after reuse"
+cache_parent="$(mktemp_dir privatecache)"
+assert_ok bash -c '. "$1"; umask 022; FORGE_CACHE="$2"; _forge_cache_path test fresh' cache-test \
+  "$HARNESS_DIR/tools/lib.sh" "$cache_parent/new"
+assert_eq "700" "$(cache_mode "$cache_parent/new")"
+chmod 755 "$cache_parent/new"
+FORGE_CACHE="$cache_parent/new" _forge_cache_path test existing >/dev/null
+assert_eq "700" "$(cache_mode "$cache_parent/new")"
+
+it "private cache setup rejects symlinks without changing their targets"
+mkdir "$cache_parent/target"
+chmod 755 "$cache_parent/target"
+ln -s "$cache_parent/target" "$cache_parent/link"
+assert_fails _private_cache_dir "$cache_parent/link"
+assert_eq "755" "$(cache_mode "$cache_parent/target")"
+if [ ! -O / ]; then
+  assert_fails _private_cache_dir /
+fi
+
 it "a second call inside the TTL does not re-run the command"
 calls_file="$(mktemp_dir fc)/calls"; : > "$calls_file"
 counted() { echo x >> "$calls_file"; printf 'the answer\n'; }
@@ -360,3 +386,9 @@ assert_eq "the answer" "$(_forge_cached test failed 90 counted)"
 
 it "an unwritable cache still returns the fresh answer"
 assert_eq "the answer" "$(FORGE_CACHE=/dev/null/not-a-directory _forge_cached test unavailable 90 counted)"
+
+it "failed cache setup never creates a temporary file in the working directory"
+cache_cwd="$(mktemp_dir cachecwd)"
+assert_eq "the answer" "$(cd "$cache_cwd"; FORGE_CACHE="$cache_parent/link" _forge_cached test unsafe 90 counted)"
+assert_eq "0" "$(python3 -c 'import os,sys; print(len(os.listdir(sys.argv[1])))' "$cache_cwd")"
+assert_eq "0" "$(python3 -c 'import os,sys; print(len(os.listdir(sys.argv[1])))' "$cache_parent/target")"
