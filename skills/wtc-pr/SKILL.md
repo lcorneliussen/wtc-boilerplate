@@ -133,9 +133,11 @@ This is how `wtc-catch-up` and `wtc-status` find this PR later — a local
 mapping in `<collection>/.wtc-prs`, not a forge label.
 It survives everything a label would, for the one thing that actually matters
 here: this collection's own tools reading it back. `tools/wtc-pr.sh list`
-shows what is currently enlisted; `unlist` drops a row that merged, closed, or
-was enlisted by mistake — `wtc-catch-up` does the `unlist` itself once a
-merged branch is returned to the tip, so this is rarely a manual step.
+shows what is currently enlisted. Keep merged PRs enlisted while main checks
+or required delivery steps remain; returning the worktree to the tip does not
+end those obligations. Recent merged rows can age into the status archive.
+Use `unlist` for a mistaken enlistment, or after delivery is verified or its
+remaining obligations are explicitly handed off in the PR/issue.
 
 A `wtc:<collection>` **label is optional now**, not how anything finds the PR.
 Add one only if a repo's own conventions want it (a team dashboard filtering

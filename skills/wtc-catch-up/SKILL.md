@@ -73,9 +73,9 @@ A branch enlisted there is asked about directly
 (`gh pr view --repo <slug> <n> --json state,isDraft,title`); an OPEN or DRAFT
 state anywhere in the enlistment wins over anything else recorded, since a
 worktree with two enlisted numbers on the same branch is rare and "still
-live" is the safer read. A **merged** enlistment is pruned from `.wtc-prs`
-once the worktree is returned to the tip (§2.1) — the file only ever lists
-work still in flight.
+live" is the safer read. Keep a **merged** PR enlisted after returning the
+worktree to the tip (§3.1) while main checks or required delivery remain.
+Status may archive old rows; that does not end `wtc-follow` ownership.
 
 A branch with **no enlistment** (never enlisted, or the enlistment predates
 the PR) falls back to asking GitHub for that one branch, in every state:
@@ -110,7 +110,7 @@ another working branch, if the registry names one).
 |---|---|
 | **Detached**, behind the tip | Stash if dirty (incl. untracked); `git -C <wt> checkout --detach <ref>`; pop the stash. |
 | **Detached**, already at the tip | Nothing — there is no move to make, dirty or not. |
-| On a branch, **PR merged** (§2), clean, nothing beyond the base | §3.1 — return to tip, prune the local ref, unlist. |
+| On a branch, **PR merged** (§2), clean, nothing beyond the base | §3.1 — return to tip, prune the local ref, retain delivery tracking. |
 | On a branch, **PR merged**, but dirty or with post-merge commits | §3.2 — that is follow-up work; give it a branch of its own first. |
 | On a **live** branch (no PR, or PR open/draft), behind the tip | §3.3 — merge the tip in; §3.3.1 pushes it when a PR exists. |
 | On a **live** branch, already current | Nothing. |
@@ -127,8 +127,11 @@ the per-issue record, which is the one thing catch-up must not do.
 git -C <wt> rev-list --count <default_ref>..HEAD   # must be 0
 git -C <wt> checkout --detach <default_ref>
 git -C <wt> branch -d <branch>
-harness/tools/wtc-pr.sh unlist <repo> <n>           # if it was enlisted
 ```
+
+Retain the PR's enlistment until delivery is verified or its remaining
+obligations are explicitly handed off in the PR/issue. Only then may an
+unneeded row be removed with `harness/tools/wtc-pr.sh unlist <repo> <n>`.
 
 `git branch -d` (never `-D`) is the safety net: it refuses to delete anything
 not genuinely merged, and since this policy merges with merge commits rather than
