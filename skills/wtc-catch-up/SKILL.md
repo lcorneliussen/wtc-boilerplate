@@ -5,6 +5,69 @@ description: Bring a worktree collection up to date with its remotes — fetch a
 
 # Catch a wtc up
 
+## Selected repositories and cross-collection rollout
+
+Use `harness/tools/catch-up.sh` for a repeatable catch-up and a collected
+report. Cross-collection writes require the user's explicit scope; a local
+catch-up does not authorize `--all`.
+
+```bash
+harness/tools/catch-up.sh --all --harness-only --dry-run --json
+harness/tools/catch-up.sh --all --harness-only --reload-status
+harness/tools/catch-up.sh --repos harness,widget --clean-only --json
+harness/tools/catch-up.sh --all --repos widget --report /path/to/rollout.json
+```
+
+`--repos` accepts comma-separated registry or sibling names; `harness` always
+selects the `harness/` sibling, including forks whose registry uses another
+name. Selection limits both fetches and worktree changes. Shared selected
+owners are fetched once for the entire sweep. A name matching no checked-out
+repository is an error before mutations. Dry-run uses local refs and performs
+no fetch, hook, worktree or pane writes; an explicit `--report` still saves
+the requested report.
+
+`--all` defaults to clean worktrees only. Dirty trees, worktrees in a Git
+operation, and detached commits not contained in the default tip remain
+untouched with `needs-owner` outcomes. Clean live branches may merge the tip;
+conflicts are aborted back to the original tree and handed to their owning
+collection. Keep the existing stash/update/restore behavior for a local
+invocation unless `--clean-only` is requested. Never remove untracked files
+to make a rollout proceed.
+
+Collection-root skills, MCP and environment hooks run only when the selected
+harness updates successfully or is already current. Secret linking is scoped
+to each successful selected repo. Missing optional target hooks are reported
+as skipped; do not substitute another collection's generator. This keeps
+older forks usable without assuming they ship `refresh-env.sh` or every hook.
+
+`--reload-status` is explicit authorization to interrupt and restart eligible
+status panes. It finds the configured herdr session and workspace, verifies
+the `status` pane contains a status command or idle shell, and refuses agent
+occupants and unrelated processes. It never restarts browse/agent panes or
+creates workspaces. Clean, already-current harnesses are eligible too. A
+restart is reported only after the status process is observed; unavailable
+sessions, missing panes and failed restarts remain visible in the report.
+
+The tool pins its initiating implementation while targets update, so an
+initiator self-update cannot replace the running sweep. Every repo result
+records source, target and resulting SHAs. Fetches, hooks and pane results
+are separate rows, including failures. Normal runs save JSON and a readable
+`.md` companion in the initiating collection (`.wtc-catch-up.json` by default),
+even after partial failure; `--json` also emits the JSON on stdout. Nonzero
+exit means some work failed or needs its owner, not that all updates failed.
+
+Collect `needs-owner` rows in the initiating session. Give each owning
+collection agent its repo, source/target SHAs, reason and report location
+through an available authorized messaging channel; keep writes in that
+owner's collection with its existing writer. If no live messaging mechanism
+is available, report the explicit handoff needed. A report file cannot wake
+an idle agent. On resumption, inspect current state before resolving, pushing
+or retrying; don't replay the fleet operation blindly. Durable follow-ups
+belong in the relevant PR/issue, since local reports disappear on retirement.
+
+The detailed steps below describe a local catch-up. For a fleet sweep, the
+clean-only and owner-handoff rules above take precedence over local stashing.
+
 Worktrees share bare owners, so "pull" is the wrong mental model: you fetch
 the **bares**, then move each worktree individually under rules that differ by
 what it is checked out on. Catch-up is also not git-only — files and skills
