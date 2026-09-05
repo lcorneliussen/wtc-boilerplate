@@ -6,6 +6,21 @@
 ws="$(make_workspace)"
 load_lib "$ws"
 
+# --- browse sockets ---------------------------------------------------------
+
+it "browse sockets distinguish workspaces with the same collection name"
+first_socket="$(ROOT=/tmp/first-workspace wtc_browse_socket main)"
+assert_neq "$first_socket" "$(ROOT=/tmp/second-workspace wtc_browse_socket main)"
+assert_eq "$first_socket" "$(ROOT=/tmp/first-workspace wtc_browse_socket main)"
+
+it "long browse socket names stay bounded without losing their suffix identity"
+long_name="$(printf '%0120d' 0)"
+first_socket="$(wtc_browse_socket "${long_name}a")"
+second_socket="$(wtc_browse_socket "${long_name}b")"
+assert_ok test "${#first_socket}" -le 100
+assert_neq "$first_socket" "$second_socket"
+assert_eq "$first_socket" "$(wtc_browse_socket "${long_name}a")"
+
 # --- registry parsing -------------------------------------------------------
 # The registry is parsed with awk on a shape that is load-bearing (a block
 # starts at `- name:`, every other field is `key: value`). These tests are what

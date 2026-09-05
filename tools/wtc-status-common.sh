@@ -1271,7 +1271,7 @@ load_snapshot() {
           _prog_jobs=$((_prog_jobs + 1))
         fi
       fi
-      if [ -n "$wslug" ] && [ "$(forge_for_slug "$wslug")" = bitbucket ]; then
+      if [ -n "$wslug" ]; then
         tip_br="$(default_ref_for "$wrepo")"; tip_br="${tip_br#origin/}"
         prod_br="$(production_ref_for "$wrepo")"; prod_br="${prod_br#origin/}"
         pipe_fetch_bg "$wslug" "$tip_br"
@@ -1342,7 +1342,7 @@ load_snapshot() {
 
       tip_br=""; tip_checks=""; tip_build=""; tip_url=""
       prod_br=""; prod_checks=""; prod_build=""; prod_url=""
-      if [ -n "$slug" ] && [ "$(forge_for_slug "$slug")" = bitbucket ]; then
+      if [ -n "$slug" ]; then
         tip_ref="$(default_ref_for "$repo")"
         tip_br="${tip_ref#origin/}"
         prod_ref="$(production_ref_for "$repo")"
@@ -2063,10 +2063,11 @@ mouse_dragging() {
 # background makes a pane a human *is* looking at feel broken, while guessing
 # foreground only costs what the tool cost before this existed.
 status_pane_focused() {
+  local _cur
   [ -n "${HERDR_SESSION:-}" ] && [ -n "${HERDR_PANE_ID:-}" ] || return 0
   command -v herdr >/dev/null 2>&1 || return 0
   _cur="$(herdr --session "$HERDR_SESSION" pane current 2>/dev/null \
-          | tr '{},' '\n\n\n' | sed -n 's/.*"pane_id":"\([^"]*\)".*/\1/p' | head -n1)"
+          | tr '{},' '\n\n\n' | sed -n '/"pane_id":"/{s/.*"pane_id":"\([^"]*\)".*/\1/p;q;}')"
   [ -n "$_cur" ] || return 0
   [ "$_cur" = "$HERDR_PANE_ID" ]
 }

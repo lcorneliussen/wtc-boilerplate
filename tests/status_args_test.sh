@@ -167,6 +167,33 @@ status_eval() {
   ' status-test "$ws/main/harness/tools/wtc-status-common.sh" "$1"
 }
 
+it "pipeline adapters populate GitHub tip and production snapshots"
+# The fixture stays offline: replace only the forge adapters, then run the
+# real snapshot collection. Both fetching and consuming facts must reach the
+# adapters, including when a fork configures a separate production branch.
+out="$(status_eval '
+  slug_for_worktree() { printf "example/widget\n"; }
+  production_ref_for() { printf "origin/release\n"; }
+  pipe_fetch_bg() { printf "fetch %s %s\n" "$1" "$2" >> "$ROOT/pipe-calls"; }
+  pipe_facts() { printf "42\tSUCCESS\tdeadbeef\thttps://example.test/build/%s\n" "$2"; }
+  load_snapshot
+  cat "$ROOT/pipe-calls" "$_snapshot_ndjson"
+')"
+assert_contains "$out" "fetch example/widget main"
+assert_contains "$out" "fetch example/widget release"
+assert_contains "$out" '"tip_checks": "SUCCESS"'
+assert_contains "$out" '"prod_checks": "SUCCESS"'
+assert_contains "$out" '"tip_url": "https://example.test/build/main"'
+assert_contains "$out" '"prod_url": "https://example.test/build/release"'
+
+it "focus detection keeps the caller variable and uses the first pane match"
+assert_eq "caller" "$(status_eval '
+  HERDR_SESSION=test HERDR_PANE_ID=focused
+  _cur=caller
+  herdr() { printf "{\"pane_id\":\"focused\"},{\"pane_id\":\"other\"}\n"; }
+  status_pane_focused
+  printf "%s\n" "$_cur"')"
+
 it "an unfocused pane waits longer than a focused one"
 assert_eq "300" "$(status_eval 'status_pane_focused() { return 1; }; current_interval')"
 assert_eq "30" "$(status_eval 'status_pane_focused() { return 0; }; current_interval')"
