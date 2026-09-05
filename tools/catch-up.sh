@@ -35,19 +35,22 @@ all targets and return nonzero. No rebase, force-push, or remote branch deletion
 HELP
 }
 log() { printf 'catch-up: %s\n' "$*" >&2; }
+require_value() {
+  case "$2" in ''|-*) printf '%s requires a value\n' "$1" >&2; exit 2 ;; esac
+}
 all=no dry_run=no clean_only=no reload_status=no output=readable
 selector='' report='' do_skills=yes do_mcp=yes do_env=yes do_secrets=yes
 collections=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) all=yes; clean_only=yes; shift ;;
-    --repos) selector="${2:?--repos requires comma-separated names}"; shift 2 ;;
+    --repos) require_value "$1" "${2:-}"; selector="$2"; shift 2 ;;
     --harness-only) selector=harness; shift ;;
     --clean-only) clean_only=yes; shift ;;
     --reload-status) reload_status=yes; shift ;;
     --dry-run) dry_run=yes; shift ;;
     --json) output=json; shift ;;
-    --report) report="${2:?--report requires a path}"; shift 2 ;;
+    --report) require_value "$1" "${2:-}"; report="$2"; shift 2 ;;
     --no-skills) do_skills=no; shift ;;
     --no-mcp) do_mcp=no; shift ;;
     --no-env) do_env=no; shift ;;
@@ -147,13 +150,28 @@ names = ('wtc-status-tui.sh', 'wtc-status.sh', 'wtc-status-legacy-tui.sh')
 sys.exit(0 if argv and os.path.basename(argv[0]) in names else 1)
 PY
 }
+pane_command() { # session pane; use the foreground group leader, not a renderer child
+  herdr --session "$1" pane process-info --pane "$2" 2>/dev/null | python3 -c '
+import json, shlex, sys
+try:
+    info = json.load(sys.stdin)["result"]["process_info"]
+    group = info["foreground_process_group_id"]
+    leader = next(p for p in info["foreground_processes"] if p.get("pid") == group)
+    argv = leader.get("argv")
+    print(" ".join(shlex.quote(x) for x in argv) if argv else leader.get("cmdline", ""))
+except (KeyError, ValueError, TypeError, StopIteration):
+    pass
+'
+}
 pr_state_for_branch() { # <collection> <repo> <branch>
   coll="$1" repo="$2" branch="$3"
   saw=""
   while IFS=$'\t' read -r r num b url title; do
     [ "$r" = "$repo" ] || continue
     [ "$b" = "$branch" ] || continue
-    st="$(wtc_pr_enrich "$repo" "$num" "$title" "$(wtc_repo_worktree "$coll" "$repo")" \
+    # Lifecycle decisions must not reuse a table's cached OPEN state after
+    # another actor merged the PR. Bypass TTL for this authoritative lookup.
+    st="$(WTC_FORGE_CACHE_AGE=0 wtc_pr_enrich "$repo" "$num" "$title" "$(wtc_repo_worktree "$coll" "$repo")" \
       | awk -F'\t' '{print $2; exit}')"
     # Empty / unknown: gh missing or view failed — do not treat as OPEN (would
     # push) or MERGED (would prune). Keep looking / fall through.
@@ -321,7 +339,7 @@ reload_pane() {
   agent="$(herdr_row_col "$rows" status 3)"
   if [ -z "$pane" ]; then row pane "$collection" status skipped 'no status pane' '' '' ''; return; fi
   if [ -n "$agent" ]; then row pane "$collection" status needs-owner 'status-labelled pane contains an agent; untouched' '' '' ''; return; fi
-  command="$(herdr_pane_fg_cmdline "$session" "$pane")"
+  command="$(pane_command "$session" "$pane")"
   if [ -z "$command" ]; then row pane "$collection" status needs-owner 'foreground process unknown; untouched' '' '' ''; return; fi
   if ! status_process "$command" && ! herdr_cmdline_is_shell "$command"; then
     row pane "$collection" status needs-owner 'status pane runs an unrelated process; untouched' '' '' ''; return
@@ -336,7 +354,7 @@ reload_pane() {
   # Fail closed: the shared idle helper treats missing process data as idle.
   # Here an empty response must never permit typing over an unknown occupant.
   for attempt in 1 2 3 4 5; do
-    command="$(herdr_pane_fg_cmdline "$session" "$pane")"
+    command="$(pane_command "$session" "$pane")"
     if [ -n "$command" ] && herdr_cmdline_is_shell "$command"; then break; fi
     sleep 1
   done
@@ -346,7 +364,7 @@ reload_pane() {
   printf -v status_command 'cd %q && ./harness/tools/wtc-status-tui.sh' "$ROOT/$collection"
   if herdr --session "$session" pane run "$pane" "$status_command" >/dev/null; then
     for attempt in 1 2 3 4 5; do
-      command="$(herdr_pane_fg_cmdline "$session" "$pane")"
+      command="$(pane_command "$session" "$pane")"
       if status_process "$command"; then
         row pane "$collection" status restarted "observed status process in $pane; ongoing health not monitored" '' '' ''; return
       fi

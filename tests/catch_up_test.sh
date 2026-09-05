@@ -7,6 +7,8 @@ export WTC_HARNESS_REPO=agent-harness
 root="$(make_workspace)"
 TEST_TMPDIRS="$TEST_TMPDIRS $root"
 export WTC_CONFIG_ROOT="$root/config"
+export TMPDIR="$root/tmp"
+mkdir -p "$TMPDIR"
 export GIT_CONFIG_COUNT=2 GIT_CONFIG_KEY_0=user.name GIT_CONFIG_VALUE_0=wtc-test
 export GIT_CONFIG_KEY_1=user.email GIT_CONFIG_VALUE_1=wtc-test@example.invalid
 for name in clean dirty conflict detached operating; do
@@ -45,6 +47,9 @@ MOCK
 cat > "$mock/gh" <<'MOCK'
 #!/usr/bin/env bash
 # No PRs in this fixture. Never reach the developer's signed-in forge.
+if [ "$1 $2" = 'pr view' ]; then
+  echo '{"number":777,"state":"MERGED","title":"finished","isDraft":false}'
+fi
 exit 0
 MOCK
 chmod +x "$mock/git" "$mock/gh"
@@ -92,6 +97,11 @@ PY
 it 'unknown selection fails before fetching'
 assert_fails "$runner" --all --repos typo --json "${no_hooks[@]}"
 assert_empty "$(cat "$CATCH_TEST_LOG")"
+it 'missing option arguments consistently return usage errors'
+assert_status 2 "$runner" --repos
+assert_status 2 "$runner" --report
+assert_status 2 "$runner" --repos --all
+assert_empty "$(cat "$CATCH_TEST_LOG")"
 
 it 'local catch-up preserves dirty stash behavior'
 "$runner" --repos harness --json "${no_hooks[@]}" dirty > "$root/local.json" 2> "$root/stderr"
@@ -120,9 +130,17 @@ case "$1 $2" in
   'workspace list') echo '{"result":{"workspaces":[{"label":"clean","workspace_id":"w1"}]}}' ;;
   'pane list') echo '{"result":{"panes":[{"label":"status","pane_id":"w1:p3"},{"label":"browse","pane_id":"w1:p2"},{"label":"agent","pane_id":"w1:p1","agent":"codex"}]}}' ;;
   'pane process-info')
-    if [ -f "$CATCH_TEST_ROOT/restarted" ]; then echo '{"result":{"cmdline":"bash ./harness/tools/wtc-status-tui.sh"}}'
-    elif [ -f "$CATCH_TEST_ROOT/interrupted" ]; then echo '{"result":{"cmdline":"zsh"}}'
-    else printf '{"result":{"cmdline":"%s"}}\n' "${CATCH_TEST_FOREGROUND:-bash ./harness/tools/wtc-status-tui.sh}"; fi ;;
+    if [ -f "$CATCH_TEST_ROOT/restarted" ]; then command='bash ./harness/tools/wtc-status-tui.sh'
+    elif [ -f "$CATCH_TEST_ROOT/interrupted" ]; then command=zsh
+    else command="${CATCH_TEST_FOREGROUND:-bash ./harness/tools/wtc-status-tui.sh}"; fi
+    # Renderer child deliberately precedes the actual process-group leader.
+    python3 - "$command" <<'PY'
+import json,shlex,sys
+print(json.dumps({'result':{'process_info':{'foreground_process_group_id':42,
+ 'foreground_processes':[{'pid':43,'argv':['python3','renderer.py']},
+ {'pid':42,'argv':shlex.split(sys.argv[1])}], 'shell_pid':9}}}))
+PY
+    ;;
   'pane send-keys') printf '%s\n' "$*" >> "$CATCH_TEST_ROOT/pane-calls"; touch "$CATCH_TEST_ROOT/interrupted" ;;
   'pane run') printf '%s\n' "$*" >> "$CATCH_TEST_ROOT/pane-calls"; touch "$CATCH_TEST_ROOT/restarted" ;;
   'agent list') echo '{"result":{"agents":[]}}' ;;
@@ -183,6 +201,17 @@ assert any(r['repo']=='custom-harness' for r in json.load(open(sys.argv[1]))['ou
 PY
 git --git-dir="$root/.bare/agent-harness.git" remote set-url origin "$origin"
 git -C "$root/clean/harness" restore .harness-repos.yml
+
+it 'stale cached OPEN cannot keep a merged branch live'
+git -C "$root/clean/widget" switch -qc completed
+printf 'widget 777 completed - finished\n' > "$root/clean/.wtc-prs"
+cache="$TMPDIR/wtc-status-$(id -u)"
+mkdir -p "$cache"
+printf '777\tOPEN\tSUCCESS\tCLEAN\tnone\tfinished\t\t\n' > "$cache/pr-example_widget#777"
+"$runner" --repos widget --json "${no_hooks[@]}" clean > "$root/merged.json" 2> "$root/stderr"
+assert_eq 0 "$?"
+assert_empty "$(git -C "$root/clean/widget" symbolic-ref -q --short HEAD)"
+assert_file "$root/clean/.wtc-prs" 'delivery enlistment retained'
 
 it 'partial fetch failure still reports every selected repo'
 git --git-dir="$root/.bare/widget.git" remote set-url origin "$root/nonexistent"
