@@ -50,7 +50,20 @@ elif mode == 'finish':
                      'This report does not wake an idle agent or authorize edits in that collection.'])
     encoded = json.dumps(data, indent=2) + '\n'
     markdown = '\n'.join(readable) + '\n'
+    persistence_failed = False
     if report:
-        atomic_write(report, encoded)
-        atomic_write(report + '.md', markdown)
+        try:
+            atomic_write(report, encoded)
+            atomic_write(report + '.md', markdown)
+        except OSError as error:
+            # Never lose the collected outcomes merely because the report
+            # destination became unavailable after work had already started.
+            persistence_failed = True
+            data['exit_status'] = 1
+            data['report_error'] = str(error)
+            encoded = json.dumps(data, indent=2) + '\n'
+            markdown += f'\nReport persistence failed: {error}\n'
+            print(f'catch-up: report persistence failed: {error}', file=sys.stderr)
     print(encoded if output == 'json' else markdown, end='')
+    if persistence_failed:
+        sys.exit(1)

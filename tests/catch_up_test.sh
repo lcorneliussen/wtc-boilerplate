@@ -209,3 +209,12 @@ import json,sys
 p=json.load(open(sys.argv[1])); assert p['initiator']==sys.argv[2]
 assert len([r for r in p['outcomes'] if r['kind']=='repo' and r['outcome']=='updated'])==2
 PY
+
+it 'report write failure still emits the collected JSON'
+: > "$root/report-rows"
+python3 "$HARNESS_SRC/tools/catch-up-report.py" finish "$root/report-rows" "$root/main" no 0 "$root/missing/report.json" json > "$root/report-output.json" 2> "$root/stderr"
+assert_eq 1 "$?"
+assert_ok python3 - "$root/report-output.json" <<'PY'
+import json,sys
+p=json.load(open(sys.argv[1])); assert p['exit_status']==1 and p['report_error']
+PY
