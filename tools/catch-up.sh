@@ -423,7 +423,7 @@ while IFS=$'\t' read -r collection wt repo owner; do
   case "$outcome" in
     updated|current|planned)
       # Run only repo-scoped secrets, never a whole-collection secrets sweep.
-      [ "$do_secrets" = no ] || run_hook link-secrets.sh "secrets:$repo" "$repo"
+      [ "$do_secrets" = no ] || run_hook link-secrets.sh "secrets:$repo" "$(basename "$wt")"
       if [ "$(basename "$wt")" = harness ]; then
         [ "$do_skills" = no ] || run_hook link-skills.sh skills
         [ "$do_mcp" = no ] || run_hook link-mcp.sh mcp

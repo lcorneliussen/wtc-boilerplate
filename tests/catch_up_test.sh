@@ -153,6 +153,20 @@ assert_not_contains "$(cat "$root/secrets-calls")" 'agent-harness'
 # Restore harness to make it eligible for pane testing.
 git -C "$root/clean/harness" restore tools/link-secrets.sh
 
+it 'real secrets hook selects the harness directory rather than its registry name'
+mkdir -p "$WTC_CONFIG_ROOT/harness" "$WTC_CONFIG_ROOT/widget"
+printf 'fixture harness value\n' > "$WTC_CONFIG_ROOT/harness/rollout-sentinel"
+printf 'fixture widget value\n' > "$WTC_CONFIG_ROOT/widget/rollout-sentinel"
+for sibling in harness widget; do
+  exclude="$(git -C "$root/clean/$sibling" rev-parse --git-path info/exclude)"
+  printf '\nrollout-sentinel\n' >> "$exclude"
+done
+"$runner" --harness-only --json --no-skills --no-mcp --no-env clean > "$root/real-secrets.json" 2> "$root/stderr"
+assert_eq 0 "$?"
+assert_ok test -L "$root/clean/harness/rollout-sentinel"
+assert_eq "$WTC_CONFIG_ROOT/harness/rollout-sentinel" "$(readlink "$root/clean/harness/rollout-sentinel")"
+assert_no_file "$root/clean/widget/rollout-sentinel" 'unselected widget remains untouched'
+
 cat > "$mock/herdr" <<'MOCK'
 #!/usr/bin/env bash
 shift 2 # --session name
