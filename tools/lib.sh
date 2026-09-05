@@ -1376,7 +1376,7 @@ _private_cache_dir() { # <directory> — create/tighten only an owned real direc
 _forge_cache_path() { # <kind> <key> -> file
   _private_cache_dir "$FORGE_CACHE" || return 1
   printf '%s/%s-%s\n' "$FORGE_CACHE" "$1" \
-    "$(printf '%s' "$2" | tr -c 'A-Za-z0-9._@#-' '_')"
+    "$(printf '%s' "$2" | LC_ALL=C tr -c 'A-Za-z0-9._@#-' '_')"
 }
 
 # Read a cached answer, or run the command and cache what it prints.

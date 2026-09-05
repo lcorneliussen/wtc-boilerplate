@@ -349,6 +349,11 @@ f="$(_forge_cache_path pr 'owner/repo#42')"
 assert_not_contains "${f#"$FORGE_CACHE/"}" "/" "no directory separator survives"
 assert_contains "$f" "owner_repo#42"
 
+it "cache filename sanitization treats non-ASCII input as bytes in every locale"
+utf8_locale="$(locale -a | awk 'tolower($0) ~ /utf.*8/ {print; exit}')"
+f="$(LC_ALL="${utf8_locale:-C}" _forge_cache_path pr 'owner/répo#42')"
+assert_eq "pr-owner_r__po#42" "${f##*/}"
+
 
 it "cache TTLs accept leading zeros and default invalid values"
 for ttl in 090 abc; do
