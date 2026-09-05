@@ -87,6 +87,16 @@ PY
 assert_file "$root/main/.wtc-catch-up.json"
 assert_no_file "$root/operating/.wtc-catch-up.json" 'report remains at initiator'
 
+it 'a missing collection in preflight does not prevent valid targets'
+"$runner" --harness-only --json "${no_hooks[@]}" missing clean > "$root/preflight.json" 2> "$root/stderr"
+assert_eq 1 "$?"
+assert_ok python3 - "$root/preflight.json" <<'PY'
+import json,sys
+rows=json.load(open(sys.argv[1]))['outcomes']
+assert any(r['kind']=='collection' and r['collection']=='missing' and r['outcome']=='failed' for r in rows)
+assert any(r['kind']=='repo' and r['collection']=='clean' and r['outcome']=='current' for r in rows)
+PY
+
 it 'unavailable PR facts cannot make an enlisted finished branch writable'
 git -C "$root/clean/harness" switch -qc lookup-failed "$base"
 printf 'agent-harness 778 lookup-failed - unknown\n' > "$root/clean/.wtc-prs"
@@ -151,7 +161,10 @@ case "${CATCH_TEST_HERDR_FAIL:-}:$1 $2" in
 esac
 case "$1 $2" in
   'workspace list') echo '{"result":{"workspaces":[{"label":"clean","workspace_id":"w1"}]}}' ;;
-  'pane list') echo '{"result":{"panes":[{"label":"status","pane_id":"w1:p3"},{"label":"browse","pane_id":"w1:p2"},{"label":"agent","pane_id":"w1:p1","agent":"codex"}]}}' ;;
+  'pane list')
+    if [ "${CATCH_TEST_AGENT_APPEARS:-}" = yes ] && [ -f "$CATCH_TEST_ROOT/interrupted" ]; then
+      echo '{"result":{"panes":[{"label":"status","pane_id":"w1:p3","agent":"codex"}]}}'
+    else echo '{"result":{"panes":[{"label":"status","pane_id":"w1:p3"},{"label":"browse","pane_id":"w1:p2"},{"label":"agent","pane_id":"w1:p1","agent":"codex"}]}}'; fi ;;
   'pane process-info')
     if [ -f "$CATCH_TEST_ROOT/restarted" ]; then command='bash ./harness/tools/wtc-status-tui.sh'
     elif [ -f "$CATCH_TEST_ROOT/interrupted" ]; then command=zsh
@@ -183,9 +196,19 @@ assert_ok python3 - "$root/panes.json" <<'PY'
 import json,sys
 p=json.load(open(sys.argv[1])); assert any(r['kind']=='pane' and r['outcome']=='restarted' for r in p['outcomes'])
 PY
-it 'unrelated foreground process is never interrupted'
+it 'a newly arrived agent prevents the status restart command'
 rm "$root/interrupted" "$root/restarted"
 : > "$root/pane-calls"
+export CATCH_TEST_AGENT_APPEARS=yes
+"$runner" --harness-only --reload-status --json "${no_hooks[@]}" clean > "$root/agent-arrived.json" 2> "$root/stderr"
+assert_eq 1 "$?"
+assert_not_contains "$(cat "$root/pane-calls")" 'pane run'
+assert_contains "$(cat "$root/agent-arrived.json")" 'agent appeared'
+unset CATCH_TEST_AGENT_APPEARS
+rm "$root/interrupted"
+: > "$root/pane-calls"
+
+it 'unrelated foreground process is never interrupted'
 export CATCH_TEST_FOREGROUND=nvim
 "$runner" --harness-only --reload-status --json "${no_hooks[@]}" clean > "$root/refused.json" 2> "$root/stderr"
 assert_eq 1 "$?"

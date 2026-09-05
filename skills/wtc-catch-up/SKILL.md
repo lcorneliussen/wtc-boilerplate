@@ -20,11 +20,10 @@ harness/tools/catch-up.sh --all           # every collection under the workspace
 harness/tools/catch-up.sh --dry-run       # report only; touch nothing
 ```
 
-Safe by construction: nothing here rewrites history or force-pushes. Dirty
-trees are **not** skipped — a worktree that actually has a move to make is
-stashed (including untracked files) around it, then the stash is popped. A
-worktree that is already current is left alone regardless of dirty state,
-since there is nothing to move it past.
+Nothing here rewrites history or force-pushes. Local catch-up stashes dirty
+work (including untracked files) around an update and restores it afterward.
+A local worktree already at the tip needs no move. Cross-collection sweeps
+and `--clean-only` leave dirty trees with their owner, as described below.
 
 ## Selected repositories and cross-collection rollout
 

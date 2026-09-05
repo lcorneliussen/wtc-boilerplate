@@ -120,7 +120,7 @@ target_harness_repo() {
   for name in $(registry_all_names); do
     if [ "$name" = "$owner_name" ]; then printf '%s\n' "$name"; return; fi
   done
-  remote="$(git -C "$HARNESS_DIR" config --get remote.origin.url || true)"
+  remote="$(git -C "$HARNESS_DIR" config --get remote.origin.url 2>/dev/null || true)"
   remote="$(normalize_remote "$remote")"
   for name in $(registry_all_names); do
     candidate="$(registry_field "$name" remote)"
@@ -210,8 +210,8 @@ PY_STATE
 # Fetch shared owners only once for the whole invocation, even after failures.
 for collection in "${collections[@]}"; do
   case "$collection" in ''|.|..|*/*|*$'\t'*|*$'\n'*) row collection "$collection" '' failed 'invalid collection name' '' '' ''; continue ;; esac
+  if [ ! -d "$ROOT/$collection/harness" ]; then row collection "$collection" '' failed 'missing harness' '' '' ''; continue; fi
   context "$collection"
-  if [ ! -d "$HARNESS_DIR" ]; then row collection "$collection" '' failed 'missing harness' '' '' ''; continue; fi
   matched=''
   for wt in "$HARNESS_DIR" "$ROOT/$collection"/*/; do
     wt="${wt%/}"
@@ -230,6 +230,7 @@ for collection in "${collections[@]}"; do
 done
 # Reject typos before fetching or changing anything. A selected repo may be
 # absent in some collections; it must match at least one target in the sweep.
+selection_failed=no
 if [ -n "$selector" ]; then
   old_ifs="$IFS"; IFS=,; read -r -a selectors <<EOF_SELECT
 $selector
@@ -238,10 +239,11 @@ EOF_SELECT
   for name in "${selectors[@]}"; do
     if ! awk -F'\t' -v n="$name" '$3 == n {found=1} {p=$2; sub(/^.*\//,"",p); if(p==n)found=1} END{exit !found}' "$work/targets"; then
       row selection "$(basename "$initiator")" "$name" failed 'selector matches no checked-out repository' '' '' ''
+      selection_failed=yes
     fi
   done
 fi
-[ "$failed" -eq 0 ] || exit 1
+[ "$selection_failed" = no ] || exit 1
 while IFS=$'\t' read -r collection wt repo owner; do
   [ -n "$owner" ] || continue
   if awk -F'\t' -v o="$owner" '$1 == o {found=1} END{exit !found}' "$work/fetches"; then continue; fi
@@ -379,9 +381,13 @@ reload_pane() {
   if ! rows="$(herdr_pane_rows "$session" "$ws")"; then
     row pane "$collection" status failed "pane lookup failed before restarting $pane" '' '' ''; return
   fi
-  if [ -z "$command" ] || ! herdr_cmdline_is_shell "$command" \
-     || [ "$(herdr_row_col "$rows" status 2)" != "$pane" ] \
-     || [ -n "$(herdr_row_col "$rows" status 3)" ]; then
+  if [ "$(herdr_row_col "$rows" status 2)" != "$pane" ]; then
+    row pane "$collection" status needs-owner "status pane identity changed from $pane; no command sent" '' '' ''; return
+  fi
+  if [ -n "$(herdr_row_col "$rows" status 3)" ]; then
+    row pane "$collection" status needs-owner "agent appeared in status pane $pane; no command sent" '' '' ''; return
+  fi
+  if [ -z "$command" ] || ! herdr_cmdline_is_shell "$command"; then
     row pane "$collection" status needs-owner "pane $pane did not become a verified shell" '' '' ''; return
   fi
   printf -v status_command 'cd %q && ./harness/tools/wtc-status-tui.sh' "$ROOT/$collection"
