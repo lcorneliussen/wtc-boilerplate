@@ -5,6 +5,12 @@ description: Bring a worktree collection up to date with its remotes — fetch a
 
 # Catch a wtc up
 
+Catch-up integrates work from outside this session. For the session's owned
+PRs, [wtc-follow](../wtc-follow/SKILL.md) carries review, main builds and delivery
+to completion. After catch-up pushes a live branch merge or returns a merged
+branch to the tip, hand those new checks/remaining delivery gates back to its
+existing follower. Catch-up alone does not establish that the task shipped.
+
 Worktrees share bare owners, so "pull" is the wrong mental model: you fetch
 the **bares**, then move each worktree individually under rules that differ by
 what it is checked out on. Catch-up is also not git-only — files and skills
@@ -67,9 +73,9 @@ A branch enlisted there is asked about directly
 (`gh pr view --repo <slug> <n> --json state,isDraft,title`); an OPEN or DRAFT
 state anywhere in the enlistment wins over anything else recorded, since a
 worktree with two enlisted numbers on the same branch is rare and "still
-live" is the safer read. A **merged** enlistment is pruned from `.wtc-prs`
-once the worktree is returned to the tip (§2.1) — the file only ever lists
-work still in flight.
+live" is the safer read. Keep a **merged** PR enlisted after returning the
+worktree to the tip (§3.1) while main checks or required delivery remain.
+Status may archive old rows; that does not end `wtc-follow` ownership.
 
 A branch with **no enlistment** (never enlisted, or the enlistment predates
 the PR) falls back to asking GitHub for that one branch, in every state:
@@ -104,7 +110,7 @@ another working branch, if the registry names one).
 |---|---|
 | **Detached**, behind the tip | Stash if dirty (incl. untracked); `git -C <wt> checkout --detach <ref>`; pop the stash. |
 | **Detached**, already at the tip | Nothing — there is no move to make, dirty or not. |
-| On a branch, **PR merged** (§2), clean, nothing beyond the base | §3.1 — return to tip, prune the local ref, unlist. |
+| On a branch, **PR merged** (§2), clean, nothing beyond the base | §3.1 — return to tip, prune the local ref, retain delivery tracking. |
 | On a branch, **PR merged**, but dirty or with post-merge commits | §3.2 — that is follow-up work; give it a branch of its own first. |
 | On a **live** branch (no PR, or PR open/draft), behind the tip | §3.3 — merge the tip in; §3.3.1 pushes it when a PR exists. |
 | On a **live** branch, already current | Nothing. |
@@ -121,8 +127,11 @@ the per-issue record, which is the one thing catch-up must not do.
 git -C <wt> rev-list --count <default_ref>..HEAD   # must be 0
 git -C <wt> checkout --detach <default_ref>
 git -C <wt> branch -d <branch>
-harness/tools/wtc-pr.sh unlist <repo> <n>           # if it was enlisted
 ```
+
+Retain the PR's enlistment until delivery is verified or its remaining
+obligations are explicitly handed off in the PR/issue. Only then may an
+unneeded row be removed with `harness/tools/wtc-pr.sh unlist <repo> <n>`.
 
 `git branch -d` (never `-D`) is the safety net: it refuses to delete anything
 not genuinely merged, and since this policy merges with merge commits rather than
@@ -174,7 +183,10 @@ catch-up is not the moment to be making that call:
 git -C <wt> merge --abort
 ```
 
-Then report the conflicting paths and let the user decide.
+Report the conflicting paths to the branch owner. For work this session owns,
+return to `wtc-follow` / `wtc-pr` to resolve routine conflicts, validate and
+push. Ask the user only for a semantic or scope decision the task does not
+already settle; catch-up itself does not choose sides for another owner.
 
 ### 3.3.1 If the branch has a PR (open or draft), push the merge
 
