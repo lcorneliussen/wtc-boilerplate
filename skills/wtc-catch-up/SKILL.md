@@ -27,10 +27,10 @@ harness/tools/catch-up.sh --dry-run       # report only; touch nothing
 ```
 
 Safe by construction: nothing here rewrites history or force-pushes. Dirty
-trees are **not** skipped — a worktree that actually has a move to make is
-stashed (including untracked files) around it, then the stash is popped. A
-worktree that is already current is left alone regardless of dirty state,
-since there is nothing to move it past.
+trees are **not** skipped — a worktree that actually has a move to make uses
+`merge --autostash`, `switch --merge`, or an explicit stash (including
+untracked) around the move. A worktree that is already current is left alone
+regardless of dirty state, since there is nothing to move it past.
 
 ## 1. Fetch every owner
 
@@ -110,9 +110,9 @@ another working branch, if the registry names one).
 |---|---|
 | **Detached**, behind the tip | Stash if dirty (incl. untracked); `git -C <wt> checkout --detach <ref>`; pop the stash. |
 | **Detached**, already at the tip | Nothing — there is no move to make, dirty or not. |
-| On a branch, **PR merged** (§2), clean, nothing beyond the base | §3.1 — return to tip, prune the local ref, retain delivery tracking. |
-| On a branch, **PR merged**, but dirty or with post-merge commits | §3.2 — that is follow-up work; give it a branch of its own first. |
-| On a **live** branch (no PR, or PR open/draft), behind the tip | §3.3 — merge the tip in; §3.3.1 pushes it when a PR exists. |
+| On a branch, **PR merged** (§2), and work has **landed** on tip | §3.1 — return to tip, prune the local ref, retain delivery tracking. |
+| On a branch, **PR merged**, but commits beyond tip are **not** on tip (real follow-up) | §3.2 — rename onto a follow-up branch first. Dirty-only is OK for §3.1 (stash / `--merge`). |
+| On a **live** branch (no PR, or PR open/draft), behind the tip | §3.3 — merge the tip in (`--autostash` when dirty); §3.3.1 pushes it when a PR exists. |
 | On a **live** branch, already current | Nothing. |
 | Mid-merge / mid-rebase / mid-cherry-pick | Nothing. Report it — someone is in the middle of something. |
 | On a repo's default **branch** (legacy shape) | `git -C <wt> merge --ff-only @{u}` if clean, and suggest detaching so the branch stops being pinned to this collection. |
@@ -123,24 +123,38 @@ the per-issue record, which is the one thing catch-up must not do.
 
 ### 3.1 A merged branch: back to the tip, prune the local ref
 
+**Landed** means the PR's content is on tip, not that feature SHAs are
+ancestors. Prefer merge commits when opening PRs, but catch-up must survive
+squash merges too:
+
+1. Forge `merge_commit` is an ancestor of `<default_ref>`, **or**
+2. `rev-list --count <default_ref>..HEAD` is 0, **or**
+3. Every commit in `<default_ref>..HEAD` is patch-equivalent on tip
+   (`git cherry` shows only `-` lines).
+
+If none of those hold, the branch still has unique commits → §3.2.
+
 ```bash
-git -C <wt> rev-list --count <default_ref>..HEAD   # must be 0
-git -C <wt> checkout --detach <default_ref>
-git -C <wt> branch -d <branch>
+# catch-up.sh: pr_branch_landed_on_tip <wt> <default_ref> [merge_commit]
+git -C <wt> switch --detach --merge <default_ref>   # or stash + checkout --detach
+git -C <wt> branch -d <branch>                      # -D only when landed via squash/cherry
 ```
 
 Retain the PR's enlistment until delivery is verified or its remaining
 obligations are explicitly handed off in the PR/issue. Only then may an
 unneeded row be removed with `harness/tools/wtc-pr.sh unlist <repo> <n>`.
 
-`git branch -d` (never `-D`) is the safety net: it refuses to delete anything
-not genuinely merged, and since this policy merges with merge commits rather than
-squashing, it can tell. If it refuses, **stop and report** — the branch has
-something the base does not.
+`git branch -d` is preferred; after a verified squash landing, catch-up may
+use `-D` because the feature commits are not ancestors of tip. If delete
+still fails, **stop and report**.
 
 The **remote** branch stays. It is the per-issue record, and
 `git branch -r | grep <issue-id>` is how anyone finds what was done for an issue
 later. Never delete it, and leave GitHub's "Delete branch on merge" off.
+
+Stash pop conflicts are pinned under `refs/wtc-catch-up/<collection>/<label>`
+(SHA logged) and fail the catch-up run — resolve, then drop the leftover
+stash entry / pin.
 
 ### 3.2 Carrying work off a merged branch
 
@@ -168,8 +182,8 @@ something lands. Left alone it drifts until the next PR is a conflict
 resolution rather than a review, so catch-up brings the base to it:
 
 ```bash
-git -C <wt> status --porcelain            # must be empty (or stashed)
-git -C <wt> merge --no-edit <default_ref>
+git -C <wt> merge --autostash --no-edit <default_ref>
+# fallback if --autostash unavailable: stash -u → merge → stash pop
 ```
 
 Merge, never rebase — the branch may already be pushed and under review, and

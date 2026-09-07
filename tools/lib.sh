@@ -1544,3 +1544,68 @@ wtc_pr_list() { # <collection> -> TSV rows, one per enlisted PR (open/draft/merg
 # cross-checking .wtc-prs' branch column against each worktree's current
 # branch — see prs_table in wtc-status.sh. No separate orphan query here,
 # so there is one code path rather than two that could drift apart.
+
+# Whether feature-branch commits at HEAD have landed on tip — merge commit
+# ancestry *or* squash. Exit 0 = landed.
+#
+# When merge_commit is on tip, squash residual is allowed (feature SHAs need
+# not be ancestors). Optional pr_head (PR tip at merge) distinguishes that
+# from real follow-up commits made on the branch after merge:
+#   HEAD == pr_head            → residual only → landed
+#   pr_head ancestor of HEAD   → commits in pr_head..HEAD are follow-ups → not
+# Without pr_head, fall back to git cherry (multi-commit squash may look like
+# unique patches — pass pr_head whenever the forge still knows it).
+pr_branch_landed_on_tip() { # <worktree> <tip-ref> [merge_commit] [pr_head]
+  _pbl_wt="$1" _pbl_tip="$2" _pbl_mc="${3:-}" _pbl_head="${4:-}"
+  _pbl_extra="$(git -C "$_pbl_wt" rev-list --count "${_pbl_tip}..HEAD" 2>/dev/null || echo 0)"
+  [ "$_pbl_extra" = 0 ] && return 0
+
+  _pbl_mc_on_tip=no
+  if [ -n "$_pbl_mc" ] \
+    && git -C "$_pbl_wt" rev-parse --verify "${_pbl_mc}^{commit}" >/dev/null 2>&1 \
+    && git -C "$_pbl_wt" merge-base --is-ancestor "$_pbl_mc" "$_pbl_tip" 2>/dev/null
+  then
+    _pbl_mc_on_tip=yes
+  fi
+
+  if [ "$_pbl_mc_on_tip" = yes ] && [ -n "$_pbl_head" ] \
+    && git -C "$_pbl_wt" rev-parse --verify "${_pbl_head}^{commit}" >/dev/null 2>&1
+  then
+    _pbl_now="$(git -C "$_pbl_wt" rev-parse HEAD)"
+    _pbl_ph="$(git -C "$_pbl_wt" rev-parse "$_pbl_head")"
+    [ "$_pbl_now" = "$_pbl_ph" ] && return 0
+    if git -C "$_pbl_wt" merge-base --is-ancestor "$_pbl_ph" HEAD 2>/dev/null; then
+      _pbl_follow="$(git -C "$_pbl_wt" rev-list --count "${_pbl_ph}..HEAD" 2>/dev/null || echo 0)"
+      [ "$_pbl_follow" = 0 ] && return 0
+      return 1
+    fi
+  fi
+
+  if [ "$_pbl_mc_on_tip" = yes ] && [ -z "$_pbl_head" ]; then
+    # Multi-commit squash leaves cherry '+' for member commits; trust forge.
+    return 0
+  fi
+
+  # No merge_commit on tip (or diverged from pr_head): require patch equivalence.
+  _pbl_cherry="$(git -C "$_pbl_wt" cherry "$_pbl_tip" HEAD 2>/dev/null || true)"
+  printf '%s\n' "$_pbl_cherry" | grep -q '^+' && return 1
+  return 0
+}
+
+# Pin a catch-up stash commit under refs/wtc-catch-up/… so a failed pop is
+# recoverable without hunting stash@{n}. Safe no-op when sha empty.
+catch_up_stash_refname() { # <collection> <label> -> ref name
+  printf 'refs/wtc-catch-up/%s/%s' "$1" "$(printf '%s' "$2" | tr -c 'A-Za-z0-9._-' '_')"
+}
+
+catch_up_stash_pin() { # <worktree> <collection> <label> <stash-sha>
+  _csp_wt="$1" _csp_coll="$2" _csp_label="$3" _csp_sha="$4"
+  [ -n "$_csp_sha" ] || return 0
+  _csp_ref="$(catch_up_stash_refname "$_csp_coll" "$_csp_label")"
+  git -C "$_csp_wt" update-ref "$_csp_ref" "$_csp_sha" 2>/dev/null || true
+}
+
+catch_up_stash_unpin() { # <worktree> <collection> <label>
+  _csp_ref="$(catch_up_stash_refname "$2" "$3")"
+  git -C "$1" update-ref -d "$_csp_ref" 2>/dev/null || true
+}
