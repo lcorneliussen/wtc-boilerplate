@@ -126,7 +126,9 @@ Where it opens:
 | a terminal, including a herdr `shell` pane | this window |
 | a coding agent inside herdr | the `browse` pane (or `shell`, if the workspace is off-template), plus a sibling herdr tab `pr` running `gh dash` if that extension is installed |
 
-The browse nvim listens on `/tmp/wtc-browse-<collection>.nvim`. Status-pane
+The browse nvim listens on
+`/tmp/wtc-browse-<workspace-basename>-<collection>.nvim`. Long names are
+shortened and checksummed to fit the platform socket-path limit. Status-pane
 clicks talk to it:
 
 | Click | Does |

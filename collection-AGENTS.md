@@ -26,6 +26,13 @@ everything; a **collection root** is one task; its **repo siblings** are the
 worktrees inside it; its **collection siblings** are the neighbouring
 collections — other tasks, not your working set.
 
+## Public and private audiences
+
+Before publishing any issue, PR, reply, commit or artifact, follow
+`harness/instructions/publication-privacy.md`. Keep private project identities,
+adoption relationships and delivery links out of public upstream records. This
+also applies to delegated agents and to explanations of a privacy cleanup.
+
 ## Read in this order
 
 1. **`WTC-SCOPE.md`** — the task, the repos that belong to it, what is
@@ -79,6 +86,17 @@ explicitly. Full rule: `harness/instructions/collection-context.md`.
   rotated credential is current everywhere at once.
 
 Details in `harness/instructions/` — secrets.md, hooks-and-env.md, skills.md.
+
+## Follow the work this session owns
+
+After opening or advancing a review-ready PR, use `/wtc-follow` on relevant
+status/check/review updates and when resuming this task. Carry owned work
+through review, main builds and required delivery steps, preparing human
+checkpoints before actions that still need authorization. Reuse fresh status
+snapshots instead of repeatedly querying every PR. `/wtc-catch-up` brings
+outside changes in; `/wtc-follow` carries this session's work to its outcome.
+A status-only request remains read-only. Procedure and resumption limits:
+`harness/skills/wtc-follow/SKILL.md`.
 
 ## Widening the scope is a decision
 
