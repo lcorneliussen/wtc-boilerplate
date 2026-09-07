@@ -24,7 +24,8 @@ class Guard:
 
     def scan(self, value):
         if isinstance(value, str):
-            self.found |= any(term in normalized(value) for term in self.terms)
+            text = normalized(value)
+            self.found |= any(term in text for term in self.terms)
         elif isinstance(value, dict):
             for key, item in value.items():
                 self.scan(key)

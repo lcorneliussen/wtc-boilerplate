@@ -47,6 +47,16 @@ class Tests(unittest.TestCase):
         with self.assertRaises(ValueError):
             m.Guard(' \n')
 
+    def test_normalization_cost_does_not_grow_with_term_count(self):
+        for count in (1, 100):
+            with self.subTest(terms=count):
+                guard = m.Guard('\n'.join(f'absent-{n}' for n in range(count)) + '\norchid.example')
+                value = 'ordinary text ' * 10000 + 'ＯＲＣＨＩＤ.example'
+                with patch.object(m, 'normalized', wraps=m.normalized) as normalize:
+                    guard.scan(value)
+                    normalize.assert_called_once_with(value)
+                self.assertTrue(guard.found)
+
     def test_pr_surfaces(self):
         for surface in ('title', 'body', 'ref', 'content', 'filename', 'commit', 'comment'):
             with self.subTest(surface=surface):
