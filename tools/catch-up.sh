@@ -14,8 +14,11 @@ worktree first (self-update: tools/skills from origin/main), then reconciles
 sibling repos, then link-skills, link-mcp, refresh-env and link-secrets.
 
 Safe: no rebase, no force-push. Dirty trees are stashed (including
-untracked) around the update, then the stash is applied. In-progress
-merges/rebases are still skipped.
+untracked) around the update, or merged with --autostash when possible.
+Squash-merged PRs are detected as landed (merge_commit on tip or
+patch-equivalent commits) so catch-up can return to tip; real follow-up
+commits beyond tip still skip. Stash pop conflicts are pinned under
+refs/wtc-catch-up/… and fail the run. In-progress merges/rebases are skipped.
 
   --all         every collection under the workspace root
   --dry-run     report only; touch nothing
@@ -154,10 +157,12 @@ prepare_harness_for_catchup() { # <worktree>
 }
 
 # Stash tracked + untracked (not ignored) so HEAD can move; pop afterward.
-# Sets did_stash=yes when a stash was created. Returns 1 if stash failed.
+# Sets did_stash=yes and stash_sha when a stash was created. Returns 1 if stash failed.
+# Pins the stash commit under refs/wtc-catch-up/<coll>/<label> for recovery.
 stash_dirty_for_catch_up() { # <worktree> <label>
   local wt="$1" label="$2" dirty msg
   did_stash=no
+  stash_sha=""
   dirty="$(git -C "$wt" status --porcelain 2>/dev/null || true)"
   [ -n "$dirty" ] || return 0
   if [ "$dry_run" = yes ]; then
@@ -168,7 +173,9 @@ stash_dirty_for_catch_up() { # <worktree> <label>
   msg="wtc-catch-up ${coll_name}/${label}"
   if git -C "$wt" stash push --include-untracked -m "$msg"; then
     did_stash=yes
-    log "  $coll_name/$label: stashed local changes"
+    stash_sha="$(git -C "$wt" rev-parse --verify stash^{commit} 2>/dev/null || true)"
+    catch_up_stash_pin "$wt" "$coll_name" "$label" "$stash_sha"
+    log "  $coll_name/$label: stashed local changes${stash_sha:+ ($stash_sha)}"
     return 0
   fi
   warn "$coll_name/$label: stash failed — skipped"
@@ -180,19 +187,65 @@ pop_catch_up_stash() { # <worktree> <label>
   [ "$did_stash" = yes ] || return 0
   [ "$dry_run" = yes ] && { log "  would apply stash on $coll_name/$label"; return 0; }
   if git -C "$wt" stash pop; then
+    catch_up_stash_unpin "$wt" "$coll_name" "$label"
     log "  $coll_name/$label: restored stash"
     return 0
   fi
-  warn "$coll_name/$label: stash pop conflicted — resolve conflicts, then git stash drop if the entry remains"
+  stash_conflicts=$((stash_conflicts + 1))
+  warn "$coll_name/$label: stash pop conflicted — pinned at ${stash_sha:-refs/wtc-catch-up/…}; resolve, then git stash drop / catch-up will leave the pin until clean"
+  return 1
+}
+
+# merge_commit (+ optional head OID) for the enlisted PR on this branch.
+# Prints: merge_commit \t head_oid (either field may be empty).
+pr_merge_facts_for_branch() { # <collection> <repo> <branch>
+  local coll="$1" repo="$2" branch="$3" mc="" head="" slug forge num
+  while IFS=$'\t' read -r r num b url title; do
+    [ "$r" = "$repo" ] || continue
+    [ "$b" = "$branch" ] || continue
+    tsv_from_cmd _n _st _ch _mg _rv _t mc _mo -- \
+      wtc_pr_enrich "$repo" "$num" "$title" "$(wtc_repo_worktree "$coll" "$repo")"
+    [ "$mc" = "-" ] && mc=""
+    IFS=$'\t' read -r slug forge <<EOF
+$(repo_slug_and_forge "$repo" "$(wtc_repo_worktree "$coll" "$repo")")
+EOF
+    if [ "$forge" = github ] && command -v gh >/dev/null 2>&1 && [ -n "$slug" ]; then
+      head="$(gh pr view "$num" --repo "$slug" --json headRefOid -q .headRefOid 2>/dev/null || true)"
+    fi
+    printf '%s\t%s\n' "${mc:-}" "${head:-}"
+    return 0
+  done <<EOF
+$(wtc_pr_enlist_rows "$coll")
+EOF
+  printf '\t\n'
+}
+
+# Detach at tip; prefer --merge when dirty so a stash is not always required.
+detach_at_tip() { # <worktree> <ref> <label>
+  local wt="$1" ref="$2" label="$3" dirty
+  dirty="$(git -C "$wt" status --porcelain 2>/dev/null || true)"
+  if [ -z "$dirty" ]; then
+    git -C "$wt" checkout --detach "$ref"
+    return 0
+  fi
+  if git -C "$wt" switch --detach --merge "$ref" 2>/dev/null; then
+    return 0
+  fi
+  stash_dirty_for_catch_up "$wt" "$label" || return 1
+  if git -C "$wt" checkout --detach "$ref"; then
+    return 0
+  fi
+  pop_catch_up_stash "$wt" "$label" || true
   return 1
 }
 
 catch_up_worktree() { # <collection-name> <worktree> <repo>
-  local coll_name="$1" wt="$2" repo="$3" ref label branch behind pr_state extra
+  local coll_name="$1" wt="$2" repo="$3" ref label branch behind pr_state extra mcommit pr_head landed dirty merge_ok
   ref="$(default_ref_for "$repo")"
   label="$(basename "$wt")"
   [ "$label" = harness ] && label="harness($repo)"
   did_stash=no
+  stash_sha=""
 
   if [ -d "$wt/.git/rebase-merge" ] || [ -d "$wt/.git/rebase-apply" ] \
      || [ -f "$wt/.git/CHERRY_PICK_HEAD" ] \
@@ -206,13 +259,15 @@ catch_up_worktree() { # <collection-name> <worktree> <repo>
   if [ -z "$branch" ]; then
     behind="$(git -C "$wt" rev-list --count HEAD.."$ref" 2>/dev/null || echo 0)"
     [ "$behind" != 0 ] || { log "  $coll_name/$label: detached at tip"; return 0; }
-    stash_dirty_for_catch_up "$wt" "$label" || return 0
     if [ "$dry_run" = yes ]; then
       log "  would detach $coll_name/$label at $ref ($behind behind)"
-    else
-      git -C "$wt" checkout --detach "$ref"
-      log "  $coll_name/$label: detached at $ref (was $behind behind)"
+      return 0
     fi
+    if ! detach_at_tip "$wt" "$ref" "$label"; then
+      warn "$coll_name/$label: could not detach at $ref — skipped"
+      return 0
+    fi
+    log "  $coll_name/$label: detached at $ref (was $behind behind)"
     pop_catch_up_stash "$wt" "$label" || true
     return 0
   fi
@@ -220,39 +275,79 @@ catch_up_worktree() { # <collection-name> <worktree> <repo>
   pr_state="$(pr_state_for_branch "$coll_name" "$repo" "$branch")"
   case "$pr_state" in
     MERGED|merged)
-      extra="$(git -C "$wt" rev-list --count "$ref..HEAD" 2>/dev/null || echo 0)"
-      if [ "$extra" != 0 ]; then
-        warn "$coll_name/$label: PR merged but $extra commit(s) beyond base — skipped (rename branch?)"
+      IFS=$'\t' read -r mcommit pr_head <<EOF
+$(pr_merge_facts_for_branch "$coll_name" "$repo" "$branch")
+EOF
+      if pr_branch_landed_on_tip "$wt" "$ref" "$mcommit" "$pr_head"; then
+        landed=yes
+      else
+        landed=no
+      fi
+      if [ "$landed" = no ]; then
+        extra="$(git -C "$wt" rev-list --count "$ref..HEAD" 2>/dev/null || echo 0)"
+        warn "$coll_name/$label: PR merged but $extra commit(s) beyond tip are not on $ref (not squash-equivalent) — skipped (rename branch?)"
         return 0
       fi
-      stash_dirty_for_catch_up "$wt" "$label" || return 0
       if [ "$dry_run" = yes ]; then
-        log "  would return $coll_name/$label from merged $branch to $ref"
-      else
-        git -C "$wt" checkout --detach "$ref"
-        git -C "$wt" branch -d "$branch" 2>/dev/null || warn "$coll_name/$label: branch -d $branch refused"
-        # Keep the .wtc-prs row: status ages MERGED into the archived toggle
-        # after 48 weekday-hours. Unlisting here emptied the only store the
-        # PRS section reads, so catch-up wiped the archive fodder.
-        log "  $coll_name/$label: merged PR — detached at $ref, pruned $branch"
+        log "  would return $coll_name/$label from merged $branch to $ref (landed${mcommit:+ via $mcommit})"
+        return 0
       fi
+      if ! detach_at_tip "$wt" "$ref" "$label"; then
+        warn "$coll_name/$label: could not detach at $ref — skipped"
+        return 0
+      fi
+      # -d when ancestry allows; -D when squash/cherry landed (commits not ancestors).
+      if git -C "$wt" branch -d "$branch" 2>/dev/null; then
+        :
+      elif git -C "$wt" branch -D "$branch" 2>/dev/null; then
+        log "  $coll_name/$label: pruned $branch with -D (squash/landed, not ancestor)"
+      else
+        warn "$coll_name/$label: could not delete local branch $branch"
+      fi
+      # Keep the .wtc-prs row: status ages MERGED into the archived toggle
+      # after 48 weekday-hours. Unlisting here emptied the only store the
+      # PRS section reads, so catch-up wiped the archive fodder.
+      log "  $coll_name/$label: merged PR — detached at $ref, pruned $branch"
       pop_catch_up_stash "$wt" "$label" || true
       return 0
       ;;
   esac
 
-  # Live branch — merge base forward
+  # Live branch — merge base forward (prefer --autostash when dirty).
   behind="$(git -C "$wt" rev-list --count HEAD.."$ref" 2>/dev/null || echo 0)"
   [ "$behind" != 0 ] || { log "  $coll_name/$label: $branch current"; return 0; }
-  stash_dirty_for_catch_up "$wt" "$label" || return 0
   if [ "$dry_run" = yes ]; then
     log "  would merge $ref into $coll_name/$label ($branch, $behind behind)"
-    pop_catch_up_stash "$wt" "$label" || true
     return 0
   fi
   [ "$label" = "harness($repo)" ] && prepare_harness_for_catchup "$wt"
-  if git -C "$wt" merge --no-edit "$ref"; then
+  dirty="$(git -C "$wt" status --porcelain 2>/dev/null || true)"
+  merge_ok=no
+  if [ -n "$dirty" ] && git -C "$wt" merge --autostash --no-edit "$ref" 2>/dev/null; then
+    merge_ok=yes
+    log "  $coll_name/$label: merged $ref into $branch (autostash)"
+  elif [ -z "$dirty" ] && git -C "$wt" merge --no-edit "$ref"; then
+    merge_ok=yes
     log "  $coll_name/$label: merged $ref into $branch"
+  else
+    # Dirty without working --autostash, or clean merge failed: classic path.
+    if [ -n "$dirty" ]; then
+      git -C "$wt" merge --abort 2>/dev/null || true
+      stash_dirty_for_catch_up "$wt" "$label" || return 0
+      if git -C "$wt" merge --no-edit "$ref"; then
+        merge_ok=yes
+        log "  $coll_name/$label: merged $ref into $branch"
+      else
+        git -C "$wt" merge --abort 2>/dev/null || true
+        warn "$coll_name/$label: merge of $ref into $branch conflicted — aborted"
+      fi
+      pop_catch_up_stash "$wt" "$label" || true
+    else
+      git -C "$wt" merge --abort 2>/dev/null || true
+      warn "$coll_name/$label: merge of $ref into $branch conflicted — aborted"
+    fi
+  fi
+  if [ "$merge_ok" = yes ]; then
     case "$pr_state" in
       OPEN|open|DRAFT|draft)
         if git -C "$wt" push 2>/dev/null; then
@@ -262,11 +357,7 @@ catch_up_worktree() { # <collection-name> <worktree> <repo>
         fi
         ;;
     esac
-  else
-    git -C "$wt" merge --abort 2>/dev/null || true
-    warn "$coll_name/$label: merge of $ref into $branch conflicted — aborted"
   fi
-  pop_catch_up_stash "$wt" "$label" || true
 }
 
 catch_up_collection() { # <name>
@@ -352,9 +443,15 @@ catch_up_collection() { # <name>
 }
 
 failed=0
+stash_conflicts=0
 for c in $collections; do
   catch_up_collection "$c" || failed=$((failed + 1))
 done
+
+if [ "$stash_conflicts" -gt 0 ]; then
+  warn "$stash_conflicts stash pop conflict(s) left pinned under refs/wtc-catch-up/"
+  failed=$((failed + 1))
+fi
 
 log "done ($failed collection(s) reported errors)"
 [ "$failed" -eq 0 ] || exit 1
