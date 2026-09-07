@@ -175,7 +175,7 @@ another working branch, if the registry names one).
 |---|---|
 | **Detached**, behind the tip | Stash if dirty (incl. untracked); `git -C <wt> checkout --detach <ref>`; pop the stash. |
 | **Detached**, already at the tip | Nothing — there is no move to make, dirty or not. |
-| On a branch, **PR merged** (§2), clean, nothing beyond the base | §3.1 — return to tip, prune the local ref, retain delivery tracking. |
+| On a branch, **PR merged** (§2), clean, landing established | §3.1 — return to tip, safely prune or retain the local ref, retain delivery tracking. |
 | On a branch, **PR merged**, but dirty or with post-merge commits | §3.2 — that is follow-up work; give it a branch of its own first. |
 | On a **live** branch (no PR, or PR open/draft), behind the tip | §3.3 — merge the tip in; §3.3.1 pushes it when a PR exists. |
 | On a **live** branch, already current | Nothing. |
@@ -189,19 +189,25 @@ the per-issue record, which is the one thing catch-up must not do.
 ### 3.1 A merged branch: back to the tip, prune the local ref
 
 ```bash
-git -C <wt> rev-list --count <default_ref>..HEAD   # must be 0
+git -C <wt> rev-list --count <default_ref>..HEAD   # 0 establishes ancestry
 git -C <wt> checkout --detach <default_ref>
 git -C <wt> branch -d <branch>
 ```
+
+Run the detach only after establishing that the branch landed: zero commits
+outside the tip, a verified PR head matching HEAD with its merge commit on the
+tip, or patch equivalence (`git cherry` succeeds without `+` entries). A nonzero
+count alone can be residual squash history. Missing or failed evidence leaves
+the worktree untouched for its owner to inspect.
 
 Retain the PR's enlistment until delivery is verified or its remaining
 obligations are explicitly handed off in the PR/issue. Only then may an
 unneeded row be removed with `harness/tools/wtc-pr.sh unlist <repo> <n>`.
 
-`git branch -d` (never `-D`) is the safety net: it refuses to delete anything
-not genuinely merged, and since this policy merges with merge commits rather than
-squashing, it can tell. If it refuses, **stop and report** — the branch has
-something the base does not.
+Use `git branch -d`, never `-D`. Squash or patch-equivalent landings can fail
+its ancestry check even after the content has landed. Retain the local branch
+and report the successful detach with pruning refused; this alone does not
+establish that unlanded work remains.
 
 The **remote** branch stays. It is the per-issue record, and
 `git branch -r | grep <issue-id>` is how anyone finds what was done for an issue
@@ -392,7 +398,7 @@ spring on someone. Report the choice offered and the answer taken.
 
 ## 8. Local refs left over from earlier work
 
-§3.1 prunes the branch of the worktree it moved. Other local branches in the
+§3.1 attempts safe pruning of the branch of the worktree it moved. Other local branches in the
 same repo may also be finished — merged, with no worktree on them:
 
 ```bash

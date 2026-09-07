@@ -12,7 +12,7 @@ def atomic_write(path, text):
     path = Path(path)
     fd, tmp = tempfile.mkstemp(prefix='.catch-up-', dir=path.parent)
     try:
-        with os.fdopen(fd, 'w') as stream:
+        with os.fdopen(fd, 'w', encoding='utf-8') as stream:
             stream.write(text)
         os.replace(tmp, path)
     finally:
@@ -29,13 +29,13 @@ if mode == 'row':
     if outcome == 'needs-owner':
         row['next_actor'] = f'owning agent for collection {collection}'
         row['handoff'] = 'needed; no notification sent'
-    with open(rows, 'a') as stream:
+    with open(rows, 'a', encoding='utf-8') as stream:
         stream.write(json.dumps(row) + '\n')
 elif mode == 'finish':
     initiator, dry_run, status, report, output = args
     data = dict(schema_version=1, generated_at=datetime.datetime.now(datetime.timezone.utc).isoformat(),
                 initiator=initiator, dry_run=dry_run == 'yes', exit_status=int(status),
-                outcomes=[json.loads(line) for line in Path(rows).read_text().splitlines()])
+                outcomes=[json.loads(line) for line in Path(rows).read_text(encoding='utf-8').splitlines()])
     for row in data['outcomes']:
         row['collection_path'] = str(Path(initiator).parent / row['collection'])
         if row['outcome'] == 'needs-owner':

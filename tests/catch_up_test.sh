@@ -168,6 +168,10 @@ git -C "$root/squashed/harness" add follow-up
 git -C "$root/squashed/harness" commit -qm 'local follow-up'
 assert_fails pr_branch_landed_on_tip "$root/squashed/harness" "$tip" "$tip" ''
 assert_fails pr_branch_landed_on_tip "$root/squashed/harness" missing-ref "$tip" ''
+"$runner" --harness-only --json "${no_hooks[@]}" squashed > "$root/not-landed.json" 2> "$root/stderr"
+assert_eq 1 "$?"
+assert_contains "$(cat "$root/not-landed.json")" 'landing not established'
+assert_contains "$(cat "$root/not-landed.json")" 'unavailable Git evidence'
 it 'failed cherry evidence is not interpreted as patch equivalence'
 git() {
   case " $* " in *' cherry '*) return 128 ;; esac
@@ -396,3 +400,20 @@ assert_ok python3 - "$root/report-output.json" <<'PY'
 import json,sys
 p=json.load(open(sys.argv[1])); assert p['exit_status']==1 and p['report_error']
 PY
+
+it 'non-ASCII report text survives an ASCII locale'
+assert_ok env LC_ALL=C PYTHONUTF8=0 PYTHONCOERCECLOCALE=0 python3 - "$HARNESS_SRC/tools/catch-up-report.py" "$root" <<'PY_REPORT'
+import json, pathlib, runpy, sys
+helper, root = sys.argv[1:]
+rows = str(pathlib.Path(root) / 'unicode-rows')
+report = str(pathlib.Path(root) / 'unicode-report.json')
+reason = 'caf\u00e9 \u65e5\u672c'
+sys.argv = [helper, 'row', rows, 'repo', 'fixture', 'widget', 'updated', reason, '', '', '']
+runpy.run_path(helper, run_name='__main__')
+# Include literal Unicode too, exercising UTF-8 JSONL reads.
+pathlib.Path(rows).write_text(json.dumps(json.loads(pathlib.Path(rows).read_text(encoding='utf-8')), ensure_ascii=False) + '\n', encoding='utf-8')
+sys.argv = [helper, 'finish', rows, root, 'no', '0', report, 'json']
+runpy.run_path(helper, run_name='__main__')
+assert json.loads(pathlib.Path(report).read_text(encoding='utf-8'))['outcomes'][0]['reason'] == reason
+assert reason in pathlib.Path(report + '.md').read_text(encoding='utf-8')
+PY_REPORT

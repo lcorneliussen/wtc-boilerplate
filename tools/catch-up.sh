@@ -330,7 +330,7 @@ reconcile() {
       [ "$mcommit" != - ] || mcommit=''
       [ "$pr_head" != - ] || pr_head=''
       if ! pr_branch_landed_on_tip "$wt" "$target" "$mcommit" "$pr_head"; then
-        outcome=needs-owner; reason='merged PR has commits beyond default tip'; return
+        outcome=needs-owner; reason='merged PR landing not established; owner must inspect remaining commits or unavailable Git evidence'; return
       fi ;;
     *)
       if git -C "$wt" merge-base --is-ancestor "$target" HEAD; then return; fi ;;
