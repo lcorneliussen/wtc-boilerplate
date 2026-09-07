@@ -6,7 +6,6 @@ import os
 import re
 import sys
 import unicodedata
-import urllib.parse
 import urllib.request
 
 LIMIT = 10 * 1024 * 1024
@@ -61,7 +60,9 @@ class API:
             if not isinstance(items, list):
                 raise ValueError('invalid page')
             result.extend(items)
-            # GitHub silently caps some endpoints; reaching the cap is unknown.
+            # GitHub silently caps some endpoints; reaching the cap is unknown,
+            # even on a short page (PR commits can stop at 100 + 100 + 50).
+            # Do not accept a terminal-looking page before this check.
             if len(result) >= cap:
                 raise ValueError('pagination limit')
             if len(items) < 100:

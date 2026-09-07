@@ -109,6 +109,14 @@ class Tests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 api.pages('pulls/1/commits', cap=250)
 
+    def test_short_page_at_endpoint_cap_is_incomplete(self):
+        api = m.API('example/repository', 'fake')
+        with patch.object(api, 'get', side_effect=[[{}] * 100, [{}] * 100, [{}] * 50]):
+            with self.assertRaisesRegex(ValueError, 'pagination limit'):
+                api.pages('pulls/1/commits', cap=250)
+        with patch.object(api, 'get', side_effect=[[{}] * 100, [{}] * 100, [{}] * 49]):
+            self.assertEqual(len(api.pages('pulls/1/commits', cap=250)), 249)
+
     def test_failures_do_not_echo_input(self):
         with tempfile.NamedTemporaryFile(mode='w') as event:
             event.write('{"number": 1}')
