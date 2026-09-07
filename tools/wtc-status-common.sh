@@ -472,6 +472,7 @@ ANSI_PY="$script_dir/wtc-status-ansi.py"
 _snapshot_ndjson=""
 snapshot_loaded=no
 _snapshot_stale=0
+FORGE_WARNINGS=()
 _snapshot_prs_empty=no
 
 _snapshot_epoch=0
@@ -1227,6 +1228,8 @@ load_snapshot() {
   PR_ROW_REVIEW=(); PR_ROW_TITLE=(); PR_ROW_SLUG=(); PR_ROW_ARCHIVED=(); PR_ROW_DRAFT=()
   PR_ROW_ON_BRANCH=()
   _snapshot_stale=0
+  FORGE_WARNINGS=()
+  local health_targets="" health_json
   _snapshot_prs_empty=no
   # Segments: fetch, forge round trips, row scan, then the PR section.
   _prog_n="$(_scope_worktree_count)"
@@ -1313,6 +1316,7 @@ load_snapshot() {
       dir="$(basename "$wt")"
       repo="$dir"; [ "$dir" = harness ] && repo="$(harness_repo)"
       slug="$(slug_for_worktree "$wt" "$repo")"
+      health_targets="${health_targets}$(forge_for_worktree "$wt" "$repo")"$'\t'"$slug"$'\n'
       state="$(wt_head_state "$wt" "$repo")"
       kind="$(printf '%s' "$state" | awk '{print $1}')"
       label="$(printf '%s' "$state" | awk '{print $2}')"
@@ -1569,12 +1573,18 @@ EOF
     SNAPSHOT_PRS_ORPHANS="$orphans"
   fi
 
+  health_json="$(python3 "$HARNESS_DIR/tools/wtc-status-health.py" <<< "$health_targets")"
+  while IFS= read -r health_warning; do
+    [ -n "$health_warning" ] && FORGE_WARNINGS+=("$health_warning")
+  done < <(python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)))' <<< "$health_json")
+
   meta_coll="${only:-}"
   [ "$all" = yes ] && meta_coll=""
   python3 - >> "$_snapshot_ndjson" <<PY
 import json
 print(json.dumps({
   "kind": "meta",
+  "forge_warnings": $health_json,
   "collection": $(_json_str "$meta_coll"),
   "show_collection_column": $( [ "$show_coll" = yes ] && echo True || echo False ),
   "stale_count": $_snapshot_stale,
@@ -1935,6 +1945,10 @@ draw_tty() {
       fi
       ;;
   esac
+  local health_warning
+  for health_warning in "${FORGE_WARNINGS[@]+"${FORGE_WARNINGS[@]}"}"; do
+    out $'\033[33m'"! $health_warning"$'\033[0m'
+  done
   if [ "$click" = yes ] || [ "$watch" = yes ]; then
     if [ "$show_help" = yes ]; then help_block; else legend; fi
   fi

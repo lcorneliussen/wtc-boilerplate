@@ -88,6 +88,7 @@ def assemble(records: list[dict[str, Any]]) -> dict[str, Any]:
         "generated_at": meta.get("generated_at"),
         "show_collection_column": bool(meta.get("show_collection_column")),
         "stale_count": int(meta.get("stale_count") or 0),
+        "forge_warnings": meta.get("forge_warnings") or [],
         "repos": [],
         "prs": [],
         "orphans": [],
@@ -259,6 +260,8 @@ def emit_bash_state(snapshot: dict[str, Any]) -> str:
         [(r.get("prod") or {}).get("url") or "" if r.get("prod") else "" for r in repos],
     )
 
+    emit_array("FORGE_WARNINGS", snapshot.get("forge_warnings") or [])
+
     prs = snapshot.get("prs") or []
     emit_array("PR_ROW_REPO", [p.get("repo") or "" for p in prs])
     emit_array("PR_ROW_NUM", [str(p.get("number") or "") for p in prs])
@@ -301,6 +304,10 @@ def format_md(snapshot: dict[str, Any]) -> str:
     lines.append(f"# {coll}")
     lines.append("")
     lines.append(f"Generated: {snapshot.get('generated_at', '')}")
+    lines.append("")
+
+    for warning in snapshot.get("forge_warnings") or []:
+        lines.append(f"**Warning: {warning}**")
     lines.append("")
 
     lines.append("## Repos")

@@ -1,0 +1,74 @@
+#!/usr/bin/env bash
+. "$(dirname "$0")/helpers.sh"
+it "forge health failures survive snapshot encoding and rendering"
+python3 - "$HARNESS_SRC/tools" <<'PY'
+import importlib.util, json, pathlib, subprocess, sys, unittest
+from unittest.mock import patch
+sys.dont_write_bytecode = True
+root = pathlib.Path(sys.argv[1])
+def module(name, file):
+    spec = importlib.util.spec_from_file_location(name, root / file)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+health = module('health', 'wtc-status-health.py')
+fmt = module('fmt', 'wtc-status-format.py')
+class HealthTests(unittest.TestCase):
+    def result(self, code=0, out='{"id": 1}', err=''):
+        return subprocess.CompletedProcess([], code, out, err)
+    def test_both_auth_failures_and_no_raw_error_leaks(self):
+        for forge in ['github', 'bitbucket']:
+            with patch.object(health.subprocess, 'run', return_value=self.result(1, '', 'HTTP 401 private-error-detail')):
+                warning = health.check(forge, 'example/widget')
+                self.assertIn('authentication failed', warning)
+                self.assertNotIn('private-error-detail', warning)
+    def test_access_and_network_are_not_mislabelled_auth(self):
+        for err, expected in [('HTTP 403', 'access unavailable'), ('DNS failure', 'API unavailable')]:
+            with patch.object(health.subprocess, 'run', return_value=self.result(1, '', err)):
+                self.assertIn(expected, health.check('github', 'example/widget'))
+    def test_timeout_and_missing_cli(self):
+        for err, expected in [(FileNotFoundError(), 'CLI missing'), (subprocess.TimeoutExpired('gh', 10), 'timed out')]:
+            with patch.object(health.subprocess, 'run', side_effect=err):
+                self.assertIn(expected, health.check('github', 'example/widget'))
+    def test_success_and_recovery(self):
+        with patch.object(health.subprocess, 'run', side_effect=[self.result(1, '', '401'), self.result()]):
+            self.assertTrue(health.collect([('github', 'example/widget')]))
+            self.assertEqual([], health.collect([('github', 'example/widget')]))
+    def test_one_probe_per_forge_and_no_false_positive(self):
+        with patch.object(health.subprocess, 'run', return_value=self.result(out='{"id": 1, "description": "auth login 401"}')) as call:
+            self.assertEqual([], health.collect([('github', 'example/a'), ('github', 'example/b')]))
+            self.assertEqual(1, call.call_count)
+    def test_malformed_success_is_not_healthy(self):
+        with patch.object(health.subprocess, 'run', return_value=self.result(out='{}')):
+            self.assertIn('invalid API response', health.check('github', 'example/widget'))
+    def test_snapshot_roundtrip_and_cached_render(self):
+        warning = 'GitHub (gh): authentication failed; PR/check data may be stale or unavailable'
+        snapshot = fmt.assemble([{'kind': 'meta', 'forge_warnings': [warning]}])
+        self.assertEqual([warning], snapshot['forge_warnings'])
+        self.assertIn(warning, fmt.format_md(snapshot))
+        shell = fmt.emit_bash_state(json.loads(json.dumps(snapshot)))
+        result = subprocess.check_output(['bash', '-c', shell + '\nprintf "%s" "${FORGE_WARNINGS[0]}"'], text=True)
+        self.assertEqual(warning, result)
+unittest.main(argv=['health-tests'])
+PY
+assert_eq 0 "$?" "health and snapshot tests pass"
+
+it "live and cached ANSI status show authentication failures"
+ws="$(make_workspace)"
+mkdir -p "$ws/fake-bin"
+cat > "$ws/fake-bin/gh" <<'GH'
+#!/usr/bin/env bash
+if [ "$1" = api ]; then
+  if [ "${HEALTH_OK:-no}" = yes ]; then printf '{"id":1}\n'; exit 0; fi
+  echo 'HTTP 401: private-error-detail' >&2
+fi
+exit 1
+GH
+chmod +x "$ws/fake-bin/gh"
+out="$(PATH="$ws/fake-bin:$PATH" "$ws/main/harness/tools/wtc-status.sh" --repos --no-fetch --ansi main)"
+assert_contains "$out" 'GitHub (gh): authentication failed'
+assert_not_contains "$out" 'private-error-detail'
+out="$(PATH="$ws/fake-bin:$PATH" "$ws/main/harness/tools/wtc-status.sh" --repos --cached --ansi main)"
+assert_contains "$out" 'GitHub (gh): authentication failed'
+out="$(HEALTH_OK=yes PATH="$ws/fake-bin:$PATH" "$ws/main/harness/tools/wtc-status.sh" --repos --no-fetch --ansi main)"
+assert_not_contains "$out" 'authentication failed'
