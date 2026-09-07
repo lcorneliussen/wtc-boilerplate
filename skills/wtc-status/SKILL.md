@@ -136,8 +136,11 @@ Don't paste the table back. Say what is in flight, what is blocked and on
 whom, what is green and merely waiting, and — if the user asked what to pick
 up — which one, and why that one.
 
-If a collection looks stale rather than blocked, the follow-up is
-`wtc-catch-up`. If a wtc is finished, it is `wtc-retire`.
+For outside changes to bring in, use `wtc-catch-up`. For an owned task that
+needs advancing, use `wtc-follow`: it can reuse this snapshot subject to its
+freshness rules. A status-only request does not authorize PR mutations.
+Merged/archived rows do not prove delivery finished; main builds and required
+follow-ups belong to `wtc-follow`. Retirement still needs the user's request.
 
 ---
 Canon: `harness/instructions/herdr.md`.
