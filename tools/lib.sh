@@ -1552,12 +1552,13 @@ wtc_pr_list() { # <collection> -> TSV rows, one per enlisted PR (open/draft/merg
 # not be ancestors). Optional pr_head (PR tip at merge) distinguishes that
 # from real follow-up commits made on the branch after merge:
 #   HEAD == pr_head            → residual only → landed
-#   pr_head ancestor of HEAD   → commits in pr_head..HEAD are follow-ups → not
-# Without pr_head, fall back to git cherry (multi-commit squash may look like
-# unique patches — pass pr_head whenever the forge still knows it).
+#   HEAD differs from pr_head  → require patch equivalence for local commits
+# Without pr_head, require git cherry evidence even when the merge commit is
+# on tip. Multi-commit squashes may need owner attention without head facts.
+# Failed Git evidence never establishes that a branch has landed.
 pr_branch_landed_on_tip() { # <worktree> <tip-ref> [merge_commit] [pr_head]
   _pbl_wt="$1" _pbl_tip="$2" _pbl_mc="${3:-}" _pbl_head="${4:-}"
-  _pbl_extra="$(git -C "$_pbl_wt" rev-list --count "${_pbl_tip}..HEAD" 2>/dev/null || echo 0)"
+  _pbl_extra="$(git -C "$_pbl_wt" rev-list --count "${_pbl_tip}..HEAD" 2>/dev/null)" || return 1
   [ "$_pbl_extra" = 0 ] && return 0
 
   _pbl_mc_on_tip=no
@@ -1571,23 +1572,14 @@ pr_branch_landed_on_tip() { # <worktree> <tip-ref> [merge_commit] [pr_head]
   if [ "$_pbl_mc_on_tip" = yes ] && [ -n "$_pbl_head" ] \
     && git -C "$_pbl_wt" rev-parse --verify "${_pbl_head}^{commit}" >/dev/null 2>&1
   then
-    _pbl_now="$(git -C "$_pbl_wt" rev-parse HEAD)"
-    _pbl_ph="$(git -C "$_pbl_wt" rev-parse "$_pbl_head")"
+    _pbl_now="$(git -C "$_pbl_wt" rev-parse --verify HEAD)" || return 1
+    _pbl_ph="$(git -C "$_pbl_wt" rev-parse --verify "$_pbl_head")" || return 1
     [ "$_pbl_now" = "$_pbl_ph" ] && return 0
-    if git -C "$_pbl_wt" merge-base --is-ancestor "$_pbl_ph" HEAD 2>/dev/null; then
-      _pbl_follow="$(git -C "$_pbl_wt" rev-list --count "${_pbl_ph}..HEAD" 2>/dev/null || echo 0)"
-      [ "$_pbl_follow" = 0 ] && return 0
-      return 1
-    fi
-  fi
-
-  if [ "$_pbl_mc_on_tip" = yes ] && [ -z "$_pbl_head" ]; then
-    # Multi-commit squash leaves cherry '+' for member commits; trust forge.
-    return 0
+    # A different local head is not established as landed by the PR facts.
   fi
 
   # No merge_commit on tip (or diverged from pr_head): require patch equivalence.
-  _pbl_cherry="$(git -C "$_pbl_wt" cherry "$_pbl_tip" HEAD 2>/dev/null || true)"
+  _pbl_cherry="$(git -C "$_pbl_wt" cherry "$_pbl_tip" HEAD 2>/dev/null)" || return 1
   printf '%s\n' "$_pbl_cherry" | grep -q '^+' && return 1
   return 0
 }
