@@ -148,7 +148,7 @@ assert_eq "$tip" "$(git -C "$root/dirty/harness" rev-parse HEAD)"
 assert_eq 'local dirty' "$(cat "$root/dirty/harness/local-file")"
 assert_empty "$(git -C "$root/dirty/harness" stash list)"
 
-it 'squash-equivalent merged branches detach and prune safely'
+it 'squash-equivalent merged branches detach and retain non-ancestor branches'
 add_fixture_worktree "$root" agent-harness "$root/squashed/harness"
 git -C "$root/squashed/harness" switch -qc squash-topic "$base"
 printf 'main version\n' > "$root/squashed/harness/README.md"
@@ -157,7 +157,24 @@ printf 'agent-harness 777 squash-topic - finished\n' > "$root/squashed/.wtc-prs"
 "$runner" --harness-only --json "${no_hooks[@]}" squashed > "$root/squash.json" 2> "$root/stderr"
 assert_eq 0 "$?"
 assert_eq "$tip" "$(git -C "$root/squashed/harness" rev-parse HEAD)"
-assert_fails git -C "$root/squashed/harness" show-ref --verify refs/heads/squash-topic
+assert_ok git -C "$root/squashed/harness" show-ref --verify refs/heads/squash-topic
+assert_contains "$(cat "$root/squash.json")" 'local branch retained'
+
+it 'missing head facts cannot hide local follow-up commits'
+. "$HARNESS_SRC/tools/lib.sh"
+git -C "$root/squashed/harness" switch -q squash-topic
+printf 'follow-up\n' > "$root/squashed/harness/follow-up"
+git -C "$root/squashed/harness" add follow-up
+git -C "$root/squashed/harness" commit -qm 'local follow-up'
+assert_fails pr_branch_landed_on_tip "$root/squashed/harness" "$tip" "$tip" ''
+assert_fails pr_branch_landed_on_tip "$root/squashed/harness" missing-ref "$tip" ''
+it 'failed cherry evidence is not interpreted as patch equivalence'
+git() {
+  case " $* " in *' cherry '*) return 128 ;; esac
+  command git "$@"
+}
+assert_fails pr_branch_landed_on_tip "$root/squashed/harness" "$tip" '' ''
+unset -f git
 
 it 'conflicting stash restoration fails with a durable recovery pin'
 add_fixture_worktree "$root" agent-harness "$root/stash-conflict/harness"

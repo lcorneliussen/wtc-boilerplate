@@ -352,9 +352,8 @@ reconcile() {
   if [ -z "$branch" ] || [ "$pr_state" = MERGED ] || [ "$pr_state" = merged ]; then
     if git -C "$wt" checkout --detach "$target" >&2; then
       outcome=updated; reason='detached at default tip'
-      if [ -n "$branch" ] && ! git -C "$wt" branch -d "$branch" >&2 \
-        && ! git -C "$wt" branch -D "$branch" >&2; then
-        outcome=needs-owner; reason='updated but local merged-branch pruning refused'
+      if [ -n "$branch" ] && ! git -C "$wt" branch -d "$branch" >&2; then
+        reason='detached at default tip; local branch retained because safe pruning refused'
       fi
     else outcome=needs-owner; reason='checkout refused'; fi
   elif git -C "$wt" merge --no-edit "$target" >&2; then
