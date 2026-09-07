@@ -113,6 +113,14 @@ step. Agent shells get sibling toolchain bins on PATH from `.env.toolchain`
 `eval "$(harness/tools/agent-env.sh)"` once and continue — full rule in
 `harness/instructions/hooks-and-env.md` → Agent shells and PATH.
 
+## Resume delivery ownership
+
+For work assigned to this session, read the PR/issue continuation record and
+use [wtc-follow](../wtc-follow/SKILL.md) to resume outstanding review, main-build
+or delivery gates. A merged branch is finished but its task may still need a
+main check or a downstream PR. Reuse any existing follower and fresh status
+snapshot. Do not start mutating other listed PRs during a status-only request.
+
 ## 6. Report, then work
 
 State in one short paragraph: collection, issue (and tracker key if any), branch
