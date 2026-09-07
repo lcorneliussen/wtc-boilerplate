@@ -28,6 +28,9 @@ harness/tools/catch-up.sh --dry-run       # report only; touch nothing
 
 Nothing here rewrites history or force-pushes. Local catch-up stashes dirty
 work (including untracked files) around an update and restores it afterward.
+Squash-merged PRs return to tip when merge facts or patch equivalence confirm
+the branch landed; real follow-up commits remain with their owner. Recovery
+stashes are pinned under `refs/wtc-catch-up/` until successfully restored.
 A local worktree already at the tip needs no move. Cross-collection sweeps
 and `--clean-only` leave dirty trees with their owner, as described below.
 

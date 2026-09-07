@@ -217,6 +217,29 @@ PY_STATE
 }
 
 
+pr_merge_facts_for_branch() { # <collection> <repo> <branch>
+  local coll="$1" repo="$2" branch="$3" mc="" head="" slug forge num
+  local WTC_FORGE_CACHE_AGE=0
+  while IFS=$'\t' read -r r num b url title; do
+    [ "$r" = "$repo" ] || continue
+    [ "$b" = "$branch" ] || continue
+    tsv_from_cmd _n _st _ch _mg _rv _t mc _mo -- \
+      wtc_pr_enrich "$repo" "$num" "$title" "$(wtc_repo_worktree "$coll" "$repo")"
+    [ "$mc" = "-" ] && mc=""
+    IFS=$'\t' read -r slug forge <<EOF
+$(repo_slug_and_forge "$repo" "$(wtc_repo_worktree "$coll" "$repo")")
+EOF
+    if [ "$forge" = github ] && command -v gh >/dev/null 2>&1 && [ -n "$slug" ]; then
+      head="$(gh pr view "$num" --repo "$slug" --json headRefOid -q .headRefOid 2>/dev/null || true)"
+    fi
+    printf '%s\t%s\n' "${mc:--}" "${head:--}"
+    return 0
+  done <<EOF
+$(wtc_pr_enlist_rows "$coll")
+EOF
+  printf '%s\t%s\n' - -
+}
+
 # Build the selected inventory before any mutations, with the target registry.
 # Fetch shared owners only once for the whole invocation, even after failures.
 for collection in "${collections[@]}"; do
@@ -271,17 +294,20 @@ restore_stash() {
   [ -n "$stash_oid" ] || return 0
   if git -C "$wt" stash apply "$stash_oid" >&2; then
     if [ "$(git -C "$wt" rev-parse -q --verify refs/stash || true)" = "$stash_oid" ]; then
-      if git -C "$wt" stash drop 'stash@{0}' >&2; then stash_oid=''; return 0; fi
+      if git -C "$wt" stash drop 'stash@{0}' >&2; then
+        catch_up_stash_unpin "$wt" "$collection" "$repo"
+        stash_oid=''; return 0
+      fi
     fi
     outcome=needs-owner; reason="changes restored; retained stash $stash_oid because stack changed or drop failed"
     return 1
   fi
-  outcome=needs-owner; reason="stash restore conflicted; retained $stash_oid"
+  outcome=needs-owner; reason="stash restore conflicted; retained $stash_oid pinned under refs/wtc-catch-up/"
   return 1
 }
 reconcile() {
   outcome=current; reason='already contains default tip'; stash_oid=''
-  local marker path branch extra pr_state before after
+  local marker path branch extra pr_state before after mcommit pr_head
   for marker in MERGE_HEAD CHERRY_PICK_HEAD REVERT_HEAD rebase-merge rebase-apply sequencer; do
     path="$(git -C "$wt" rev-parse --git-path "$marker")"
     case "$path" in /*) ;; *) path="$wt/$path" ;; esac
@@ -300,8 +326,12 @@ reconcile() {
     UNKNOWN) outcome=needs-owner; reason='PR state unavailable; branch left untouched'; return ;;
     CLOSED|closed) outcome=needs-owner; reason='closed PR branch; owner must decide continuation'; return ;;
     MERGED|merged)
-      extra="$(git -C "$wt" rev-list --count "$target..HEAD")"
-      if [ "$extra" != 0 ]; then outcome=needs-owner; reason='merged PR has commits beyond default tip'; return; fi ;;
+      tsv_from_cmd mcommit pr_head -- pr_merge_facts_for_branch "$collection" "$repo" "$branch"
+      [ "$mcommit" != - ] || mcommit=''
+      [ "$pr_head" != - ] || pr_head=''
+      if ! pr_branch_landed_on_tip "$wt" "$target" "$mcommit" "$pr_head"; then
+        outcome=needs-owner; reason='merged PR has commits beyond default tip'; return
+      fi ;;
     *)
       if git -C "$wt" merge-base --is-ancestor "$target" HEAD; then return; fi ;;
   esac
@@ -314,12 +344,16 @@ reconcile() {
       outcome=needs-owner; reason='stash failed; update skipped'; return
     fi
     after="$(git -C "$wt" rev-parse -q --verify refs/stash || true)"
-    [ "$after" = "$before" ] || stash_oid="$after"
+    if [ "$after" != "$before" ]; then
+      stash_oid="$after"
+      catch_up_stash_pin "$wt" "$collection" "$repo" "$stash_oid"
+    fi
   fi
   if [ -z "$branch" ] || [ "$pr_state" = MERGED ] || [ "$pr_state" = merged ]; then
     if git -C "$wt" checkout --detach "$target" >&2; then
       outcome=updated; reason='detached at default tip'
-      if [ -n "$branch" ] && ! git -C "$wt" branch -d "$branch" >&2; then
+      if [ -n "$branch" ] && ! git -C "$wt" branch -d "$branch" >&2 \
+        && ! git -C "$wt" branch -D "$branch" >&2; then
         outcome=needs-owner; reason='updated but local merged-branch pruning refused'
       fi
     else outcome=needs-owner; reason='checkout refused'; fi

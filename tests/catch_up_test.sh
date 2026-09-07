@@ -148,6 +148,27 @@ assert_eq "$tip" "$(git -C "$root/dirty/harness" rev-parse HEAD)"
 assert_eq 'local dirty' "$(cat "$root/dirty/harness/local-file")"
 assert_empty "$(git -C "$root/dirty/harness" stash list)"
 
+it 'squash-equivalent merged branches detach and prune safely'
+add_fixture_worktree "$root" agent-harness "$root/squashed/harness"
+git -C "$root/squashed/harness" switch -qc squash-topic "$base"
+printf 'main version\n' > "$root/squashed/harness/README.md"
+git -C "$root/squashed/harness" commit -qam 'equivalent feature patch'
+printf 'agent-harness 777 squash-topic - finished\n' > "$root/squashed/.wtc-prs"
+"$runner" --harness-only --json "${no_hooks[@]}" squashed > "$root/squash.json" 2> "$root/stderr"
+assert_eq 0 "$?"
+assert_eq "$tip" "$(git -C "$root/squashed/harness" rev-parse HEAD)"
+assert_fails git -C "$root/squashed/harness" show-ref --verify refs/heads/squash-topic
+
+it 'conflicting stash restoration fails with a durable recovery pin'
+add_fixture_worktree "$root" agent-harness "$root/stash-conflict/harness"
+git -C "$root/stash-conflict/harness" checkout -q --detach "$base"
+printf 'dirty overlapping edit\n' > "$root/stash-conflict/harness/README.md"
+"$runner" --harness-only --json "${no_hooks[@]}" stash-conflict > "$root/stash-conflict.json" 2> "$root/stderr"
+assert_eq 1 "$?"
+assert_eq "$tip" "$(git -C "$root/stash-conflict/harness" rev-parse HEAD)"
+assert_eq "$(git -C "$root/stash-conflict/harness" rev-parse refs/stash)" "$(git -C "$root/stash-conflict/harness" rev-parse refs/wtc-catch-up/stash-conflict/agent-harness)"
+assert_contains "$(cat "$root/stash-conflict.json")" 'stash restore conflicted'
+
 it 'selected secrets hook receives only selected repo'
 cat > "$root/clean/harness/tools/link-secrets.sh" <<'MOCK'
 #!/usr/bin/env bash
