@@ -22,7 +22,7 @@ CLI flags still win.
 | `WTC_AGENT_KIND` | `claude` | agent kind `wtc-open.sh` starts |
 | `WTC_AGENT_ARGS` | — | args passed to the agent, replacing the built-in defaults |
 | `WTC_STATUS_REPOS` | `no` | `yes` → status shows only the collection table |
-| `WTC_STATUS_WATCH` | `60` | redraw interval in seconds; `0` prints once |
+| `WTC_STATUS_WATCH` | `30` | redraw interval in seconds; `0` prints once |
 | `WTC_STATUS_NO_CLICK` | `no` | `yes` → no mouse capture, no constant redraw |
 | `WTC_TWG_SITE` | — | Atlassian site emitted as `TWG_SITE` into `.env.collection` (→ Tool identity) |
 

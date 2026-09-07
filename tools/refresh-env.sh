@@ -108,7 +108,7 @@ target="$collection/.env.collection"
 # .env.collection (so the port base is read from the real one and does not move)
 # and diffs that. The real collection is never opened for writing at all.
 
-work="$(mktemp -d)"
+work="$(mktemp -d "${TMPDIR:-/tmp}/wtc-refresh-env.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
 if [ -f "$target" ]; then
@@ -119,7 +119,8 @@ fi
 
 if [ "$dry_run" = yes ]; then
   [ -f "$target" ] && cp "$target" "$work/.env.collection"
-  write_collection_env "$work" "$name" >/dev/null
+  # Preview generation must not register a temporary path in mise trust.
+  (trust_mise() { :; }; write_collection_env "$work" "$name") >/dev/null
   cp "$work/.env.collection" "$work/after"
 else
   write_collection_env "$collection" "$name" >/dev/null

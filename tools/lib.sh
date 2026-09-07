@@ -509,7 +509,7 @@ wtc_repo_worktree() { # <collection> <repo> -> path (may not exist)
   fi
 }
 
-# Machine-wide tool defaults, in the control root next to the secrets:
+# Workspace-wide tool defaults, in the control root next to the secrets:
 # $WTC_CONFIG_ROOT/wtc.env. The one place a changed default belongs, so a bare
 # `tools/wtc-xyz.sh` keeps doing what this machine wants without flags in every
 # command line. CLI flags still win. See instructions/secrets.md.
@@ -951,7 +951,7 @@ write_collection_env() { # <collection-dir> <collection-name>
     base="$(sed -n 's/^COLLECTION_PORT_BASE=//p' "$dir/.env.collection" | head -n1)"
   fi
   [ -n "$base" ] || base="$(alloc_port_base)"
-  # Machine-wide defaults from $WTC_CONFIG_ROOT/wtc.env, so a lever set there
+  # Workspace-wide defaults from $WTC_CONFIG_ROOT/wtc.env, so a lever set there
   # once (WTC_TWG_SITE) reaches every path that generates this file —
   # branch-off, add-repo and refresh-env — none of which take a flag for it.
   load_wtc_config

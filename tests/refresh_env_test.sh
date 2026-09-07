@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+. "$(dirname "$0")/helpers.sh"
+ws="$(make_workspace)"
+mkdir -p "$ws/bin" "$ws/config/gh"
+cat > "$ws/bin/mise" <<'MISE'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$MISE_CALL_LOG"
+MISE
+chmod +x "$ws/bin/mise"
+export MISE_CALL_LOG="$ws/mise-calls" WTC_CONFIG_ROOT="$ws/config"
+export PATH="$ws/bin:$PATH"
+printf 'COLLECTION_PORT_BASE=42700\n' > "$ws/main/.env.collection"
+printf '# existing mise configuration\n' > "$ws/main/mise.toml"
+printf '# local overrides\n' > "$ws/main/.env.collection.local"
+it 'environment preview neither changes target files nor invokes mise'
+assert_ok "$ws/main/harness/tools/refresh-env.sh" --dry-run
+assert_eq 'COLLECTION_PORT_BASE=42700' "$(cat "$ws/main/.env.collection")"
+assert_eq '# existing mise configuration' "$(cat "$ws/main/mise.toml")"
+assert_eq '# local overrides' "$(cat "$ws/main/.env.collection.local")"
+assert_fails test -e "$MISE_CALL_LOG"
+it 'real environment refresh still registers mise trust'
+assert_ok "$ws/main/harness/tools/refresh-env.sh"
+assert_contains "$(cat "$MISE_CALL_LOG")" 'trust'
+assert_contains "$(cat "$ws/main/.env.collection")" 'COLLECTION_PORT_BASE=42700'
+assert_eq '# local overrides' "$(cat "$ws/main/.env.collection.local")"
