@@ -13,6 +13,10 @@ and current comments/reviews. Issue and comment/review events scan their event
 text. Manual dispatch rescans a specified PR. Removed files and old filenames
 are excluded to allow cleanup; historical commit messages still count.
 
+Each decoded blob is limited to 10 MiB. JSON responses have a separate 20 MiB
+limit to accommodate base64 expansion and response metadata without accepting
+larger decoded blobs.
+
 Missing configuration, API failures, large responses, endpoint caps and a PR
 head changing during inspection fail closed with a generic message. Findings
 also produce only a generic failure: no matched terms, snippets, filenames,

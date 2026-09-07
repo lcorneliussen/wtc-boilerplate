@@ -9,6 +9,7 @@ import unicodedata
 import urllib.request
 
 LIMIT = 10 * 1024 * 1024
+RESPONSE_LIMIT = 20 * 1024 * 1024
 
 
 def normalized(value):
@@ -49,8 +50,8 @@ class API:
             'X-GitHub-Api-Version': '2022-11-28',
         })
         with urllib.request.urlopen(request, timeout=30) as response:
-            raw = response.read(LIMIT + 1)
-        if len(raw) > LIMIT:
+            raw = response.read(RESPONSE_LIMIT + 1)
+        if len(raw) > RESPONSE_LIMIT:
             raise ValueError('response too large')
         return json.loads(raw)
 

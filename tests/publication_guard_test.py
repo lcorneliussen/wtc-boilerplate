@@ -2,6 +2,7 @@ import base64
 import contextlib
 import importlib.util
 import io
+import json
 import os
 from pathlib import Path
 import tempfile
@@ -118,6 +119,36 @@ class Tests(unittest.TestCase):
         with patch.object(api, 'get', return_value=[{}] * 100):
             with self.assertRaises(ValueError):
                 api.pages('pulls/1/commits', cap=250)
+
+    def test_blob_limit_allows_base64_response_overhead(self):
+        http = m.API('example/repository', 'fake')
+        for size in (m.LIMIT, m.LIMIT + 1):
+            with self.subTest(size=size):
+                api = FakeAPI()
+                original = api.get
+                content = b'x' * size
+                raw = json.dumps({'encoding': 'base64', 'size': size,
+                                  'content': base64.b64encode(content).decode()}).encode()
+                self.assertGreater(len(raw), m.LIMIT)
+                self.assertLess(len(raw), m.RESPONSE_LIMIT)
+                def get(path):
+                    return http.get(path) if path.startswith('git/blobs/') else original(path)
+                with patch.object(api, 'get', side_effect=get), \
+                     patch.object(m.urllib.request, 'urlopen', return_value=io.BytesIO(raw)):
+                    if size == m.LIMIT:
+                        guard = m.Guard('orchid.example')
+                        m.inspect_pr(api, guard, 1)
+                        self.assertFalse(guard.found)
+                    else:
+                        with self.assertRaisesRegex(ValueError, 'unsupported blob'):
+                            m.inspect_pr(api, m.Guard('orchid.example'), 1)
+
+    def test_json_response_limit_remains_bounded(self):
+        api = m.API('example/repository', 'fake')
+        with patch.object(m.urllib.request, 'urlopen',
+                          return_value=io.BytesIO(b'x' * (m.RESPONSE_LIMIT + 1))):
+            with self.assertRaisesRegex(ValueError, 'response too large'):
+                api.get('pulls/1')
 
     def test_short_page_at_endpoint_cap_is_incomplete(self):
         api = m.API('example/repository', 'fake')
