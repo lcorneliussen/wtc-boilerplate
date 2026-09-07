@@ -514,7 +514,7 @@ wtc_repo_worktree() { # <collection> <repo> -> path (may not exist)
 # `tools/wtc-xyz.sh` keeps doing what this machine wants without flags in every
 # command line. CLI flags still win. See instructions/secrets.md.
 load_wtc_config() {
-  : "${WTC_CONFIG_ROOT:=$HOME/.config/wtc}"
+  : "${WTC_CONFIG_ROOT:=$ROOT/.config}"
   if [ -f "$WTC_CONFIG_ROOT/wtc.env" ]; then
     # shellcheck disable=SC1091
     . "$WTC_CONFIG_ROOT/wtc.env"

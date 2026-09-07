@@ -411,3 +411,30 @@ cache_cwd="$(mktemp_dir cachecwd)"
 assert_eq "the answer" "$(cd "$cache_cwd"; FORGE_CACHE="$cache_parent/link" _forge_cached test unsafe 90 counted)"
 assert_eq "0" "$(python3 -c 'import os,sys; print(len(os.listdir(sys.argv[1])))' "$cache_cwd")"
 assert_eq "0" "$(python3 -c 'import os,sys; print(len(os.listdir(sys.argv[1])))' "$cache_parent/target")"
+
+
+it "control root defaults to the workspace and preserves explicit overrides"
+assert_eq "$ws/.config" "$(unset WTC_CONFIG_ROOT; load_wtc_config; printf '%s' "$WTC_CONFIG_ROOT")"
+assert_eq "$ws/custom-store" "$(WTC_CONFIG_ROOT="$ws/custom-store"; load_wtc_config; printf '%s' "$WTC_CONFIG_ROOT")"
+
+it "different workspaces use different default control roots"
+assert_eq "$ws/other/.config" "$(unset WTC_CONFIG_ROOT; ROOT="$ws/other"; load_wtc_config; printf '%s' "$WTC_CONFIG_ROOT")"
+
+it "environment refresh emits scoped gh identity and preserves ports and local overrides"
+(
+  unset WTC_CONFIG_ROOT GH_CONFIG_DIR
+  mkdir -p "$ws/.config/gh"
+  printf 'COLLECTION_PORT_BASE=42700\n' > "$ws/main/.env.collection"
+  printf '# preserved local setting\n' > "$ws/main/.env.collection.local"
+  write_collection_env "$ws/main" main >/dev/null
+  assert_contains "$(cat "$ws/main/.env.collection")" "WTC_CONFIG_ROOT=$ws/.config"
+  assert_contains "$(cat "$ws/main/.env.collection")" "GH_CONFIG_DIR=$ws/.config/gh"
+  assert_contains "$(cat "$ws/main/.env.collection")" 'COLLECTION_PORT_BASE=42700'
+  assert_eq '# preserved local setting' "$(cat "$ws/main/.env.collection.local")"
+  [ "$TEST_FAILED" -eq 0 ]
+)
+assert_eq 0 "$?" "scoped environment generated correctly"
+
+
+it "secret linking defaults to the workspace control root without generated env"
+assert_contains "$(unset WTC_CONFIG_ROOT; bash "$HARNESS_DIR/tools/link-secrets.sh" --collection "$ws" --dry-run)" "control root: $ws/.config"
