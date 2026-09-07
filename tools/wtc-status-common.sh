@@ -1252,7 +1252,10 @@ load_snapshot() {
   fi
   progress_units "$_prog_n"
 
-  mkdir -p "$PR_CACHE" "$PIPE_CACHE" 2>/dev/null || true
+  _private_cache_dir "$PR_CACHE" && _private_cache_dir "$PIPE_CACHE" || {
+    printf 'error: cannot secure PR/pipeline cache directories: %s and %s\n' "$PR_CACHE" "$PIPE_CACHE" >&2
+    return 1
+  }
   _prog_jobs=0
   for c in "$ROOT"/*/; do
     c="${c%/}"
@@ -1271,7 +1274,7 @@ load_snapshot() {
           _prog_jobs=$((_prog_jobs + 1))
         fi
       fi
-      if [ -n "$wslug" ] && [ "$(forge_for_slug "$wslug")" = bitbucket ]; then
+      if [ -n "$wslug" ]; then
         tip_br="$(default_ref_for "$wrepo")"; tip_br="${tip_br#origin/}"
         prod_br="$(production_ref_for "$wrepo")"; prod_br="${prod_br#origin/}"
         pipe_fetch_bg "$wslug" "$tip_br"
@@ -1342,7 +1345,7 @@ load_snapshot() {
 
       tip_br=""; tip_checks=""; tip_build=""; tip_url=""
       prod_br=""; prod_checks=""; prod_build=""; prod_url=""
-      if [ -n "$slug" ] && [ "$(forge_for_slug "$slug")" = bitbucket ]; then
+      if [ -n "$slug" ]; then
         tip_ref="$(default_ref_for "$repo")"
         tip_br="${tip_ref#origin/}"
         prod_ref="$(production_ref_for "$repo")"
@@ -2055,20 +2058,31 @@ mouse_dragging() {
 # wake-up every minute to repaint something nobody is reading.
 #
 # herdr injects HERDR_SESSION and HERDR_PANE_ID into every pane, and knows
-# which pane is current. The check is a local socket call — no forge, no
-# network, nothing that counts against a rate limit.
+# whether the requested pane is focused. The check is a local socket call —
+# no forge, no network, nothing that counts against a rate limit.
 #
 # Unknown counts as focused, deliberately. Outside herdr, without the env, or
 # if the query fails, the answer is "assume someone is watching": guessing
 # background makes a pane a human *is* looking at feel broken, while guessing
 # foreground only costs what the tool cost before this existed.
 status_pane_focused() {
+  local _focused
   [ -n "${HERDR_SESSION:-}" ] && [ -n "${HERDR_PANE_ID:-}" ] || return 0
   command -v herdr >/dev/null 2>&1 || return 0
-  _cur="$(herdr --session "$HERDR_SESSION" pane current 2>/dev/null \
-          | tr '{},' '\n\n\n' | sed -n 's/.*"pane_id":"\([^"]*\)".*/\1/p' | head -n1)"
-  [ -n "$_cur" ] || return 0
-  [ "$_cur" = "$HERDR_PANE_ID" ]
+  # "current" resolves the caller's pane, even when it is hidden. Its ID is
+  # therefore not evidence of focus: only an explicit focused=false for the
+  # requested pane justifies the slower interval.
+  _focused="$(herdr --session "$HERDR_SESSION" pane current --pane "$HERDR_PANE_ID" 2>/dev/null \
+    | python3 -c '
+import json, sys
+try:
+    pane = json.load(sys.stdin)["result"]["pane"]
+    if pane.get("pane_id") == sys.argv[1] and pane.get("focused") is False:
+        print("false")
+except (ValueError, TypeError, KeyError, AttributeError):
+    pass
+' "$HERDR_PANE_ID" 2>/dev/null)" || return 0
+  [ "$_focused" != false ]
 }
 
 # The interval to wait before the next refresh, re-decided during the wait:
