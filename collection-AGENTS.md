@@ -61,10 +61,10 @@ explicitly. Full rule: `harness/instructions/collection-context.md`.
 ## Skills, config, secrets — the short version
 
 - **Skills** are the procedures for recurring collection actions —
-  `/wtc-status`, `/wtc-catch-up`, `/wtc-pr`, `/wtc-add-repo`, `/wtc-retire`,
-  and `/wtc-start` on a fresh one. They are authored in `harness/skills/` and
-  exposed at this root by `link-skills.sh`. Prefer one over ad hoc shell when
-  it exists.
+  `/wtc-status`, `/wtc-open`, `/wtc-catch-up`, `/wtc-pr`, `/wtc-add-repo`,
+  `/wtc-retire`, and `/wtc-start` on a fresh one. They are authored in
+  `harness/skills/` and exposed at this root by `link-skills.sh`. Prefer one
+  over ad hoc shell when it exists.
 - **MCP servers** are declared once in `harness/.mcp-servers.yml` and
   rendered into `.mcp.json`, `.cursor/mcp.json` and `.codex/config.toml` at
   this root by `link-mcp.sh`. The rendered files name credentials and never
