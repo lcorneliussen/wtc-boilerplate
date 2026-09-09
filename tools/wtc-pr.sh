@@ -59,9 +59,9 @@ case "$cmd" in
     branch="" url="" title="" coll="$default_coll"
     while [ $# -gt 0 ]; do
       case "$1" in
-        --branch) branch="${2:-}"; shift 2 ;;
-        --url) url="${2:-}"; shift 2 ;;
-        --title) title="${2:-}"; shift 2 ;;
+        --branch) branch="${2:?--branch needs a value}"; shift 2 ;;
+        --url) url="${2:?--url needs a value}"; shift 2 ;;
+        --title) title="${2:?--title needs a value}"; shift 2 ;;
         -*) echo "unknown: $1" >&2; usage ;;
         *) coll="$1"; shift ;;
       esac

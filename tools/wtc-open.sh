@@ -75,7 +75,10 @@ while [ $# -gt 0 ]; do
     --list) list=yes; shift ;;
     --session) session="${2:?--session needs a name}"; shift 2 ;;
     --agent) agent_kind="${2:?--agent needs a kind}"; agent_kind_set=yes; shift 2 ;;
-    --agent-args) agent_args="${2-}"; agent_args_set=yes; shift 2 ;;
+    # Present but possibly empty, and it legitimately starts with a dash, so
+    # this is ${2?} rather than ${2:?} or a leading-dash check.
+    --agent-args) agent_args="${2?--agent-args needs a value (empty string for none)}"
+                  agent_args_set=yes; shift 2 ;;
     --no-remote-control) remote_control=no; shift ;;
     --dry-run) dry_run=yes; shift ;;
     --no-agent) start_agent=no; shift ;;
@@ -499,7 +502,7 @@ start_agent_in_pane() {
 
   # Agent names: [a-z][a-z0-9_-]{0,31}, unique among live agents.
   # Name comes from WTC_AGENT_NAME (collection env); kind/args from wtc.env.
-  # Intentional word-splitting: $agent_args is a flag string, not a path.
+  # Intentional word-splitting: $this_agent_args is a flag string, not a path.
   # shellcheck disable=SC2086
   set -- start "$WTC_AGENT_NAME" --kind "$agent_kind" --pane "$agent_pane"
   if [ -n "$this_agent_args" ]; then
