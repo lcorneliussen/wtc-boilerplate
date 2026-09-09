@@ -154,6 +154,59 @@ for f in $cli_tools; do
   fi
 done
 
+# --- options that take a value ----------------------------------------------
+# An option arm that does `shift 2` consumes an argument it may not have. With
+# the value missing, `shift 2` runs out and `set -e` exits — printing nothing,
+# where an unknown flag at least says what was wrong. Sourcing the value from
+# ${2:?...} / ${2?...} (or catch-up.sh's require_value helper) turns that
+# silent exit into a message naming the option.
+
+it "an option that shifts two names a value"
+bad=""
+for f in $cli_tools; do
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    bad="$bad
+  $(basename "$f"): $line"
+  done <<EOF
+$(grep -nE '^[[:space:]]*(-[A-Za-z]\|)?--?[A-Za-z][A-Za-z0-9-]*\)' "$f" \
+   | grep 'shift 2' | grep -vE '\$\{2:?\?|require_value|\|\| true')
+EOF
+done
+if [ -z "$bad" ]; then
+  _pass "every --option that shifts two names a value"
+else
+  _fail "an --option shifts two without requiring a value" "$bad"
+fi
+
+# Behavioural anchors, so the static rule stands for a symptom rather than a
+# style. --agent-args is the one that must stay ${2?...}: an agent flag string
+# is legitimately empty and legitimately starts with a dash, so neither ${2:?}
+# nor a leading-dash check would do.
+it "an option with no value says so instead of exiting silently"
+out="$("$fixture_tools/wtc-pr.sh" enlist somerepo 1 --branch 2>&1)"; rc=$?
+if [ "$rc" != 0 ] && printf '%s' "$out" | grep -q 'needs a value'; then
+  _pass "wtc-pr.sh refuses --branch with no value, with a message"
+else
+  _fail "wtc-pr.sh --branch with no value" "rc=$rc out=[$out]"
+fi
+
+out="$("$fixture_tools/wtc-open.sh" --dry-run --agent-args 2>&1)"; rc=$?
+if [ "$rc" != 0 ] && printf '%s' "$out" | grep -q 'agent-args needs a value'; then
+  _pass "wtc-open.sh refuses --agent-args with no value, with a message"
+else
+  _fail "wtc-open.sh --agent-args with no value" "rc=$rc out=[$out]"
+fi
+
+it "--agent-args still accepts an empty and a dash-leading value"
+# Assert the parse, not the run: --dry-run still needs herdr to report pane
+# state, so the exit code here would be about the environment rather than the
+# argument. What must not appear is the missing-value refusal.
+out="$("$fixture_tools/wtc-open.sh" --dry-run --agent-args "" 2>&1)"
+assert_not_contains "$out" "agent-args needs a value" "empty is a valid value"
+out="$("$fixture_tools/wtc-open.sh" --dry-run --agent-args "--foo --bar" 2>&1)"
+assert_not_contains "$out" "agent-args needs a value" "a dash-leading flag string is valid"
+
 # --- executable bits --------------------------------------------------------
 
 it "every CLI tool is executable"
