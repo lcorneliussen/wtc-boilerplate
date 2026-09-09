@@ -199,10 +199,13 @@ else
 fi
 
 it "--agent-args still accepts an empty and a dash-leading value"
-"$fixture_tools/wtc-open.sh" --dry-run --agent-args "" >/dev/null 2>&1
-assert_eq 0 $? "empty is a valid agent-args value"
-"$fixture_tools/wtc-open.sh" --dry-run --agent-args "--foo --bar" >/dev/null 2>&1
-assert_eq 0 $? "a flag string starting with a dash is a valid value"
+# Assert the parse, not the run: --dry-run still needs herdr to report pane
+# state, so the exit code here would be about the environment rather than the
+# argument. What must not appear is the missing-value refusal.
+out="$("$fixture_tools/wtc-open.sh" --dry-run --agent-args "" 2>&1)"
+assert_not_contains "$out" "agent-args needs a value" "empty is a valid value"
+out="$("$fixture_tools/wtc-open.sh" --dry-run --agent-args "--foo --bar" 2>&1)"
+assert_not_contains "$out" "agent-args needs a value" "a dash-leading flag string is valid"
 
 # --- executable bits --------------------------------------------------------
 
