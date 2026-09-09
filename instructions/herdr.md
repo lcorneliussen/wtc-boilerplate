@@ -13,16 +13,28 @@ exist; closing it must cost nothing (`AGENTS.md` → "State lives in git").
 ```text
 session "<project>"                one server + socket per workspace root
 └─ workspace "<collection>"   one per wtc; cwd = collection root, .env.collection loaded
-   ├─ pane "agent"            coding agent (full-height left)
-   ├─ pane "browse"           LazyVim / lazygit — empty = a shell
-   ├─ pane "shell"            working prompt, under browse
-   └─ pane "status"           wtc-status.sh, beside the shell
 ```
 
+**Wide** (default when the attached client is wide enough):
+
 ```text
-[ agent | browse        ]
-[       | shell | status]
+[ agent | browse ]     ← two stacked columns
+[ shell | status ]     shell 20% height, status 35%
 ```
+
+**Narrow** (`--narrow`, `WTC_LAYOUT=narrow`, or auto when session width <
+`WTC_LAYOUT_NARROW_AT`, default 140):
+
+```text
+tab main:   agent / status     (stacked; status 35%)
+tab tools:  browse / shell     (stacked; shell 20%)
+```
+
+Layout is applied on create. Explicit `--narrow` / `--wide` **switches** an
+existing workspace (the agent pane is kept; status is recreated). A partial
+workspace — common when you start the agent first, then open — is built out
+toward the resolved layout. `auto` never flips a complete wide ↔ narrow.
+`--wide` / `--narrow` override `WTC_LAYOUT` (and auto).
 
 `browse` is the slot for something a human should look at. An agent that
 wants to open neovim sends it there and keeps talking in `agent`. A command
@@ -63,6 +75,8 @@ folder minus a trailing `-wtc` or `-harness` — so `<project>-wtc/` → session
 
 ```bash
 tools/wtc-open.sh [<collection> …]    # this collection, or the named ones
+tools/wtc-open.sh --narrow            # switch to (or create) stacked tabs
+tools/wtc-open.sh --wide              # switch to (or create) stacked columns
 tools/wtc-open.sh --all --list        # open everything / show agent states
 herdr --session <project>                  # attach
 ```

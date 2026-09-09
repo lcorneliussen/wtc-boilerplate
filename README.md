@@ -61,8 +61,8 @@ different revision, with no clone duplication and no branch contention.
   and never valued there, and what is deliberately *not* an MCP server.
 - **`instructions/jira.md`** — a worked example of wiring one external
   tracker; ignore it if yours is not Atlassian.
-- **`skills/`** — the agent-facing procedures (`wtc-new`, `wtc-catch-up`,
-  `wtc-pr`, …), each one a skill file an agent loads on demand.
+- **`skills/`** — the agent-facing procedures (`wtc-new`, `wtc-open`,
+  `wtc-catch-up`, `wtc-pr`, …), each one a skill file an agent loads on demand.
 - **`tests/`** — `tests/run.sh` runs the lot. No dependencies beyond bash and
   git, no network, and it builds its own throwaway workspace rather than
   touching yours. `tests/coverage.sh` reports line coverage for `tools/`
