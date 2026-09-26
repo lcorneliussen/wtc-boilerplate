@@ -517,7 +517,7 @@ first_prompt_in_pane() { # -> 0 once the agent is working on it
     *agent_prompt_stalled*)
       herdr --session "$session" agent send-keys "$agent_pane" enter >/dev/null 2>&1 || return 1
       herdr --session "$session" agent wait "$agent_pane" \
-        --until working --timeout 10000 >/dev/null 2>&1
+        --until working --timeout 10000 >/dev/null 2>&1 || return 1
       ;;
     *) return 1 ;;
   esac
