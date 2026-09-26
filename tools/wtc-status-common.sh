@@ -63,6 +63,9 @@ One-shot output for agents: tools/wtc-status.sh (--json / --md / --ansi).
                         is looking; herdr says which one is current.
   WTC_FORGE_CACHE_AGE   seconds a PR's forge answer is reused across panes
                         (default 90)
+  WTC_STATUS_FOCUS_EVERY  ticks between focus checks while waiting (default
+                        10). The check spawns herdr; once a second in every
+                        pane costs more than the redraws it saves.
   r refresh · a archived · ? help · q quit · click opens T/P pipelines
 EOF
       ;;
@@ -1272,21 +1275,27 @@ load_snapshot() {
       if [ -n "$wbranch" ] && [ -n "$wslug" ]; then
         if command -v bb >/dev/null 2>&1 || command -v gh >/dev/null 2>&1; then
           pr_fetch_bg "$wslug" "$wbranch"
-          _prog_jobs=$((_prog_jobs + 1))
         fi
       fi
       if [ -n "$wslug" ]; then
         tip_br="$(default_ref_for "$wrepo")"; tip_br="${tip_br#origin/}"
         prod_br="$(production_ref_for "$wrepo")"; prod_br="${prod_br#origin/}"
         pipe_fetch_bg "$wslug" "$tip_br"
-        _prog_jobs=$((_prog_jobs + 1))
         if [ "$prod_br" != "$tip_br" ]; then
           pipe_fetch_bg "$wslug" "$prod_br"
-          _prog_jobs=$((_prog_jobs + 1))
         fi
       fi
     done
   done
+  # Count what actually went to the background, not how many times we asked.
+  # Neither fetch forks unconditionally: pr_fetch_bg returns early on a fresh
+  # cache entry — the common case since forge answers are cached — and
+  # pipe_fetch_bg is a no-op stub unless a fork wires a real adapter. Counting
+  # call sites inflated the denominator, so the bar ran to nearly full while
+  # the real fetches were still going. This is the same number the countdown
+  # below measures, so the two cannot drift apart.
+  _prog_jobs="$(jobs -pr 2>/dev/null | wc -l | tr -d ' ')"
+  case "$_prog_jobs" in ''|*[!0-9]*) _prog_jobs=0 ;; esac
   # The forge round trips run in parallel and dominate the wait, so count them
   # down as they land instead of blocking on a bare `wait` with a frozen bar.
   # They fill the segment between the fetch and the scan, however many there are.
@@ -2100,9 +2109,24 @@ current_interval() {
   fi
 }
 
+# How many one-second ticks between focus checks. The check itself is cheap
+# per call, but wait_events evaluates the loop condition once a second, and
+# every pane doing that spawns herdr + python3 every second for as long as it
+# is idle — more local cost than the redraws the background interval saves.
+# Asking every ten ticks keeps the point of re-deciding mid-wait (a pane that
+# gains focus drops to the focused interval without sitting out the whole
+# background one) at a tenth of the process churn.
+: "${WTC_STATUS_FOCUS_EVERY:=10}"
+case "$WTC_STATUS_FOCUS_EVERY" in ''|*[!0-9]*) WTC_STATUS_FOCUS_EVERY=10 ;; esac
+[ "$WTC_STATUS_FOCUS_EVERY" -gt 0 ] || WTC_STATUS_FOCUS_EVERY=1
+
 wait_events() {
   _tick=0
-  while [ "$_tick" -lt "$(current_interval)" ]; do
+  # Re-decided periodically below rather than every tick; shrinking it under
+  # a tick count that has already passed ends the wait, which is what a pane
+  # that just gained focus wants.
+  _limit="$(current_interval)"
+  while [ "$_tick" -lt "$_limit" ]; do
     # A pending redraw normally means "stop waiting and paint it", but not
     # while the button is down: leaving would spin here until the release.
     if [ "$_redraw_only" = yes ] && ! mouse_dragging; then return 0; fi
@@ -2118,6 +2142,9 @@ wait_events() {
       esac
     fi
     _tick=$((_tick + 1))
+    if [ $(( _tick % WTC_STATUS_FOCUS_EVERY )) = 0 ]; then
+      _limit="$(current_interval)"
+    fi
     # A finished refresh has to land on its own. Polling only between waits
     # meant the new table appeared when the next event arrived — so a pane
     # nobody touched kept the stale one for a whole interval, and a click

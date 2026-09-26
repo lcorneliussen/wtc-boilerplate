@@ -24,7 +24,10 @@ CLI flags still win.
 | `WTC_LAYOUT` | `auto` | `wide` / `narrow` / `auto` — herdr workspace layout at create time |
 | `WTC_LAYOUT_NARROW_AT` | `140` | session width (cols) below which `auto` picks narrow |
 | `WTC_STATUS_REPOS` | `no` | `yes` → status shows only the collection table |
-| `WTC_STATUS_WATCH` | `60` | redraw interval in seconds; `0` prints once |
+| `WTC_STATUS_WATCH` | `30` | redraw interval while the pane is focused; `0` prints once |
+| `WTC_STATUS_WATCH_BG` | `300` | redraw interval while it is not; `0` uses the focused one always |
+| `WTC_FORGE_CACHE_AGE` | `90` | seconds a PR's forge answer is reused across every status pane |
+| `WTC_STATUS_FOCUS_EVERY` | `10` | ticks (≈seconds) between focus checks while waiting; the check spawns herdr |
 | `WTC_STATUS_NO_CLICK` | `no` | `yes` → no mouse capture, no constant redraw |
 | `WTC_TWG_SITE` | — | Atlassian site emitted as `TWG_SITE` into `.env.collection` (→ Tool identity) |
 

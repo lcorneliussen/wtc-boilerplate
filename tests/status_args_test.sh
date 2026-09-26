@@ -157,6 +157,7 @@ it "the interval knobs are documented where they apply"
 out="$("$ws/main/harness/tools/wtc-status-tui.sh" --help 2>&1)"
 assert_contains "$out" "WTC_STATUS_WATCH_BG"
 assert_contains "$out" "WTC_FORGE_CACHE_AGE"
+assert_contains "$out" "WTC_STATUS_FOCUS_EVERY"
 
 # Source the real common implementation in a child: it sets shell options and
 # traps, which must not replace the test runner's tally/cleanup trap.
@@ -190,6 +191,35 @@ assert_contains "$out" '"tip_checks": "SUCCESS"'
 assert_contains "$out" '"prod_checks": "SUCCESS"'
 assert_contains "$out" '"tip_url": "https://example.test/build/main"'
 assert_contains "$out" '"prod_url": "https://example.test/build/release"'
+
+it "the progress denominator counts background jobs, not adapter calls"
+# Neither fetch forks unconditionally — pr_fetch_bg returns early on a fresh
+# cache entry, and pipe_fetch_bg is a no-op stub unless a fork wires a real
+# adapter. Counting calls inflated the denominator, so the bar ran to nearly
+# full while the real fetches were still going.
+out="$(status_eval '
+  PR_CACHE="$ROOT/private-pr-cache" PIPE_CACHE="$ROOT/private-pipe-cache"
+  slug_for_worktree() { printf "example/widget\n"; }
+  production_ref_for() { printf "origin/release\n"; }
+  pr_fetch_bg()   { :; }   # nothing backgrounded, as on a warm cache
+  pipe_fetch_bg() { :; }   # nothing backgrounded, as with the stub adapter
+  pipe_facts()    { :; }
+  load_snapshot
+  printf "jobs=%s\n" "$_prog_jobs"
+')"
+assert_contains "$out" "jobs=0" "adapters that fork nothing leave the denominator at zero"
+
+out="$(status_eval '
+  PR_CACHE="$ROOT/private-pr-cache" PIPE_CACHE="$ROOT/private-pipe-cache"
+  slug_for_worktree() { printf "example/widget\n"; }
+  production_ref_for() { printf "origin/release\n"; }
+  pr_fetch_bg()   { :; }
+  pipe_fetch_bg() { printf "x\n" >> "$ROOT/pipe-n"; { sleep 3; } & }
+  pipe_facts()    { :; }
+  load_snapshot
+  printf "jobs=%s forked=%s\n" "$_prog_jobs" "$(wc -l < "$ROOT/pipe-n" | tr -d " ")"
+')"
+assert_contains "$out" "jobs=2 forked=2" "real background fetches count exactly once each"
 
 it "snapshot collection refuses a cache symlink before calling adapters"
 out="$(status_eval '
@@ -267,7 +297,9 @@ it "focusing a pane during its background wait advances the refresh"
 # Stub only event sources and drawing; run the actual wait and interval code.
 # read simulates one elapsed tick without sleeping. Focus changes at tick 2,
 # after the focused deadline, so waiting should end there instead of tick 300.
-assert_eq "2 yes" "$(status_eval '
+# Checked every tick here, so this measures the mechanism rather than the
+# throttle that paces it in normal use (below).
+assert_eq "2 yes" "$(WTC_STATUS_FOCUS_EVERY=1 status_eval '
   interval=1
   status_pane_focused() { [ "${_tick:-0}" -ge 2 ]; }
   read() { return 1; }
@@ -276,3 +308,41 @@ assert_eq "2 yes" "$(status_eval '
   _redraw_only=no _refresh_pending=no
   wait_events
   printf "%s %s\n" "$_tick" "$_refresh_pending"')"
+
+it "the focus check is throttled rather than run every tick"
+# The check spawns herdr and python3. Running it once a second in every pane
+# costs more locally than the redraws the background interval saves, so it is
+# paced — a newly focused pane still leaves the wait, at the next check.
+# current_interval runs in a command substitution, so a counter has to survive
+# a subshell: tally to a file.
+focus_tally="$(mktemp_dir focus)/n"; : > "$focus_tally"
+# Two checks: one entering the wait, one at tick 10 — not ten.
+assert_eq "10 yes 2" "$(FOCUS_TALLY="$focus_tally" WTC_STATUS_FOCUS_EVERY=10 status_eval '
+  interval=1
+  status_pane_focused() { echo x >> "$FOCUS_TALLY"; [ "${_tick:-0}" -ge 2 ]; }
+  read() { return 1; }
+  poll_refresh_complete() { return 1; }
+  update_status_clock() { :; }
+  _redraw_only=no _refresh_pending=no
+  wait_events
+  printf "%s %s %s\n" "$_tick" "$_refresh_pending" \
+    "$(wc -l < "$FOCUS_TALLY" | tr -d " ")"')"
+
+it "a pane that stays unfocused asks about focus once per throttle window"
+# 300 ticks of background wait must not mean 300 herdr+python3 pairs.
+# One entering the wait plus one every ten ticks: 31, not 300.
+focus_tally="$(mktemp_dir focusbg)/n"; : > "$focus_tally"
+assert_eq "300 31" "$(FOCUS_TALLY="$focus_tally" WTC_STATUS_FOCUS_EVERY=10 status_eval '
+  interval=1
+  status_pane_focused() { echo x >> "$FOCUS_TALLY"; return 1; }
+  read() { return 1; }
+  poll_refresh_complete() { return 1; }
+  update_status_clock() { :; }
+  _redraw_only=no _refresh_pending=no
+  wait_events
+  printf "%s %s\n" "$_tick" \
+    "$(wc -l < "$FOCUS_TALLY" | tr -d " ")"')"
+
+it "the focus throttle rejects zero and non-numbers rather than never asking"
+assert_eq "1" "$(WTC_STATUS_FOCUS_EVERY=0 status_eval 'echo "$WTC_STATUS_FOCUS_EVERY"')"
+assert_eq "10" "$(WTC_STATUS_FOCUS_EVERY=abc status_eval 'echo "$WTC_STATUS_FOCUS_EVERY"')"
