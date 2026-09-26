@@ -60,8 +60,8 @@ EOF
 
 while [ $# -gt 0 ]; do
   case "$1" in
-    --collection)   collection="$2"; shift 2;;
-    --repo)         only_repo="$2"; shift 2;;
+    --collection)   collection="${2:?--collection needs a directory}"; shift 2;;
+    --repo)         only_repo="${2:?--repo needs a name}"; shift 2;;
     --include-prod) include_prod=yes; shift;;
     --dry-run)      dry_run=yes; shift;;
     -h|--help)      usage; exit 0;;
