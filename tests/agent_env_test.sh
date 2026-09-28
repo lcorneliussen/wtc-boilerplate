@@ -174,3 +174,73 @@ it "sourcing it outside any collection still leaves the shell alive"
 out="$(env -i HOME="$HOME" PATH=/usr/bin:/bin CLAUDE_PROJECT_DIR="$nowhere" \
       /bin/bash -c ". '$agent_env'; echo STILL_ALIVE" </dev/null)"
 assert_eq "STILL_ALIVE" "$out"
+
+# --- the hook command that reaches this tool --------------------------------
+# agent-env.json is what Claude/Cursor/grok actually run, and invoke.sh goes to
+# some trouble to be cwd-independent — it walks up from CLAUDE_PROJECT_DIR,
+# GROK_WORKSPACE_ROOT or PWD. That care was defeated by the one step before it:
+# the JSON named invoke.sh by the bare relative path `harness/hooks/invoke.sh`,
+# so the moment a hook ran with a cwd below the collection root the shell could
+# not find it at all —
+#
+#   /bin/sh: harness/hooks/invoke.sh: No such file or directory
+#
+# — on *every* shell command, with exit 127, where the documented contract is
+# to fail open and exit 0.
+
+hook_command() { # <--write|--wrap> -> the command string agent-env.json carries
+  python3 - "$collection/harness/hooks/agent-env.json" "$1" <<'PY'
+import json, sys
+cfg = json.load(open(sys.argv[1]))
+event = 'SessionStart' if sys.argv[2] == '--write' else 'PreToolUse'
+print(cfg['hooks'][event][0]['hooks'][0]['command'])
+PY
+}
+
+# A collection whose invoke.sh only reports that it was reached: this asserts
+# the locator in the JSON, which is the part that was wrong. The real chain
+# beyond invoke.sh is what every other case in this file covers.
+marker_root="$(mktemp_dir hookloc)"
+mkdir -p "$marker_root/coll/harness/hooks" "$marker_root/coll/repo/deep"
+printf '#!/bin/sh\necho "reached $1"\n' > "$marker_root/coll/harness/hooks/invoke.sh"
+chmod +x "$marker_root/coll/harness/hooks/invoke.sh"
+
+run_hook_from() { # <dir> <mode> -> whatever the hook command printed
+  ( cd "$1" && env -u CLAUDE_PROJECT_DIR -u GROK_WORKSPACE_ROOT \
+      /bin/sh -c "$(hook_command "$2")" 2>&1 )
+}
+
+it "the hook command reaches invoke.sh from the collection root"
+assert_eq "reached --wrap" "$(run_hook_from "$marker_root/coll" --wrap)"
+assert_eq "reached --write" "$(run_hook_from "$marker_root/coll" --write)"
+
+it "the hook command reaches invoke.sh from a subdirectory"
+# The bug: a hook firing with cwd anywhere below the collection root.
+assert_eq "reached --wrap" "$(run_hook_from "$marker_root/coll/harness" --wrap)"
+assert_eq "reached --wrap" "$(run_hook_from "$marker_root/coll/repo/deep" --wrap)"
+
+it "the hook command honours the runtime's project root over cwd"
+out="$(cd / && CLAUDE_PROJECT_DIR="$marker_root/coll/repo/deep" \
+  /bin/sh -c "$(hook_command --wrap)" 2>&1)"
+assert_eq "reached --wrap" "$out"
+out="$(cd / && env -u CLAUDE_PROJECT_DIR GROK_WORKSPACE_ROOT="$marker_root/coll" \
+  /bin/sh -c "$(hook_command --wrap)" 2>&1)"
+assert_eq "reached --wrap" "$out" "grok names its root differently"
+
+it "the hook command fails open outside any collection"
+# Silence and 0, not 127 and a message on every shell command an agent runs.
+out="$(run_hook_from "$marker_root" --wrap)"; rc=$?
+assert_eq 0 "$rc"
+assert_eq "" "$out"
+
+it "the hook command names no bare relative path"
+# The regression in one line: a command that starts from a relative path is
+# a command that only works from one directory.
+for mode in --write --wrap; do
+  cmd="$(hook_command "$mode")"
+  if printf '%s' "$cmd" | grep -qE '(^|[^/A-Za-z_-])harness/hooks/invoke\.sh'; then
+    _fail "agent-env.json $mode reaches invoke.sh by a relative path" "$cmd"
+  else
+    _pass "agent-env.json $mode does not depend on cwd"
+  fi
+done

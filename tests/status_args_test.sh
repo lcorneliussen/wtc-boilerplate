@@ -145,3 +145,204 @@ out="$(run_status 25 --cached)"
 assert_ok true   # the run itself is asserted through its output below
 assert_contains "$out" "snapshot," "rendered from the snapshot, not live"
 assert_not_contains "$out" "MEM" "and did not fall through to the process table"
+
+# --- focus-aware interval ---------------------------------------------------
+# wtc-open puts a status pane in every collection, so most of them redraw on a
+# timer while at most one is visible. The unfocused ones should not spend a
+# shared API budget repainting what nobody is reading.
+
+it "the interval knobs are documented where they apply"
+# On the TUI, not the one-shot: an interval means nothing to a tool that
+# prints once and exits, and its help says so by pointing at the other.
+out="$("$ws/main/harness/tools/wtc-status-tui.sh" --help 2>&1)"
+assert_contains "$out" "WTC_STATUS_WATCH_BG"
+assert_contains "$out" "WTC_FORGE_CACHE_AGE"
+assert_contains "$out" "WTC_STATUS_FOCUS_EVERY"
+
+# Source the real common implementation in a child: it sets shell options and
+# traps, which must not replace the test runner's tally/cleanup trap.
+status_eval() {
+  WTC_CONFIG_ROOT="$ws/test-config" bash -c '
+    . "$1" --repos --no-fetch
+    eval "$2"
+  ' status-test "$ws/main/harness/tools/wtc-status-common.sh" "$1"
+}
+
+it "pipeline adapters populate GitHub tip and production snapshots"
+# The fixture stays offline: replace only the forge adapters, then run the
+# real snapshot collection. Both fetching and consuming facts must reach the
+# adapters, including when a fork configures a separate production branch.
+out="$(status_eval '
+  PR_CACHE="$ROOT/private-pr-cache" PIPE_CACHE="$ROOT/private-pipe-cache"
+  mkdir -p "$PR_CACHE"
+  chmod 755 "$PR_CACHE"
+  slug_for_worktree() { printf "example/widget\n"; }
+  production_ref_for() { printf "origin/release\n"; }
+  pipe_fetch_bg() { printf "fetch %s %s\n" "$1" "$2" >> "$ROOT/pipe-calls"; }
+  pipe_facts() { printf "42\tSUCCESS\tdeadbeef\thttps://example.test/build/%s\n" "$2"; }
+  load_snapshot
+  python3 -c "import os,sys; print([oct(os.stat(p).st_mode & 0o777) for p in sys.argv[1:]])" "$PR_CACHE" "$PIPE_CACHE"
+  cat "$ROOT/pipe-calls" "$_snapshot_ndjson"
+')"
+assert_contains "$out" "['0o700', '0o700']" "existing PR and newly created pipeline caches are private"
+assert_contains "$out" "fetch example/widget main"
+assert_contains "$out" "fetch example/widget release"
+assert_contains "$out" '"tip_checks": "SUCCESS"'
+assert_contains "$out" '"prod_checks": "SUCCESS"'
+assert_contains "$out" '"tip_url": "https://example.test/build/main"'
+assert_contains "$out" '"prod_url": "https://example.test/build/release"'
+
+it "the progress denominator counts background jobs, not adapter calls"
+# Neither fetch forks unconditionally — pr_fetch_bg returns early on a fresh
+# cache entry, and pipe_fetch_bg is a no-op stub unless a fork wires a real
+# adapter. Counting calls inflated the denominator, so the bar ran to nearly
+# full while the real fetches were still going.
+out="$(status_eval '
+  PR_CACHE="$ROOT/private-pr-cache" PIPE_CACHE="$ROOT/private-pipe-cache"
+  slug_for_worktree() { printf "example/widget\n"; }
+  production_ref_for() { printf "origin/release\n"; }
+  pr_fetch_bg()   { :; }   # nothing backgrounded, as on a warm cache
+  pipe_fetch_bg() { :; }   # nothing backgrounded, as with the stub adapter
+  pipe_facts()    { :; }
+  load_snapshot
+  printf "jobs=%s\n" "$_prog_jobs"
+')"
+assert_contains "$out" "jobs=0" "adapters that fork nothing leave the denominator at zero"
+
+out="$(status_eval '
+  PR_CACHE="$ROOT/private-pr-cache" PIPE_CACHE="$ROOT/private-pipe-cache"
+  slug_for_worktree() { printf "example/widget\n"; }
+  production_ref_for() { printf "origin/release\n"; }
+  pr_fetch_bg()   { :; }
+  pipe_fetch_bg() { printf "x\n" >> "$ROOT/pipe-n"; { sleep 3; } & }
+  pipe_facts()    { :; }
+  load_snapshot
+  printf "jobs=%s forked=%s\n" "$_prog_jobs" "$(wc -l < "$ROOT/pipe-n" | tr -d " ")"
+')"
+assert_contains "$out" "jobs=2 forked=2" "real background fetches count exactly once each"
+
+it "snapshot collection refuses a cache symlink before calling adapters"
+out="$(status_eval '
+  mkdir "$ROOT/cache-target"
+  ln -s "$ROOT/cache-target" "$ROOT/cache-link"
+  PR_CACHE="$ROOT/cache-link"
+  pr_fetch_bg() { echo "adapter called"; }
+  pipe_fetch_bg() { echo "adapter called"; }
+  load_snapshot
+' 2>&1)"
+assert_neq "0" "$?"
+assert_contains "$out" "cannot secure PR/pipeline cache directories"
+assert_contains "$out" "$ws/cache-link" "the error identifies the rejected cache path"
+assert_not_contains "$out" "adapter called"
+
+it "focus detection keeps the caller variable"
+assert_eq "caller" "$(status_eval '
+  HERDR_SESSION=test HERDR_PANE_ID=focused
+  _focused=caller
+  herdr() { printf "{\"result\":{\"pane\":{\"pane_id\":\"focused\",\"focused\":true}}}\n"; }
+  status_pane_focused
+  printf "%s\n" "$_focused"')"
+
+focus_interval() {
+  FOCUS_JSON="$1" FOCUS_RC="${2:-0}" status_eval '
+    HERDR_SESSION=test HERDR_PANE_ID=caller
+    herdr() {
+      [ "$*" = "--session test pane current --pane caller" ] || return 1
+      printf "%s\n" "$FOCUS_JSON"
+      return "$FOCUS_RC"
+    }
+    current_interval'
+}
+
+it "a matching caller pane can still be unfocused"
+# herdr resolves current relative to the caller; pane_id equality alone used
+# to make every hidden status pane refresh at the foreground interval.
+assert_eq "300" "$(focus_interval '{"result":{"pane":{"pane_id":"caller","focused":false}}}')"
+assert_eq "30" "$(focus_interval '{"result":{"pane":{"pane_id":"caller","focused":true}}}')"
+
+it "missing, malformed and unrelated focus evidence uses the foreground interval"
+for focus_json in \
+  '{"result":{"pane":{"pane_id":"caller"}}}' \
+  '{"result":{"pane":{"pane_id":"caller","focused":"false"}}}' \
+  '{"result":{"pane":{"pane_id":"other","focused":false}}}' \
+  '{"result":null}' \
+  'not JSON'; do
+  assert_eq "30" "$(focus_interval "$focus_json")"
+done
+assert_eq "30" "$(focus_interval '{"result":{"pane":{"pane_id":"caller","focused":false}}}' 1)" \
+  "a failed command cannot supply authoritative unfocused state"
+
+it "an unfocused pane waits longer than a focused one"
+assert_eq "300" "$(status_eval 'status_pane_focused() { return 1; }; current_interval')"
+assert_eq "30" "$(status_eval 'status_pane_focused() { return 0; }; current_interval')"
+
+it "unknown counts as focused, so nothing degrades outside herdr"
+assert_eq "30" "$(status_eval 'unset HERDR_SESSION HERDR_PANE_ID; current_interval')"
+assert_eq "30" "$(status_eval '
+  HERDR_SESSION=test HERDR_PANE_ID=test
+  herdr() { return 1; }
+  current_interval')" "a failed focus query also uses the focused interval"
+
+it "WTC_STATUS_WATCH_BG=00 restores a single interval"
+assert_eq "30" "$(WTC_STATUS_WATCH_BG=00 status_eval '
+  status_pane_focused() { return 1; }; current_interval')"
+
+it "background intervals accept leading zeros and reject non-numbers"
+assert_eq "90" "$(WTC_STATUS_WATCH_BG=090 status_eval '
+  status_pane_focused() { return 1; }; current_interval')"
+assert_eq "300" "$(WTC_STATUS_WATCH_BG=abc status_eval '
+  status_pane_focused() { return 1; }; current_interval')"
+
+it "focusing a pane during its background wait advances the refresh"
+# Stub only event sources and drawing; run the actual wait and interval code.
+# read simulates one elapsed tick without sleeping. Focus changes at tick 2,
+# after the focused deadline, so waiting should end there instead of tick 300.
+# Checked every tick here, so this measures the mechanism rather than the
+# throttle that paces it in normal use (below).
+assert_eq "2 yes" "$(WTC_STATUS_FOCUS_EVERY=1 status_eval '
+  interval=1
+  status_pane_focused() { [ "${_tick:-0}" -ge 2 ]; }
+  read() { return 1; }
+  poll_refresh_complete() { return 1; }
+  update_status_clock() { :; }
+  _redraw_only=no _refresh_pending=no
+  wait_events
+  printf "%s %s\n" "$_tick" "$_refresh_pending"')"
+
+it "the focus check is throttled rather than run every tick"
+# The check spawns herdr and python3. Running it once a second in every pane
+# costs more locally than the redraws the background interval saves, so it is
+# paced — a newly focused pane still leaves the wait, at the next check.
+# current_interval runs in a command substitution, so a counter has to survive
+# a subshell: tally to a file.
+focus_tally="$(mktemp_dir focus)/n"; : > "$focus_tally"
+# Two checks: one entering the wait, one at tick 10 — not ten.
+assert_eq "10 yes 2" "$(FOCUS_TALLY="$focus_tally" WTC_STATUS_FOCUS_EVERY=10 status_eval '
+  interval=1
+  status_pane_focused() { echo x >> "$FOCUS_TALLY"; [ "${_tick:-0}" -ge 2 ]; }
+  read() { return 1; }
+  poll_refresh_complete() { return 1; }
+  update_status_clock() { :; }
+  _redraw_only=no _refresh_pending=no
+  wait_events
+  printf "%s %s %s\n" "$_tick" "$_refresh_pending" \
+    "$(wc -l < "$FOCUS_TALLY" | tr -d " ")"')"
+
+it "a pane that stays unfocused asks about focus once per throttle window"
+# 300 ticks of background wait must not mean 300 herdr+python3 pairs.
+# One entering the wait plus one every ten ticks: 31, not 300.
+focus_tally="$(mktemp_dir focusbg)/n"; : > "$focus_tally"
+assert_eq "300 31" "$(FOCUS_TALLY="$focus_tally" WTC_STATUS_FOCUS_EVERY=10 status_eval '
+  interval=1
+  status_pane_focused() { echo x >> "$FOCUS_TALLY"; return 1; }
+  read() { return 1; }
+  poll_refresh_complete() { return 1; }
+  update_status_clock() { :; }
+  _redraw_only=no _refresh_pending=no
+  wait_events
+  printf "%s %s\n" "$_tick" \
+    "$(wc -l < "$FOCUS_TALLY" | tr -d " ")"')"
+
+it "the focus throttle rejects zero and non-numbers rather than never asking"
+assert_eq "1" "$(WTC_STATUS_FOCUS_EVERY=0 status_eval 'echo "$WTC_STATUS_FOCUS_EVERY"')"
+assert_eq "10" "$(WTC_STATUS_FOCUS_EVERY=abc status_eval 'echo "$WTC_STATUS_FOCUS_EVERY"')"

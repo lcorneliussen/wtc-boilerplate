@@ -15,7 +15,8 @@ only used later to enrich status (state/title), never to discover which PRs
 belong here.
 
   enlist   add/update a row after you open a PR (draft or ready)
-  unlist   drop a row (merged, closed, or wrong enlistment)
+  unlist   drop a row (closed, wrong enlistment — not needed after merge;
+           catch-up keeps MERGED rows so status can archive them)
   list     show enlisted rows
   path     print the .wtc-prs path
 
@@ -58,9 +59,9 @@ case "$cmd" in
     branch="" url="" title="" coll="$default_coll"
     while [ $# -gt 0 ]; do
       case "$1" in
-        --branch) branch="${2:-}"; shift 2 ;;
-        --url) url="${2:-}"; shift 2 ;;
-        --title) title="${2:-}"; shift 2 ;;
+        --branch) branch="${2:?--branch needs a value}"; shift 2 ;;
+        --url) url="${2:?--url needs a value}"; shift 2 ;;
+        --title) title="${2:?--title needs a value}"; shift 2 ;;
         -*) echo "unknown: $1" >&2; usage ;;
         *) coll="$1"; shift ;;
       esac

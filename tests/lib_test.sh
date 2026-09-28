@@ -6,6 +6,26 @@
 ws="$(make_workspace)"
 load_lib "$ws"
 
+# --- browse sockets ---------------------------------------------------------
+
+it "browse sockets distinguish workspaces with the same collection name"
+first_socket="$(ROOT=/tmp/first-workspace wtc_browse_socket main)"
+assert_neq "$first_socket" "$(ROOT=/tmp/second-workspace wtc_browse_socket main)"
+assert_eq "$first_socket" "$(ROOT=/tmp/first-workspace wtc_browse_socket main)"
+
+it "long browse socket names stay bounded without losing their suffix identity"
+long_name="$(printf '%0120d' 0)"
+first_socket="$(wtc_browse_socket "${long_name}a")"
+second_socket="$(wtc_browse_socket "${long_name}b")"
+assert_ok test "${#first_socket}" -le 100
+assert_neq "$first_socket" "$second_socket"
+assert_eq "$first_socket" "$(wtc_browse_socket "${long_name}a")"
+
+it "browse socket helpers do not overwrite caller variables"
+_bs=caller _bsum=checksum
+wtc_browse_socket "$long_name" >/dev/null
+assert_eq "caller checksum" "$_bs $_bsum"
+
 # --- registry parsing -------------------------------------------------------
 # The registry is parsed with awk on a shape that is load-bearing (a block
 # starts at `- name:`, every other field is `key: value`). These tests are what
@@ -264,28 +284,130 @@ assert_eq "$before" "$(wtc_status_cache_rows snap)" "still the last good snapsho
 wtc_status_cache_commit
 assert_contains "$(wtc_status_cache_rows snap)" "interrupted" "and the new one lands on commit"
 
-# --- wtc_browse_socket ------------------------------------------------------
-# The socket used to be /tmp/wtc-browse-<collection>.nvim. Every workspace on
-# a machine tends to have a `main`, so the second workspace's browse nvim
-# failed to --listen on a socket the first one's held, and status clicks from
-# it landed in the other workspace's editor.
+# --- forge-call cache -------------------------------------------------------
+# wtc-open puts a status pane in every collection, each redrawing on an
+# interval, so an uncached per-PR fetch is multiplied by panes × renders
+# against a 5000/hour budget shared with everything else on the machine.
 
-it "wtc_browse_socket is keyed by workspace root as well as collection"
-assert_eq "/tmp/wtc-browse-$(basename "$ws")-main.nvim" "$(wtc_browse_socket main)"
+# Its own cache dir. The real one is shared per user and persists between
+# runs, so without this the second run of the suite reads entries the first
+# left behind and the call counts below are whatever happened last time.
+FORGE_CACHE="$(mktemp_dir forgecache)"
 
-it "the same collection name in another workspace gets its own socket"
-here="$(wtc_browse_socket main)"
-saved="$ROOT"; ROOT="$(dirname "$ws")/another-workspace"
-assert_neq "$here" "$(wtc_browse_socket main)"
-assert_eq "/tmp/wtc-browse-another-workspace-main.nvim" "$(wtc_browse_socket main)"
-ROOT="$saved"
+cache_mode() { python3 -c 'import os, sys; print(oct(os.stat(sys.argv[1]).st_mode & 0o777)[2:])' "$1"; }
 
-it "a workspace and collection too long for a socket path are cut to fit"
-# sun_path is 104 bytes on macOS, NUL included; past it nvim --listen fails
-# outright. The cut name keeps a checksum of the full pair so it stays unique.
-long="$(printf '%090d' 0 | tr 0 c)"
-sock="$(wtc_browse_socket "$long")"
-assert_eq "yes" "$([ "$(printf '%s' "$sock" | wc -c | tr -d ' ')" -le 100 ] && echo yes || echo no)" "fits a socket path"
-assert_contains "$sock" "/tmp/wtc-browse-$(basename "$ws")-" "still says which workspace"
-assert_eq "$sock" "$(wtc_browse_socket "$long")" "stable across calls"
-assert_neq "$sock" "$(wtc_browse_socket "${long}d")" "a name differing past the cut still gets its own socket"
+it "forge cache directories are private on creation and after reuse"
+cache_parent="$(mktemp_dir privatecache)"
+assert_ok bash -c '. "$1"; umask 022; FORGE_CACHE="$2"; _forge_cache_path test fresh' cache-test \
+  "$HARNESS_DIR/tools/lib.sh" "$cache_parent/new"
+assert_eq "700" "$(cache_mode "$cache_parent/new")"
+chmod 755 "$cache_parent/new"
+FORGE_CACHE="$cache_parent/new" _forge_cache_path test existing >/dev/null
+assert_eq "700" "$(cache_mode "$cache_parent/new")"
+
+it "private cache setup rejects symlinks without changing their targets"
+mkdir "$cache_parent/target"
+chmod 755 "$cache_parent/target"
+ln -s "$cache_parent/target" "$cache_parent/link"
+assert_fails _private_cache_dir "$cache_parent/link"
+assert_eq "755" "$(cache_mode "$cache_parent/target")"
+if [ ! -O / ]; then
+  assert_fails _private_cache_dir /
+fi
+
+it "a second call inside the TTL does not re-run the command"
+calls_file="$(mktemp_dir fc)/calls"; : > "$calls_file"
+counted() { echo x >> "$calls_file"; printf 'the answer\n'; }
+assert_eq "the answer" "$(_forge_cached test "k1" 90 counted)"
+assert_eq "the answer" "$(_forge_cached test "k1" 90 counted)"
+assert_eq "1" "$(wc -l < "$calls_file" | tr -d ' ')" "ran once for two calls"
+
+it "a zero TTL always re-runs"
+: > "$calls_file"
+_forge_cached test "k2" 0 counted >/dev/null
+_forge_cached test "k2" 0 counted >/dev/null
+assert_eq "2" "$(wc -l < "$calls_file" | tr -d ' ')"
+
+it "an empty answer is not cached"
+# The failure rows all mean "could not tell" — an unreachable forge, a missing
+# CLI. Caching one pins a blank row in place for the whole TTL, turning a
+# transient outage into a table that stays wrong after the network came back.
+: > "$calls_file"
+empty_then() { echo x >> "$calls_file"; printf ''; }
+_forge_cached test "k3" 90 empty_then >/dev/null
+_forge_cached test "k3" 90 empty_then >/dev/null
+assert_eq "2" "$(wc -l < "$calls_file" | tr -d ' ')" "retried rather than caching the blank"
+
+it "different keys do not collide"
+: > "$calls_file"
+assert_eq "the answer" "$(_forge_cached test "a/b#1" 90 counted)"
+assert_eq "the answer" "$(_forge_cached test "a/b#2" 90 counted)"
+assert_eq "2" "$(wc -l < "$calls_file" | tr -d ' ')"
+
+it "a key with path characters becomes one safe filename"
+f="$(_forge_cache_path pr 'owner/repo#42')"
+assert_not_contains "${f#"$FORGE_CACHE/"}" "/" "no directory separator survives"
+assert_contains "$f" "owner_repo#42"
+
+it "cache filename sanitization treats non-ASCII input as bytes in every locale"
+utf8_locale="$(locale -a | awk 'tolower($0) ~ /utf.*8/ {print; exit}')"
+f="$(LC_ALL="${utf8_locale:-C}" _forge_cache_path pr 'owner/répo#42')"
+assert_eq "pr-owner_r__po#42" "${f##*/}"
+
+
+it "cache TTLs accept leading zeros and default invalid values"
+for ttl in 090 abc; do
+  : > "$calls_file"
+  _forge_cached test "ttl-$ttl" "$ttl" counted >/dev/null
+  _forge_cached test "ttl-$ttl" "$ttl" counted >/dev/null
+  assert_eq "1" "$(wc -l < "$calls_file" | tr -d ' ')" "TTL $ttl reuses the answer"
+done
+: > "$calls_file"
+_forge_cached test ttl-zero 00 counted >/dev/null
+_forge_cached test ttl-zero 00 counted >/dev/null
+assert_eq "2" "$(wc -l < "$calls_file" | tr -d ' ')" "00 disables reuse"
+
+it "cache replacement keeps the previous answer visible until publication"
+f="$(_forge_cache_path test atomic)"
+printf 'previous answer\n' > "$f"
+# Inspect the publication boundary deterministically, without a race or sleep.
+# The old file must still be complete, and the replacement must be complete.
+mv() {
+  if [ "$(cat "$3")" = "previous answer" ] && [ "$(cat "$2")" = "the answer" ]; then
+    printf 'atomic\n' > "$calls_file"
+  fi
+  command mv "$@"
+}
+: > "$calls_file"
+_forge_cached test atomic 0 counted >/dev/null
+unset -f mv
+assert_eq "atomic" "$(cat "$calls_file")" "old and new answers coexist until rename"
+assert_eq "the answer" "$(cat "$f")" "the new answer was published"
+
+it "cache removal between checking and reading is a miss under set -e"
+out="$(bash -c '
+  set -e
+  . "$1"
+  FORGE_CACHE="$2"
+  cache_file="$(_forge_cache_path test disappearing)"
+  printf "cached answer\n" > "$cache_file"
+  cat() { rm -f "$1"; command cat "$@"; }
+  fresh() { printf "fresh answer\n"; }
+  _forge_cached test disappearing 90 fresh
+  printf "still running\n"
+' cache-race "$HARNESS_DIR/tools/lib.sh" "$FORGE_CACHE")"
+assert_eq $'fresh answer\nstill running' "$out"
+
+it "failed commands with partial output are not cached"
+partial_failure() { printf 'partial answer\n'; return 1; }
+assert_empty "$(_forge_cached test failed 90 partial_failure)"
+assert_eq "the answer" "$(_forge_cached test failed 90 counted)"
+
+it "an unwritable cache still returns the fresh answer"
+assert_eq "the answer" "$(FORGE_CACHE=/dev/null/not-a-directory _forge_cached test unavailable 90 counted)"
+
+it "failed cache setup never creates a temporary file in the working directory"
+cache_cwd="$(mktemp_dir cachecwd)"
+assert_eq "the answer" "$(cd "$cache_cwd"; FORGE_CACHE="$cache_parent/link" _forge_cached test unsafe 90 counted)"
+assert_eq "0" "$(python3 -c 'import os,sys; print(len(os.listdir(sys.argv[1])))' "$cache_cwd")"
+assert_eq "0" "$(python3 -c 'import os,sys; print(len(os.listdir(sys.argv[1])))' "$cache_parent/target")"

@@ -6,3 +6,12 @@
 
 # wtc-status.sh last-refresh snapshot (collection-scoped, disposable)
 .last-wtc-status.yml
+.wtc-status.json
+.wtc-status.md
+
+# Python bytecode cache (wtc-status-format.py / wtc-status-ansi.py)
+**/__pycache__/
+
+# Local-only notes from a fork/collection that vendors this checkout
+# (never commit — upstream must stay free of downstream product names)
+.wtc-local.md
