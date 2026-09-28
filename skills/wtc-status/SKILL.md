@@ -95,8 +95,8 @@ to say — so a healthy PR is just `#225 ✓`.
 - **merge** — `↓` behind its base · `⚠` conflicts · `⊘` blocked · `·` merged
   (fading) · blank clean
 - **review** — `✓` approved · `!` changes requested · `…` waiting on assigned
-  reviewers · `✎` commented, not yet approved · dim red `◌` ready with no
-  reviewers assigned (deliberately not the bold `⚠` merge conflicts use — a
+  reviewers · `✎` commented, not yet approved · red `∅` ready with no
+  reviewers assigned (deliberately not the `⚠` merge conflicts use — a
   missing reviewer is not the same emergency) · `N` unresolved review threads
   · blank nothing outstanding
 

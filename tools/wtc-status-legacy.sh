@@ -369,7 +369,7 @@ glyph_review() { # <approved|changes|waiting|commented|noreviewers|merged|none|N
     changes)      printf '\033[31m!\033[0m' ;;
     waiting)      printf '\033[33m…\033[0m' ;;          # reviewers assigned, silent
     commented)    printf '\033[33m✎\033[0m' ;;          # reviewer participated, not approved
-    noreviewers)  printf '\033[31;1m⚠\033[0m' ;;       # ready-for-review with nobody assigned
+    noreviewers)  printf '\033[31m∅\033[0m' ;;          # ready-for-review with nobody assigned
     merged)       printf '\033[2m·\033[0m' ;;
     none|'')      printf ' ' ;;
     *)            printf '\033[33m%s\033[0m' "$1" ;;   # unresolved comment count
