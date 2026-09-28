@@ -22,7 +22,7 @@ GLYPH = {
     "changes": "!",
     "waiting": "…",
     "commented": "✎",
-    "noreviewers": "◌",
+    "noreviewers": "∅",
     "merged": "·",
     "FOLLOW": "→",
     "MERGED": "·",
@@ -33,7 +33,7 @@ REVIEW_LABEL = {
     "changes": "changes requested",
     "waiting": "waiting on reviewers",
     "commented": "reviewer commented",
-    "noreviewers": "◌ no reviewers",
+    "noreviewers": "∅ no reviewers",
     "merged": "merged",
     "none": "",
 }

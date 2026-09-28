@@ -361,6 +361,26 @@ forge_cli_present() { # <forge> — 0 when the CLI for it is installed
   command -v "$_c" >/dev/null 2>&1
 }
 
+forge_cli_usable() { # <forge> — 0 when a quick probe succeeds (not a broken shim)
+  _c="$(forge_cli "${1:-}")"
+  [ -n "$_c" ] || return 1
+  command -v "$_c" >/dev/null 2>&1 || return 1
+  case "$_c" in
+    bb)
+      _probe="$("$_c" --version 2>&1)" || return 1
+      case "$_probe" in
+        *mise\ ERROR*|*Bun\ runtime*|*requires\ the\ Bun*) return 1 ;;
+      esac
+      case "$_probe" in [0-9]*) return 0 ;; esac
+      return 1
+      ;;
+    gh)
+      "$_c" --version >/dev/null 2>&1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 # Slug and forge for a repo that may not be in the registry — an `ext.`
 # sibling has no registry entry, but its worktree knows its own remote.
 # Without this, an unregistered repo's PR lookups (wtc-pr enlist's default
@@ -1571,7 +1591,7 @@ wtc_pr_facts_py() {
 # whether a branch is finished, so "cannot tell" must never be spelled the
 # same as "merged".
 _wtc_pr_unknown_row() { # <number> <title>
-  printf '%s\t\tNONE\tUNKNOWN\tnone\t%s\t\t\n' "$1" "${2:-}"
+  printf '%s\t-\tNONE\tUNKNOWN\tnone\t%s\t-\t-\n' "$1" "${2:-}"
 }
 
 _wtc_pr_enrich_github() { # <slug> <number> <title> -> TSV line, or empty
@@ -1700,6 +1720,7 @@ EOF
   # is the unknown row, not a silent reclassification: catch-up must not read
   # "cannot verify" as "merged".
   forge_cli_present "$forge" || { _wtc_pr_unknown_row "$num" "$title"; return 0; }
+  forge_cli_usable "$forge" || { _wtc_pr_unknown_row "$num" "$title"; return 0; }
 
   # Keyed by slug#number, not by repo name: two collections can hold the same
   # repo under different sibling names, and they are asking about the same PR.
@@ -1771,7 +1792,7 @@ wtc_pr_label_add() { # <slug> <pr-number> <label> — tag an existing PR
 
 # PRS section rows, driven by local enlistment (.wtc-prs) — not a forge label
 # search. TSV: repo \t number \t checks \t merge \t review \t title \t
-# archived \t merged_on \t draft
+# archived \t merged_on \t draft \t state
 #
 # merged_on is "-" rather than empty when there is none: `read -r … <<< "…"`
 # with IFS=$'\t' still treats a lone tab as IFS whitespace and collapses
@@ -1813,9 +1834,10 @@ wtc_pr_list() { # <collection> -> TSV rows, one per enlisted PR (open/draft/merg
         ;;
     esac
     [ -n "$etitle" ] && title="$etitle"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    _st="${state:-}"; [ -z "$_st" ] && _st=-
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$repo" "$num" "${checks:-NONE}" "${merge:-UNKNOWN}" "${review:-none}" \
-      "${title:--}" "$archived" "${merged_on:--}" "$draft"
+      "${title:--}" "$archived" "${merged_on:--}" "$draft" "$_st"
   done
 }
 

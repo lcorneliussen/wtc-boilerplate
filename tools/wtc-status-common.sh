@@ -370,6 +370,31 @@ _count_cell_width() { # scans CR_AHEAD or CR_BEHIND via name prefix
 _ahead_cell_width() { _count_cell_width ahead; }
 _behind_cell_width() { _count_cell_width behind; }
 
+# T/P cells may include a linked #build (OSC-8); size columns to the widest row.
+_pipe_col_width() { # tip|prod
+  local which="$1" w=2 i=0 chk b u
+  while [ "$i" -lt "${#CR_WT[@]}" ]; do
+    case "$which" in
+      tip)
+        chk="${CR_TIP_CHECKS[$i]:-}"
+        b="${CR_TIP_BUILD[$i]:-}"
+        u="${CR_TIP_URL[$i]:-}"
+        ;;
+      prod)
+        chk="${CR_PROD_CHECKS[$i]:-}"
+        b="${CR_PROD_BUILD[$i]:-}"
+        u="${CR_PROD_URL[$i]:-}"
+        ;;
+      *) chk=""; b=""; u="" ;;
+    esac
+    pipe_build_cell "$chk" "$b" "$u"
+    ansi_vislen "$_pcell"
+    [ "$_vlen" -gt "$w" ] && w="$_vlen"
+    i=$((i + 1))
+  done
+  printf '%s' "$w"
+}
+
 layout() { # recompute the columns for the terminal as it is now
   # stty asks the terminal itself; tput would believe an inherited $COLUMNS.
   cols="$(stty size 2>/dev/null | awk '{print $2}' || true)"
@@ -388,7 +413,8 @@ layout() { # recompute the columns for the terminal as it is now
   c_ahead="$(_ahead_cell_width)"
   c_behind="$(_behind_cell_width)"
   c_branch="$(_branch_width)"; [ "$c_branch" -lt 6 ] && c_branch=6
-  c_tip=2 c_prod=2
+  c_tip="$(_pipe_col_width tip)"; [ "$c_tip" -lt 2 ] && c_tip=2
+  c_prod="$(_pipe_col_width prod)"; [ "$c_prod" -lt 2 ] && c_prod=2
   prs_w_num="$(_prs_num_width)"
   _apply_column_floors
 
@@ -403,7 +429,8 @@ layout() { # recompute the columns for the terminal as it is now
     c_local="$(_local_cell_width)"; [ "$c_local" -lt 1 ] && c_local=1
     c_ahead="$(_ahead_cell_width)"
     c_behind="$(_behind_cell_width)"
-    c_tip=2 c_prod=2
+    c_tip="$(_pipe_col_width tip)"; [ "$c_tip" -lt 2 ] && c_tip=2
+    c_prod="$(_pipe_col_width prod)"; [ "$c_prod" -lt 2 ] && c_prod=2
     prs_w_num="$(_prs_num_width)"
     _apply_column_floors
     # Every compact column is already at its content width, so a pane too narrow
@@ -506,7 +533,8 @@ prs_x_num=3 prs_w_num=6 prs_x_term=0
 CR_COLL=(); CR_DIR=(); CR_WT=(); CR_SLUG=(); CR_LABEL=()
 CR_BRANCH=(); CR_AHEAD=(); CR_BEHIND=(); CR_TREE=()
 CR_PR_NUM=(); CR_PR_CHECKS=(); CR_PR_MERGE=(); CR_PR_REVIEW=(); CR_PR_DRAFT=()
-CR_TIP_CHECKS=(); CR_TIP_URL=(); CR_PROD_CHECKS=(); CR_PROD_URL=()
+CR_TIP_CHECKS=(); CR_TIP_BUILD=(); CR_TIP_URL=()
+CR_PROD_CHECKS=(); CR_PROD_BUILD=(); CR_PROD_URL=()
 # Cached PR section rows — title includes any MERGED follow-through prefix.
 PR_ROW_REPO=(); PR_ROW_NUM=(); PR_ROW_CHECKS=(); PR_ROW_MERGE=()
 PR_ROW_REVIEW=(); PR_ROW_TITLE=(); PR_ROW_SLUG=(); PR_ROW_ARCHIVED=(); PR_ROW_DRAFT=()
@@ -1074,10 +1102,11 @@ glyph_review() { # <approved|changes|waiting|commented|noreviewers|merged|none|N
     changes)      printf '\033[31m!\033[0m' ;;
     waiting)      printf '\033[33m…\033[0m' ;;          # reviewers assigned, silent
     commented)    printf '\033[33m✎\033[0m' ;;          # reviewer participated, not approved
-    # Dim red ◌ rather than the bold ⚠ merge conflicts use — a PR simply
+    # Red ∅ (empty set) rather than ⚠ merge conflicts use — a PR simply
     # missing reviewers is not the same emergency as one that cannot merge,
     # and sharing the glyph made the eye stop at the wrong column first.
-    noreviewers)  printf '\033[2;31m◌\033[0m' ;;       # ready-for-review with nobody assigned
+    # Dim ◌ was too close to the silent · cell when faded.
+    noreviewers)  printf '\033[31m∅\033[0m' ;;          # ready-for-review with nobody assigned
     merged)       printf '\033[2m·\033[0m' ;;
     none|'')      printf ' ' ;;
     *)            printf '\033[33m%s\033[0m' "$1" ;;   # unresolved comment count (GH)
@@ -1149,11 +1178,14 @@ draw_detail_cells() {
   local a_disp="$5" b_disp="$6" tip_checks="$7" tip_url="$8"
   local prod_checks="$9" prod_url="${10}" tree="${11}"
   local pr_draft="${12:-no}" pr_slug="${13:-}"
-  local row="" term_x=0 checks_g
+  local tip_build="${14:-}" prod_build="${15:-}"
+  local row="" term_x=0 checks_g pr_faded=no
 
   if [ -n "$pr_num" ]; then
     # D only when forge said CI was skipped for draft — never force it just
     # because the PR is a draft (drafts can still run checks).
+    case "$pr_merge" in FOLLOW|MERGED) pr_faded=yes ;; esac
+    [ "$pr_review" = merged ] && pr_faded=yes
     checks_g="$(glyph_checks "$pr_checks")"
     pr_num_link "$pr_slug" "$pr_num"
     printf -v _cell '%s %s%s%s' "$_prlink" \
@@ -1161,6 +1193,7 @@ draw_detail_cells() {
       "$(glyph_review "$pr_review")"
     pad=$((c_pr - (1 + ${#pr_num} + 1 + 3)))
     [ "$pad" -gt 0 ] && printf -v _cell '%s%*s' "$_cell" "$pad" ''
+    [ "$pr_faded" = yes ] && _cell=$'\033[2m'"$_cell"$'\033[0m'
   else
     dot_cell $c_pr
   fi
@@ -1180,21 +1213,31 @@ draw_detail_cells() {
     count_cell "$b_disp" "$c_behind"
     row="$row$_cell "
   fi
-  build_glyph_cell "$tip_checks" "$tip_url"
+  pipe_build_cell "$tip_checks" "$tip_build" "$tip_url"
   if [ "$show_tip" = yes ]; then
-    if [ -n "$_bgcell" ]; then
-      pad=$((c_tip - 1 - ${#lbl_tip})); [ "$pad" -lt 0 ] && pad=0
-      printf -v _tipcell '%s%s%*s' $'\033[2m'"$lbl_tip"$'\033[0m' "$_bgcell" "$pad" ''
+    if [ -n "$_pcell" ]; then
+      ansi_vislen "$_pcell"
+      pad=$((c_tip - ${#lbl_tip} - _vlen)); [ "$pad" -lt 0 ] && pad=0
+      if [ -n "$lbl_tip" ]; then
+        printf -v _tipcell '%s%s%*s' $'\033[2m'"$lbl_tip"$'\033[0m' "$_pcell" "$pad" ''
+      else
+        printf -v _tipcell '%s%*s' "$_pcell" "$pad" ''
+      fi
     else
       dot_cell $c_tip; _tipcell="$_cell"
     fi
     row="$row$_tipcell "
   fi
-  build_glyph_cell "$prod_checks" "$prod_url"
+  pipe_build_cell "$prod_checks" "$prod_build" "$prod_url"
   if [ "$show_prod" = yes ]; then
-    if [ -n "$_bgcell" ]; then
-      pad=$((c_prod - 1 - ${#lbl_prod})); [ "$pad" -lt 0 ] && pad=0
-      printf -v _prodcell '%s%s%*s' $'\033[2m'"$lbl_prod"$'\033[0m' "$_bgcell" "$pad" ''
+    if [ -n "$_pcell" ]; then
+      ansi_vislen "$_pcell"
+      pad=$((c_prod - ${#lbl_prod} - _vlen)); [ "$pad" -lt 0 ] && pad=0
+      if [ -n "$lbl_prod" ]; then
+        printf -v _prodcell '%s%s%*s' $'\033[2m'"$lbl_prod"$'\033[0m' "$_pcell" "$pad" ''
+      else
+        printf -v _prodcell '%s%*s' "$_pcell" "$pad" ''
+      fi
     else
       dot_cell $c_prod; _prodcell="$_cell"
     fi
@@ -1226,7 +1269,8 @@ load_snapshot() {
   CR_COLL=(); CR_DIR=(); CR_WT=(); CR_SLUG=(); CR_LABEL=()
   CR_BRANCH=(); CR_AHEAD=(); CR_BEHIND=(); CR_TREE=()
   CR_PR_NUM=(); CR_PR_CHECKS=(); CR_PR_MERGE=(); CR_PR_REVIEW=(); CR_PR_DRAFT=()
-  CR_TIP_CHECKS=(); CR_TIP_URL=(); CR_PROD_CHECKS=(); CR_PROD_URL=()
+  CR_TIP_CHECKS=(); CR_TIP_BUILD=(); CR_TIP_URL=()
+  CR_PROD_CHECKS=(); CR_PROD_BUILD=(); CR_PROD_URL=()
   PR_ROW_REPO=(); PR_ROW_NUM=(); PR_ROW_CHECKS=(); PR_ROW_MERGE=()
   PR_ROW_REVIEW=(); PR_ROW_TITLE=(); PR_ROW_SLUG=(); PR_ROW_ARCHIVED=(); PR_ROW_DRAFT=()
   PR_ROW_ON_BRANCH=()
@@ -1414,8 +1458,10 @@ PY
       CR_PR_REVIEW+=("$pr_review")
       CR_PR_DRAFT+=("$pr_draft")
       CR_TIP_CHECKS+=("$tip_checks")
+      CR_TIP_BUILD+=("$tip_build")
       CR_TIP_URL+=("$tip_url")
       CR_PROD_CHECKS+=("$prod_checks")
+      CR_PROD_BUILD+=("$prod_build")
       CR_PROD_URL+=("$prod_url")
       _prog_i=$((_prog_i + 1))
       progress_units $((2 * _prog_n + _prog_i))
@@ -1619,6 +1665,7 @@ draw_repo_row_compact() {
   local pr_num="$6" pr_checks="$7" pr_merge="$8" pr_review="$9"
   local ahead="${10}" behind="${11}" tree="${12}"
   local tip_checks="${13}" tip_url="${14}" prod_checks="${15}" prod_url="${16}"
+  local tip_build="${17:-}" prod_build="${18:-}" pr_draft="${19:-no}"
   local a_disp="" b_disp="" pad="" row=""
 
   [ "$ahead" != 0 ] && a_disp="$ahead"
@@ -1639,7 +1686,7 @@ draw_repo_row_compact() {
   # columns at fixed positions so they line up down the whole table.
   draw_detail_cells "$pr_num" "$pr_checks" "$pr_merge" "$pr_review" \
     "$a_disp" "$b_disp" "$tip_checks" "$tip_url" "$prod_checks" "$prod_url" "$tree" \
-    "${17:-no}" "$slug"
+    "$pr_draft" "$slug" "$tip_build" "$prod_build"
   printf -v row '%s%*s%s' $'\033[2m└\033[0m' $((_detail_indent - 1)) '' "$_detail_row"
   out "$row"
   ROWS[$line]="$wt|$slug|$label|$pr_num"
@@ -1685,8 +1732,10 @@ draw_repos_tty() {
     pr_review="${CR_PR_REVIEW[$i]:-}"
     pr_draft="${CR_PR_DRAFT[$i]:-no}"
     tip_checks="${CR_TIP_CHECKS[$i]:-}"
+    tip_build="${CR_TIP_BUILD[$i]:-}"
     tip_url="${CR_TIP_URL[$i]:-}"
     prod_checks="${CR_PROD_CHECKS[$i]:-}"
+    prod_build="${CR_PROD_BUILD[$i]:-}"
     prod_url="${CR_PROD_URL[$i]:-}"
     repo_name="${dir#${WTC_REPO_PREFIX:-}}"
 
@@ -1694,7 +1743,8 @@ draw_repos_tty() {
       draw_repo_row_compact "$repo_name" "$branch" "$wt" "$slug" "$label" \
         "$pr_num" "$pr_checks" "$pr_merge" "$pr_review" \
         "$ahead" "$behind" "$tree" \
-        "$tip_checks" "$tip_url" "$prod_checks" "$prod_url" "$pr_draft"
+        "$tip_checks" "$tip_url" "$prod_checks" "$prod_url" \
+        "$tip_build" "$prod_build" "$pr_draft"
       i=$((i + 1))
       continue
     fi
@@ -1708,7 +1758,7 @@ draw_repos_tty() {
     fit_ellipsis "$branch" $c_branch; row="$row$_fit "
     draw_detail_cells "$pr_num" "$pr_checks" "$pr_merge" "$pr_review" \
       "$a_disp" "$b_disp" "$tip_checks" "$tip_url" "$prod_checks" "$prod_url" "$tree" \
-      "$pr_draft" "$slug"
+      "$pr_draft" "$slug" "$tip_build" "$prod_build"
     row="${row}${_detail_row}"
     out "$row"
     ROWS[$line]="$wt|$slug|$label|$pr_num"
@@ -1766,22 +1816,26 @@ draw_prs_tty() {
     show="$(python3 "$ANSI_PY" fit "$room" <<< "$title")"
     if [ "$on_branch" = yes ]; then
       # Same amber as the orphan warning — merged but still checked out.
-      printf -v prow '  ⚠ #%s%*s%s  %s' \
-        "$num" $((prs_w_num - 1 - ${#num})) '' "$_fit" "$show"
+      pr_num_link "$slug" "$num"
+      printf -v prow '  ⚠ %s%*s%s  %s' \
+        "$_prlink" $((prs_w_num - 1 - ${#num})) '' "$_fit" "$show"
       out $'\033[33m'"$prow"$'\033[0m'
     elif [ "$as_archived" = yes ]; then
-      printf -v prow '  #%s%*s%s  %s' \
-        "$num" $((prs_w_num - 1 - ${#num})) '' "$_fit" "$show"
+      pr_num_link "$slug" "$num"
+      printf -v prow '  %s%*s%s  %s' \
+        "$_prlink" $((prs_w_num - 1 - ${#num})) '' "$_fit" "$show"
       out $'\033[2m'"$prow"$'\033[0m'
     else
       case "$merge" in
         FOLLOW|MERGED) faded=yes ;;
         *) faded=no ;;
       esac
+      [ "$review" = merged ] && faded=yes
       if [ "$faded" = yes ]; then
         # Soft dim — quiet vs open PRs, still readable (was 238 near-invisible).
-        printf -v prow '  #%s%*s%s  %s' \
-          "$num" $((prs_w_num - 1 - ${#num})) '' "$_fit" "$show"
+        pr_num_link "$slug" "$num"
+        printf -v prow '  %s%*s%s  %s' \
+          "$_prlink" $((prs_w_num - 1 - ${#num})) '' "$_fit" "$show"
         out $'\033[2m'"$prow"$'\033[0m'
       else
         # Fixed-width draft field so checks/merge/review line up across rows.
@@ -1873,7 +1927,8 @@ help_block() {
   d=$'\033[2m'; z=$'\033[0m'; k=$'\033[1m'
   out ""
   out "${k}KEYS${z}    ${d}?${z} this list   ${d}a${z} archived   ${d}r${z} refresh   ${d}q${z} quit"
-  out "${k}CLICK${z}   ${d}#n${z} forge PR (⌘-click / OSC-8)   ${d}T / P${z} pipeline (when shown)"
+  out "${k}LINKS${z}   ${d}#n${z} PR   ${d}#build${z} pipeline — OSC-8 hyperlinks (⌘-click / hover); underline marks them"
+  out "${k}CLICK${z}   same targets via mouse where column layout matches (T/P need linked #build shown)"
   out "${k}DRAG${z}    ${d}select text as usual${z} — a click that moves is a selection, not a click"
   out ""
   out "${k}±${z}       ${d}±N${z} files not committed   $(printf '\033[2m·\033[0m') clean worktree"
@@ -1956,11 +2011,10 @@ draw_tty() {
   return 0
 }
 
-# --- clicking ---------------------------------------------------------------
-# Mouse reports only; output processing stays on (-icanon, not raw) so the
-# table still prints with normal line endings. Clicks open forge PR pages
-# (#n — Bitbucket or GitHub) and Bitbucket pipeline results (T/P) when those
-# columns are shown. PR numbers are also OSC-8 hyperlinks.
+# --- clicking / OSC-8 -------------------------------------------------------
+# Primary navigation is OSC-8 (ECMA-48): underlined #n and #build cells are
+# hyperlinks in iTerm2, herdr, and most modern terminals. Mouse release on the
+# same cell is a secondary opener for PR/T/P columns when layout matches.
 
 mouse_on()  { printf '\033[?1000h\033[?1006h\033[?25l'; }  # button events, SGR, no cursor
 mouse_off() { printf '\033[?1006l\033[?1000l\033[?25h'; }
