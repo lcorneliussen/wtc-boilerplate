@@ -123,6 +123,31 @@ collection="$(cd "$collection" && pwd)"
 [ -d "$collection/$harness_dirname" ] || {
   echo "error: $collection has no $harness_dirname/ — not a collection" >&2; exit 1; }
 
+# Select the target collection's pinned CLI. The --all loop above re-enters
+# this script per target so mixed-version workspaces keep their own renderer.
+# Older pins and collections still bootstrapping keep the shell implementation.
+if [ -f "$collection/$harness_dirname/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$collection/$harness_dirname/.wtc-cli-version")"
+  cli_version=""
+  cli_cmd=()
+  if command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+  fi
+  if [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$collection" && wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(wtc)
+  fi
+  if [ "$cli_version" = "wtc version $cli_pin" ] &&
+      (cd "$collection" && "${cli_cmd[@]}" skills render --help >/dev/null 2>&1); then
+    cli_args=(--collection "$collection")
+    [ "$dry_run" = no ] || cli_args+=(--dry-run)
+    [ "$seed_scope" = no ] || cli_args+=(--seed-scope)
+    cd "$collection"
+    exec "${cli_cmd[@]}" skills render "${cli_args[@]}"
+  fi
+fi
+
 # Source is the TARGET collection's own harness worktree, not necessarily the
 # one running this script: the links are relative, so they resolve against the
 # harness sitting next to them. Reading the list from anywhere else would

@@ -471,9 +471,11 @@ while IFS=$'\t' read -r collection wt repo owner; do
       # Run only repo-scoped secrets, never a whole-collection secrets sweep.
       [ "$do_secrets" = no ] || run_hook link-secrets.sh "secrets:$repo" "$(basename "$wt")"
       if [ "$(basename "$wt")" = harness ]; then
+        # Skill rendering selects the target's CLI pin from generated mise.toml.
+        # Refresh it first when this catch-up just advanced the harness pin.
+        [ "$do_env" = no ] || run_hook refresh-env.sh env
         [ "$do_skills" = no ] || run_hook link-skills.sh skills
         [ "$do_mcp" = no ] || run_hook link-mcp.sh mcp
-        [ "$do_env" = no ] || run_hook refresh-env.sh env
         [ "$reload_status" = no ] || reload_pane
       fi ;;
     *)
