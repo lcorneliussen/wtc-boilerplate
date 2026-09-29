@@ -75,6 +75,11 @@ case "$1 $2" in
   "api repos/"*)
     [ -z "${GH_INLINE_FAIL:-}" ] || exit 1
     cat "$BBSTUB/gh-inline-pages.json" ;;
+  "api graphql")
+    case "$*" in
+      *resolveReviewThread*) echo '{"data":{"resolveReviewThread":{"thread":{"isResolved":true}}}}' ;;
+      *) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"THREAD1","isResolved":false,"comments":{"nodes":[{"databaseId":601}]}}]}}}}}' ;;
+    esac ;;
   *) exit 1 ;;
 esac
 EOF
@@ -590,6 +595,19 @@ assert rows[0]['resolved'] is True and rows[0]['id']=='601'
 check "resolve is a no-op once the thread is resolved" bash -c "[ \$(grep -c '^bb pr comments resolve' '$BBSTUB/calls.log' || true) -eq 0 ]"
 rc=0; "$h/tools/review-resolve.sh" "$pi" --file models/a/x.sql --line 9 >/dev/null 2>&1 || rc=$?
 check "resolve: a filter that matches nothing fails" test "$rc" -ne 0
+pi_gh="$T/pi-gh"; cp -R "$pi" "$pi_gh"
+sed -i.bak 's/^FORGE=bitbucket$/FORGE=github/' "$pi_gh/manifest.env"
+rm "$pi_gh/manifest.env.bak"
+python3 - "$pi_gh/inline-comments.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+rows = json.load(open(p)); rows[0]['resolved'] = False
+with open(p, 'w') as f: json.dump(rows, f)
+PY
+: >"$BBSTUB/calls.log"
+"$h/tools/review-resolve.sh" "$pi_gh" >/dev/null 2>"$T/gh-resolve.err" || { cat "$T/gh-resolve.err" >&2; fail "GitHub resolve exits"; }
+check "GitHub resolve passes the GraphQL num variable" grep -q -- '-F num=7' "$BBSTUB/calls.log"
+check "GitHub resolve records the thread closed" python3 -c "import json; assert json.load(open('$pi_gh/inline-comments.json'))[0]['resolved'] is True"
 
 pi2="$T/pi2"; mkbundle "$pi2" >/dev/null
 mkdir -p "$pi2/findings" "$pi2/prior"

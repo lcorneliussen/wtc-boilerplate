@@ -65,7 +65,7 @@ gh_resolve() { # <comment-id>
   local owner repo q out tid
   owner="${SLUG%%/*}"; repo="${SLUG#*/}"
   q='query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num){reviewThreads(first:100){nodes{id isResolved comments(first:50){nodes{databaseId}}}}}}}'
-  out="$(gh api graphql -f query="$q" -f o="$owner" -f n="$repo" -F number="$PR")" || return 1
+  out="$(gh api graphql -f query="$q" -f o="$owner" -f n="$repo" -F num="$PR")" || return 1
   tid="$(printf '%s' "$out" | python3 "$py" gh-thread-id "$1")" || return 1
   [ "$tid" != already ] || return 0
   [ -n "$tid" ] || return 1
