@@ -39,6 +39,13 @@ add_fixture_worktree "$root" agent-harness "$root/other/harness"
 assert_contains "$(cat "$ADD_TEST_CALLS")" "$root/other|add-repo --collection other widget"
 assert_no_file "$root/other/widget" 'the target was passed to the mock'
 
+it 'an older target pin keeps shell bootstrap even when the source is current'
+printf '0.1.10\n' > "$root/other/harness/.wtc-cli-version"
+calls_before="$(wc -l < "$ADD_TEST_CALLS" | tr -d ' ')"
+"$runner" --collection other widget >/dev/null 2>&1
+assert_file "$root/other/widget/.git" 'older target was added by shell'
+assert_eq "$calls_before" "$(wc -l < "$ADD_TEST_CALLS" | tr -d ' ')" 'source pin did not override target pin'
+
 it 'an older target pin retains shell bootstrap'
 printf '0.1.10\n' > "$root/main/harness/.wtc-cli-version"
 calls_before="$(wc -l < "$ADD_TEST_CALLS" | tr -d ' ')"
