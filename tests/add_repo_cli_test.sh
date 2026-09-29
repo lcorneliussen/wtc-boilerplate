@@ -14,9 +14,10 @@ cat > "$mock/mise" <<'MOCK'
 [ "$1 $2 $3" = 'exec -- wtc' ] || exit 2
 shift 3
 case "$*" in
-  --version) printf 'wtc version %s\n' "${ADD_TEST_VERSION:-0.1.12}" ;;
+  --version) printf 'wtc version %s\n' "${ADD_TEST_VERSION:-$(cat "$PWD/harness/.wtc-cli-version")}" ;;
   'add-repo --help') exit 0 ;;
-  *) printf '%s|%s\n' "$PWD" "$*" >> "$ADD_TEST_CALLS" ;;
+  add-repo*) printf '%s|%s\n' "$PWD" "$*" >> "$ADD_TEST_CALLS" ;;
+  *) exit 2 ;;
 esac
 MOCK
 chmod +x "$mock/mise"

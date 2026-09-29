@@ -14,7 +14,7 @@ cat > "$mock/mise" <<'MOCK'
 [ "$1 $2 $3" = 'exec -- wtc' ] || exit 2
 shift 3
 case "$*" in
-  --version) printf 'wtc version %s\n' "${NEW_TEST_VERSION:-0.1.12}" ;;
+  --version) printf 'wtc version %s\n' "${NEW_TEST_VERSION:-$(cat "$PWD/harness/.wtc-cli-version")}" ;;
   'new --help') exit 0 ;;
   *) printf '%s|%s\n' "$PWD" "$*" >> "$NEW_TEST_CALLS" ;;
 esac
@@ -48,7 +48,7 @@ assert_not_contains "$(cat "$NEW_TEST_CALLS")" 'new --no-open mismatched widget'
 # supplies WTC_TEST_RELEASE_BINARY and exercises the actual pinned command.
 if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
   it 'the released CLI opens a PR at its exact head with a pushable review branch'
-  printf '0.1.12\n' > "$root/main/harness/.wtc-cli-version"
+  cat "$HARNESS_SRC/.wtc-cli-version" > "$root/main/harness/.wtc-cli-version"
   export NEW_TEST_REAL_CLI="$WTC_TEST_RELEASE_BINARY"
   source_repo="$(git --git-dir="$root/.bare/widget.git" remote get-url origin)"
   git -C "$source_repo" checkout -qb review-head

@@ -14,7 +14,7 @@ cat > "$mock/mise" <<'MOCK'
 [ "$1 $2 $3" = 'exec -- wtc' ] || exit 2
 shift 3
 case "$*" in
-  --version) printf 'wtc version %s\n' "${RETIRE_TEST_VERSION:-0.1.12}" ;;
+  --version) printf 'wtc version %s\n' "${RETIRE_TEST_VERSION:-$(cat "$PWD/harness/.wtc-cli-version")}" ;;
   'retire --help') exit 0 ;;
   *) printf '%s|%s\n' "$PWD" "$*" >> "$RETIRE_TEST_CALLS" ;;
 esac
