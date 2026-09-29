@@ -11,7 +11,7 @@ usage() {
   cat <<'EOF' >&2
 Usage:
   tools/review-bundle.sh <repo> [<pr-number>] [--base REF] [--head REF]
-                         [--dir DIR] [--round K] [--no-catch-up]
+                         [--dir DIR] [--round K] [--no-catch-up] [--public]
 
   <repo>       sibling worktree name in this collection (e.g. app, harness)
   <pr-number>  default: the PR enlisted in .wtc-prs for the worktree's branch;
@@ -23,6 +23,9 @@ Usage:
                PR's remote head (unpushed commits are not reviewed on the forge).
   --no-catch-up  do not run tools/catch-up.sh. Checkout of the PR branch still
                happens when a PR number is known and --head is HEAD.
+  --public    omit related PR patches and upstream/downstream snapshots. Use
+              for a public or unknown-audience PR to keep collection context
+              out of the review bundle and posted summary.
 
 When a PR is known and --head is HEAD, the PR's branch is checked out first
 (if this worktree is on another branch), then tools/catch-up.sh runs so the
@@ -49,7 +52,7 @@ HARNESS_DIR="$(dirname "$script_dir")"
 harness_lib_init
 py="$script_dir/review_lib.py"
 
-repo="" pr="" base_arg="" head_arg="HEAD" dir="" round="" catch_up=1
+repo="" pr="" base_arg="" head_arg="HEAD" dir="" round="" catch_up=1 public=0
 while [ $# -gt 0 ]; do
   case "$1" in
     -h|--help) usage 0 ;;
@@ -58,6 +61,7 @@ while [ $# -gt 0 ]; do
     --dir)   [ $# -ge 2 ] || usage; dir="$2"; shift ;;
     --round) [ $# -ge 2 ] || usage; round="$2"; shift ;;
     --no-catch-up) catch_up=0 ;;
+    --public) public=1 ;;
     -*) echo "error: unknown flag $1" >&2; usage ;;
     *)
       if [ -z "$repo" ]; then repo="$1"
@@ -280,13 +284,24 @@ upstream_list="$(awk -v repo="$reg_repo" '
   }
 ' "$REGISTRY" | tr '\n' ' ')"
 downstream_done="" upstream_done=""
-for ds in $downstream_list; do downstream_done="$downstream_done$(snapshot_repo "$ds" downstream)"; done
-for us in $upstream_list; do upstream_done="$upstream_done$(snapshot_repo "$us" upstream)"; done
+if [ "$public" -eq 0 ]; then
+  for ds in $downstream_list; do downstream_done="$downstream_done$(snapshot_repo "$ds" downstream)"; done
+  for us in $upstream_list; do upstream_done="$upstream_done$(snapshot_repo "$us" upstream)"; done
+fi
 
 # --- concerns -----------------------------------------------------------------
 mkdir -p "$dir/concerns"
+mkdir -p "$tmp/base-concerns"
+git -C "$wt" archive "$base_sha" .review/concerns 2>/dev/null |
+  tar -x -C "$tmp/base-concerns" 2>/dev/null || true
+harness_concerns="$HARNESS_DIR/review/concerns"
+if [ "$(cd "$wt" && pwd)" = "$HARNESS_DIR" ]; then
+  git -C "$wt" archive "$base_sha" review/concerns 2>/dev/null |
+    tar -x -C "$tmp/base-concerns" 2>/dev/null || true
+  harness_concerns="$tmp/base-concerns/review/concerns"
+fi
 n_concerns="$(python3 "$py" concerns "$dir/concerns" "$dir/changed-files.txt" \
-  "$HARNESS_DIR/review/concerns" "$HARNESS_DIR/review/concerns.d" "$wt/.review/concerns" |
+  "$harness_concerns" "$HARNESS_DIR/review/concerns.d" "$tmp/base-concerns/.review/concerns" |
   wc -l | tr -d ' ')"
 
 # --- prior rounds + comments --------------------------------------------------
@@ -299,7 +314,15 @@ if [ -n "$pr" ] && forge_cli_usable "$forge"; then
   : >"$tmp/comments.json"
   case "$forge" in
     bitbucket) (cd "$wt" && bb pr comments list "$pr" --all --json) >"$tmp/comments.json" 2>/dev/null || : >"$tmp/comments.json" ;;
-    github)    gh pr view "$pr" --repo "$slug" --json comments >"$tmp/comments.json" 2>/dev/null || : >"$tmp/comments.json" ;;
+    github)
+      if gh pr view "$pr" --repo "$slug" --json comments >"$tmp/conversation.json" 2>/dev/null &&
+         gh api "repos/$slug/pulls/$pr/comments?per_page=100" --paginate --slurp >"$tmp/inline-pages.json" 2>/dev/null; then
+        python3 "$py" merge-comments "$tmp/conversation.json" "$tmp/inline-pages.json" "$tmp/comments.json" || : >"$tmp/comments.json"
+      else
+        warn "could not read all GitHub comments for PR #$pr"
+        : >"$tmp/comments.json"
+      fi
+      ;;
   esac
   if [ -s "$tmp/comments.json" ]; then
     python3 "$py" comments "$tmp/comments.json" --after-review >"$dir/prior/comments.md" 2>/dev/null || :
@@ -310,6 +333,7 @@ fi
 # --- related PRs (other enlisted PRs whose worktree is on that PR's branch) ----
 mkdir -p "$dir/related"
 rel=0
+if [ "$public" -eq 0 ]; then
 while IFS=$'\t' read -r r_repo r_num r_branch _u _t; do
   [ -n "$r_repo" ] && [ -n "$r_branch" ] || continue
   if [ "$r_repo" = "$repo" ] && [ "$r_num" = "$pr" ]; then continue; fi
@@ -324,6 +348,7 @@ while IFS=$'\t' read -r r_repo r_num r_branch _u _t; do
   if [ -s "$r_out" ]; then rel=$((rel + 1)); else rm -f "$r_out"; fi
   [ "$rel" -lt 20 ] || break
 done < <(wtc_pr_enlist_rows "$coll")
+fi
 
 # --- manifest -----------------------------------------------------------------
 q() { printf '%q' "$1"; }

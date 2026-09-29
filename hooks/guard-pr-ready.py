@@ -168,7 +168,7 @@ def _find_raw_ready(cmd: str, depth: int = 0):
         prog = os.path.basename(words[i])
         args = words[i + 1:]
         if prog in ("bb", "gh"):
-            if any(a == "pr" and b == "ready" for a, b in zip(args, args[1:])):
+            if any(a == "pr" and b == "ready" for a, b in zip(args, args[1:])) and "--undo" not in args:
                 return prog
         elif prog in _SHELLS:
             for j, a in enumerate(args):

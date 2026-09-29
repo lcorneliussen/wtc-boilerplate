@@ -148,7 +148,7 @@ launch_agent() { # <agent> <model> <prompt-file> <cwd>
       set -- -p --output-format json
       [ -z "$model" ] || set -- "$@" --model "$model"
       exec claude "$@" --add-dir "$REPO_DIR" --permission-mode acceptEdits \
-        --disallowedTools "Edit(/$REPO_DIR/**)" "Bash(git * --ou*)" \
+        --disallowedTools "Edit($REPO_DIR/**)" "Write($REPO_DIR/**)" "Bash(git * --ou*)" \
         --allowedTools "Read Grep Glob Write Edit Bash(git log:*) Bash(git show:*) Bash(ls:*) Agent" \
         <"$prompt"
       ;;

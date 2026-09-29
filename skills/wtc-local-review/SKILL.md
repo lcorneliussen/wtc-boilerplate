@@ -30,19 +30,24 @@ reading of the diff does not gate.
    first**. `--no-catch-up` skips only the catch-up. PR number defaults to the
    enlisted one. Rounds and prior summaries/comments are picked up
    automatically.
+   For a public or unknown-audience PR, pass `--public` so related PR patches
+   and dependency snapshots stay out of the bundle. Inspect the remaining
+   bundle for private identities before giving it to an external reviewer.
 3. **Push** if catch-up or local commits left the branch ahead of the remote.
    The review must match the remote head or posting refuses:
    `git -C ../<repo> push` (feature branch only; `wtc-draft-pr` targets).
    If you pushed, bundle again so the diff is that head.
-4. **Run** — `tools/review-run.sh <dir> --post`. It first posts an
+4. **Run** — `tools/review-run.sh <dir> --post` for a private PR. It first posts an
    "in progress" comment on the PR (round, head, concerns, agent:model), runs
    one agent per concern and a lead (minutes), then **updates that same
    comment** with the summary — no second summary comment; on failure the
    comment becomes "failed". It also posts **one inline comment per open
    finding** that has a file and a new-file line (`<dir>/inline-comments.json`).
    Posting is part of this workflow (the gate reads the summary comment); tell
-   the user it was posted, including how many inline threads. Omit `--post`
-   only if the user said not to — then the gate stays closed. It refuses a
+   the user it was posted, including how many inline threads. For a public or
+   unknown-audience PR, run without `--post`, inspect `summary.md` and every
+   planned inline comment, then post with `tools/review-post.sh <dir>` after
+   removing private context. The gate stays closed until that post. It refuses a
    stale bundle before spending any agent time. Start it in the background
    (`run_in_background`, a herdr pane, or equivalent) and wait for completion;
    do not poll `run.log` in a loop. Several PRs may run concurrently.
@@ -50,7 +55,7 @@ reading of the diff does not gate.
    listed in the table; check `<dir>/run.log` / `findings/<id>.raw` if the
    cause is not obvious. The `### Run stats` section gives time, tokens and
    cost per agent run (`<dir>/stats/*.json`); mention the total to the user.
-6. **Post** — automatic with `--post`. Standalone: `tools/review-post.sh <dir>`
+6. **Post** — automatic with `--post` for private PRs. Standalone: `tools/review-post.sh <dir>`
    creates or updates the summary in `<dir>/comment.id` and posts any missing
    inline comments. `tools/review-post.sh <dir> --progress` posts only the
    progress comment (no inline comments).
@@ -110,7 +115,7 @@ first if refs may be stale. Post each summary on its own PR.
 
 Layers, later wins by `id`: `review/concerns/` (shipped with the harness) →
 `review/concerns.d/` (this collection's drop-in, not part of the generic
-tree) → `<repo>/.review/concerns/<id>.md` (versioned with the repo). A repo
+tree) → `<repo>/.review/concerns/<id>.md` (read from the base commit). A repo
 file with the same `id` overrides; one with `applies: never` disables that
 concern for the repo. Frontmatter: `id`, `title`, `tier`, `applies`, optional
 `needs: downstream`.

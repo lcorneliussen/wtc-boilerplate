@@ -11,6 +11,8 @@ Subcommands (all print to stdout; non-zero exit = failure):
   comments <comments.json> [--after-review]
                                           PR comments as markdown (only those after
                                           the newest review comment with the flag)
+  merge-comments <conversation.json> <inline-pages.json> <out.json>
+                                          combine GitHub conversation and inline comments
   latest-status <comments.json>           newest status line: "<head> <verdict> <blockers> <round> <url>"
   validate-findings <file> <concern-id>   exit 0 when the findings JSON is valid
   blockers <findings-dir>                 count open blocker findings (prior != addressed)
@@ -190,6 +192,21 @@ def _comment_list(d):
     if isinstance(d, dict):
         d = d.get("comments") or d.get("values") or []
     return d if isinstance(d, list) else []
+
+
+def cmd_merge_comments(conversation, inline_pages, output):
+    issue = _comment_list(json.load(open(conversation, encoding="utf-8")))
+    pages = json.load(open(inline_pages, encoding="utf-8"))
+    if not isinstance(pages, list):
+        raise ValueError("inline comments response is not a list")
+    inline = []
+    for page in pages:
+        if not isinstance(page, list):
+            raise ValueError("inline comments page is not a list")
+        inline.extend(page)
+    with open(output, "w", encoding="utf-8") as f:
+        json.dump({"comments": issue + inline}, f)
+        f.write("\n")
 
 
 def _norm(c):
@@ -1089,6 +1106,8 @@ def main(argv):
         cmd_pr_info(a[0], a[1])
     elif c == "comments":
         cmd_comments(a[0], "--after-review" in a[1:])
+    elif c == "merge-comments":
+        cmd_merge_comments(a[0], a[1], a[2])
     elif c == "latest-status":
         cmd_latest_status(a[0])
     elif c == "validate-findings":

@@ -28,7 +28,7 @@ own under `.review/concerns/`.
 | `prompts/lead.md` | prompt for the aggregation run |
 | `concerns/*.md` | generic concerns (always shipped) |
 | `concerns.d/*.md` | optional drop-in concerns for one deployment; not shipped here |
-| `<repo>/.review/concerns/*.md` | repo concerns, versioned with the code they judge |
+| `<repo>/.review/concerns/*.md` | repo concerns, read from the review base commit |
 
 The reviewer is **not** a skill. A reviewer run is a fresh process told by its
 prompt what it is; it never delegates to another harness, so there is no mode
@@ -49,11 +49,13 @@ blocker / major / minor / nit for this concern.
 ```
 
 Layer order, later wins by `id`: `review/concerns/` → `review/concerns.d/` →
-`<repo>/.review/concerns/`. The `.d` is the usual drop-in directory pattern
+`<repo>/.review/concerns/` at the review base commit. The PR cannot change
+its own review criteria; when the harness itself is reviewed, its generic
+concerns also come from the base commit. The `.d` is the usual drop-in directory pattern
 (same idea as `cron.d`): concerns dropped in that directory override a generic
 concern with the same `id`. That directory is a local overlay, not part of
 this repository.
-A repo file with `applies: never` disables a concern.
+A base-commit repo file with `applies: never` disables a concern.
 
 ## Model selection
 
@@ -140,6 +142,10 @@ run.log             launcher output, for debugging
 `downstream` comes from the registry: `downstream: <repo> [<repo>…]` on a repo
 entry in `.harness-repos.yml` names the repos that consume it. Snapshots are
 read-only exports, not worktrees — nothing to clean up in the git owners.
+For a public or unknown-audience PR, `review-bundle.sh --public` omits
+upstream/downstream snapshots and related PR patches. Inspect the bundle
+before an external review run, then inspect the generated summary and inline
+comment bodies before posting them.
 
 ## Findings schema (`findings/<id>.json`)
 

@@ -61,6 +61,15 @@ case "$1" in
 esac
 EOF
 chmod +x "$T/stubbin/bb"
+cat >"$T/stubbin/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "gh $*" >>"$BBSTUB/calls.log"
+case "$1 $2" in
+  "pr ready") exit 0 ;;
+  *) exit 1 ;;
+esac
+EOF
+chmod +x "$T/stubbin/gh"
 export PATH="$T/stubbin:$PATH"
 
 # --- workspace ----------------------------------------------------------------
@@ -125,8 +134,16 @@ mk_concern t-slow fast always
 mk_concern t-block fast always
 mk_concern t-die fast always
 mk_concern dup strong always
+mk_concern t-needs standard always downstream
 git -C "$demo" add -A
 git -C "$demo" commit -q -m concerns
+git -C "$demo" update-ref refs/remotes/origin/main HEAD
+echo "select 2" >"$demo/models/a/x.sql"
+echo "print(2)" >"$demo/tool.py"
+sed -i.bak 's/body of dup/weakened in PR head/' "$demo/.review/concerns/dup.md"
+rm "$demo/.review/concerns/dup.md.bak"
+git -C "$demo" add -A
+git -C "$demo" commit -q -m feature-changes
 # lib2 (downstream of demo) lands on its production ref only
 echo v1 >"$coll/lib2/consumer.txt"; git -C "$coll/lib2" add -A; git -C "$coll/lib2" commit -q -m c
 git -C "$coll/lib2" update-ref refs/remotes/origin/main HEAD
@@ -193,10 +210,14 @@ check "concern applies:always kept" test -f "$bd/concerns/t-ok.md"
 check "glob ** matches nested .sql" test -f "$bd/concerns/t-sql.md"
 check "glob docs/** filters out" test ! -e "$bd/concerns/t-py.md"
 check "applies:never dropped" test ! -e "$bd/concerns/t-never.md"
-check "repo layer wins by id" grep -q 'body of dup' "$bd/concerns/dup.md"
+check "repo base concern wins over PR-head edit" grep -q 'body of dup' "$bd/concerns/dup.md"
 check "downstream old/ snapshot" test -f "$bd/downstream/lib2/old/consumer.txt"
 check "downstream REFS" grep -q '^old=origin/main ' "$bd/downstream/lib2/REFS"
 check "downstream absent new/ (lib2 on tip)" test ! -d "$bd/downstream/lib2/new"
+pub="$T/public-bundle"
+"$B" demo --public --dir "$pub" >/dev/null 2>"$T/public.err"
+check "public bundle omits downstream snapshots" test ! -d "$pub/downstream"
+check "public bundle omits related patches" test ! -d "$pub/related"
 ub="$("$B" lib2 2>/dev/null | tail -n1)"
 check "upstream snapshot for the consumer repo" test -f "$ub/upstream/demo/old/README.md"
 
@@ -206,6 +227,10 @@ import sys; sys.path.insert(0,'$h/tools'); import review_lib as r
 assert r.applies_to('*.sql',['a/b/c.sql']); assert not r.applies_to('*.sql',['a/c.py'])
 assert r.applies_to('dags/**',['dags/x/y.py']); assert r.applies_to('a/**/b.py',['a/b.py'])
 assert not r.applies_to('a/*.py',['a/b/c.py'])"
+printf '{"comments":[{"id":1,"body":"summary","createdAt":"2026-01-01T00:00:00Z"}]}' >"$T/conversation.json"
+printf '[[{"id":2,"body":"inline","created_at":"2026-01-02T00:00:00Z"}]]' >"$T/inline-pages.json"
+python3 "$h/tools/review_lib.py" merge-comments "$T/conversation.json" "$T/inline-pages.json" "$T/merged.json"
+check "GitHub conversation and inline comments merge" python3 -c "import json; d=json.load(open('$T/merged.json')); assert [x['id'] for x in d['comments']]==[1,2]"
 
 # --- run ----------------------------------------------------------------------
 export HARNESS_REVIEW_TIMEOUT=3
@@ -235,8 +260,6 @@ check "Run stats: total row, wall-clock, humanized tokens, cost" bash -c "grep -
 check "Run stats sits before the status line" bash -c "[ \$(grep -n 'Run stats' '$bd/summary.md' | head -n1 | cut -d: -f1) -lt \$(grep -n 'wtc-review v1' '$bd/summary.md' | cut -d: -f1) ]"
 
 # needs: downstream with no snapshots -> skipped (own bundle, no downstream repo registered)
-mk_concern t-needs standard always downstream
-git -C "$demo" add -A; git -C "$demo" commit -q -m needs
 sed -i.bak '/downstream:/d' "$h/.harness-repos.yml"
 bd2="$("$B" demo 2>"$T/b2.err" | tail -n1)"
 check "round 2 + prior/r1.md" bash -c ". '$bd2/manifest.env' && [ \"\$ROUND\" = 2 ] && test -s '$bd2/prior/r1.md'"
@@ -436,6 +459,21 @@ mk_comments 1 "$T1" "$(sl "$H40" pending)"
 gate "override on pending with --user-authorized" 0 1 --user-authorized "undraft it anyway"
 mk_comments 1 "$T1" "$(sl "$O40" pass)"
 gate "override on stale with --user-authorized" 0 1 --user-authorized "undraft it anyway"
+python3 - "$h/.harness-repos.yml" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read().replace('git@bitbucket.org:x/demo.git', 'git@github.com:x/demo.git')
+open(p, 'w').write(s)
+PY
+: >"$BBSTUB/calls.log"
+(cd "$demo" && "$h/tools/bb-pr-ready.sh" 7 --user-authorized "undraft it anyway") >/dev/null 2>&1
+check "gate dispatches GitHub PRs to gh" grep -q '^gh pr ready 7 --repo x/demo$' "$BBSTUB/calls.log"
+python3 - "$h/.harness-repos.yml" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read().replace('git@github.com:x/demo.git', 'git@bitbucket.org:x/demo.git')
+open(p, 'w').write(s)
+PY
 
 # --- review-post: create vs update, progress, failed, stale refusal ------------
 mkbundle() { # <dir> — a bundle for PR 7 at the demo head
@@ -566,6 +604,7 @@ deny_case  'true || bb pr ready 8'
 deny_case  'echo $(bb pr ready 9)'
 deny_case  $'ls\nbb pr ready 7'
 deny_case  'echo "unbalanced; bb pr ready 1'
+allow_case 'gh pr ready --undo 3'
 allow_case 'git commit -m "note: bb pr ready is gated"'
 allow_case "git commit -m 'run bb pr ready later'"
 allow_case 'echo "bb pr ready"; ls'

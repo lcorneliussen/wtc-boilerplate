@@ -28,6 +28,9 @@ EOF
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 HARNESS_DIR="$(dirname "$script_dir")"
+# shellcheck source=lib.sh
+. "$script_dir/lib.sh"
+harness_lib_init
 
 repo_from_cwd() {
   local top
@@ -123,4 +126,10 @@ EOF
   fi
 fi
 
-exec bb pr ready "${bb_args[@]}"
+wt="$(git rev-parse --show-toplevel)"
+IFS=$'\t' read -r slug forge < <(repo_slug_and_forge "$repo" "$wt") || true
+case "$forge" in
+  github) exec gh pr ready "${bb_args[@]}" --repo "$slug" ;;
+  bitbucket) exec bb pr ready "${bb_args[@]}" ;;
+  *) echo "error: cannot determine forge for $repo" >&2; exit 1 ;;
+esac
