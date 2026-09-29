@@ -198,6 +198,13 @@ under a **Gate record** heading, the line the tools parse:
 the newest comment with that line: `current` when the PR's head (a 12+ char id
 from the forge) is a prefix of `head=` (never the other way round, never
 shorter than 12), else `stale`; `none` if there is no such comment.
+`review-post.sh` also writes a local receipt keyed by forge, repository, PR,
+head, comment id and verdict under `<collection>/.wtc-review-posted/`.
+`review-status.sh --trusted-local` requires that receipt and reports
+`untrusted` when the newest status comment lacks it. The ready gate uses this
+mode, so another commenter cannot satisfy it by copying a status line.
+The receipt is collection-local; a different machine needs its own review
+bundle and post before its ready gate can pass.
 
 ### Comment lifecycle (one comment per bundle)
 
@@ -250,6 +257,9 @@ replies (optional) and resolves those threads. It does not resolve the
 summary comment. The authoring thread does this after fixing or answering,
 then pushes and starts another round. Undrafting stays a separate, explicit
 step.
+When a finding remains open across rounds, its inline thread belongs to the
+bundle that first posted it. Resolve it with that bundle; later bundles keep
+its key to avoid posting the same finding again.
 
 `pending` and `error` exist only in the status line: a lead never writes them
 and they never open the gate. If the newest status comment is `pending`, that

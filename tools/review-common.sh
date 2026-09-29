@@ -35,3 +35,22 @@ review_same_sha() { # <local> <remote>
   case "$1" in "$2"*) return 0 ;; esac
   return 1
 }
+
+# Local receipt for a status comment posted by review-post.sh. The ready gate
+# requires this receipt as well as the forge comment, so another commenter
+# cannot satisfy it with a copied status line. Hashing keeps forge identifiers
+# out of path components and avoids traversal from a malformed slug.
+review_trust_marker() { # <collection-dir> <forge> <slug> <pr> <head> <comment-id> <verdict>
+  local coll="$1"; shift
+  local key
+  key="$(python3 - "$@" <<'PY'
+import hashlib, sys
+h = hashlib.sha256()
+for field in sys.argv[1:]:
+    h.update(field.encode())
+    h.update(b'\0')
+print(h.hexdigest())
+PY
+)" || return 1
+  printf '%s/.wtc-review-posted/%s\n' "$coll" "$key"
+}

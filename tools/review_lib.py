@@ -14,7 +14,8 @@ Subcommands (all print to stdout; non-zero exit = failure):
   merge-comments <conversation.json> <inline-pages.json> <out.json>
                                           combine GitHub conversation and inline comments
   inline-keys <comments.json>             all previously posted inline finding keys
-  latest-status <comments.json>           newest status line: "<head> <verdict> <blockers> <round> <url>"
+  latest-status <comments.json>           newest status line: "<head> <verdict> <blockers> <round> <url> <id>"
+  status-line <summary.md>                one review status line's head and verdict
   validate-findings <file> <concern-id>   exit 0 when the findings JSON is valid
   blockers <findings-dir>                 count open blocker findings (prior != addressed)
   verdict <file>                          print the verdict word, or exit 1
@@ -259,7 +260,17 @@ def cmd_latest_status(path):
     if not latest:
         sys.exit(1)
     m, c = latest
-    print("%s %s %s %s %s" % (m["head"], m["verdict"], m["blockers"], m["round"], c["url"] or "-"))
+    gh_id = re.search(r"issuecomment-(\d+)", c["url"])
+    cid = gh_id.group(1) if gh_id else str(c["id"] or "-")
+    print("%s %s %s %s %s %s" % (m["head"], m["verdict"], m["blockers"], m["round"], c["url"] or "-", cid))
+
+
+def cmd_status_line(path):
+    body = open(path, encoding="utf-8").read()
+    matches = list(STATUS_RE.finditer(body))
+    if len(matches) != 1:
+        raise ValueError("summary must have exactly one review status line")
+    print("%s %s" % (matches[0]["head"], matches[0]["verdict"]))
 
 
 def cmd_validate(path, cid):
@@ -1129,6 +1140,8 @@ def main(argv):
         cmd_inline_keys(a[0])
     elif c == "latest-status":
         cmd_latest_status(a[0])
+    elif c == "status-line":
+        cmd_status_line(a[0])
     elif c == "validate-findings":
         cmd_validate(a[0], a[1])
     elif c == "blockers":

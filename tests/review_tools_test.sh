@@ -254,7 +254,8 @@ def put(name, value):
     with open(os.path.join(stub, name), 'w') as f: json.dump(value, f)
 put('gh-pr.json', {'title':'test','body':'body','baseRefName':'main','headRefOid':head,
                    'headRefName':'feature','url':'https://github.com/x/demo/pull/7','state':'OPEN','isDraft':True})
-put('gh-comments.json', {'comments':[{'id':1,'body':f'wtc-review v1 head={head} verdict=pass blockers=0 round=1',
+put('gh-comments.json', {'comments':[{'id':'IC_fake','url':'https://github.com/x/demo/pull/7#issuecomment-501',
+                                       'body':f'wtc-review v1 head={head} verdict=pass blockers=0 round=1',
                                        'createdAt':'2026-01-01T00:00:00Z'}]})
 put('gh-inline-pages.json', [[{'id':2,'body':'wtc-review-inline v1 key=0123456789 concern=c1',
                                 'created_at':'2026-01-02T00:00:00Z'},
@@ -265,6 +266,7 @@ ghb="$T/gh-bundle"
 check "GitHub bundle fetches inline replies" grep -q 'reply to inline finding' "$ghb/prior/comments.md"
 check "GitHub bundle keeps all inline keys" grep -q '^0123456789$' "$ghb/prior/inline-keys.txt"
 check "GitHub bundle calls inline comments API" grep -q '^gh api repos/x/demo/pulls/7/comments?per_page=100 --paginate --slurp$' "$BBSTUB/calls.log"
+check "GitHub status uses numeric comment id from URL" bash -c "[ \$(python3 '$h/tools/review_lib.py' latest-status '$BBSTUB/gh-comments.json' | awk '{print \$6}') = 501 ]"
 GH_INLINE_FAIL=1 "$B" demo 7 --no-catch-up --head "$(git -C "$demo" rev-parse HEAD)" --dir "$T/gh-fail" >/dev/null 2>"$T/gh-fail.err"
 check "GitHub partial fetch does not use incomplete history" test ! -e "$T/gh-fail/prior/comments.md"
 python3 - "$h/.harness-repos.yml" <<'PY'
@@ -470,6 +472,14 @@ pr_json "$H40"
 mk_comments 1 "$T1" "$(sl "$H12" pass)"
 expect_status "12-char status head vs 40-char PR head (wrong direction)" "stale pass 0 1"
 
+# The gate trusts only a status comment whose id has a local posting receipt.
+. "$h/tools/review-common.sh"
+for verdict in pass pass-with-notes; do
+  receipt="$(review_trust_marker "$coll" bitbucket x/demo 7 "$H40" 1 "$verdict")"
+  mkdir -p "$(dirname "$receipt")"
+  : >"$receipt"
+done
+
 gate() { # <desc> <expected-rc> <expected-ready-calls> [bb-pr-ready args…]
   local d="$1" want="$2" ready="$3" rc=0 n; shift 3
   : >"$BBSTUB/calls.log"
@@ -491,6 +501,8 @@ mk_comments 1 "$T1" "$(sl "$H40" error)"
 gate "refuses error" 1 0
 mk_comments 1 "$T1" "$(sl "$H40" pass)" 2 "$T2" "$(sl "$H40" pending)"
 gate "refuses pending even when an older review passed" 1 0
+mk_comments 1 "$T1" "$(sl "$H40" pass)" 2 "$T2" "$(sl "$H40" pass)"
+gate "refuses a newer untrusted status comment" 1 0
 mk_comments 1 "$T1" "$(sl "$H40" pass)"
 gate "allows current pass" 0 1
 mk_comments 1 "$T1" "$(sl "$H40" pass-with-notes)"
@@ -533,6 +545,7 @@ pr_json "${dh:0:12}"; : >"$BBSTUB/calls.log"
 "$h/tools/review-post.sh" "$pb" >/dev/null 2>&1 || true
 check "post without comment.id creates (bb pr comments add)" test "$(count '^bb pr comments add 7')" -eq 1
 check "comment.id stored from the create" test "$(cat "$pb/comment.id")" = 501
+check "summary post writes a local trust receipt" test -f "$(review_trust_marker "$coll" bitbucket x/demo 7 "$dh" 501 pass)"
 "$h/tools/review-post.sh" "$pb" >/dev/null 2>&1 || true
 check "post with comment.id updates in place (bb pr comments edit 7 501)" test "$(count '^bb pr comments edit 7 501')" -eq 1
 check "update did not create a second comment" test "$(count '^bb pr comments add 7')" -eq 1

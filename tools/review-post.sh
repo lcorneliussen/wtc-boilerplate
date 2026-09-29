@@ -72,7 +72,9 @@ lead_spec="$HARNESS_REVIEW_LEAD"
 case "$mode" in
   summary)
     [ -s "$bundle/summary.md" ] || die "no summary.md in $bundle (run review-run.sh first)"
-    grep -q 'wtc-review v1 head=' "$bundle/summary.md" || die "summary.md has no status line (run review-run.sh)"
+    status_line="$(python3 "$py" status-line "$bundle/summary.md")" || die "summary.md needs exactly one status line"
+    read -r posted_head posted_verdict <<<"$status_line"
+    review_same_sha "$posted_head" "$HEAD_SHA" || die "summary status head does not match the bundle"
     post_file="$bundle/summary.md"
     ;;
   progress)
@@ -217,6 +219,13 @@ new_id="${result%%$'\t'*}"
 url="${result#*$'\t'}"
 [ -z "$new_id" ] || printf '%s\n' "$new_id" >"$idfile"
 if [ "$mode" = summary ]; then
+  if [ -n "$new_id" ]; then
+    receipt="$(review_trust_marker "$(this_collection_dir)" "$FORGE" "$SLUG" "$PR" "$posted_head" "$new_id" "$posted_verdict")" || die "could not build local review receipt"
+    mkdir -p "$(dirname "$receipt")"
+    : >"$receipt"
+  else
+    echo "review-post: warn: no comment id; the ready gate cannot verify this post" >&2
+  fi
   post_inline || echo "review-post: warn: inline comments were not all posted" >&2
 fi
 echo "${url:-posted}"

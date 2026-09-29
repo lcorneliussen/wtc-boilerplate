@@ -65,6 +65,9 @@ reading of the diff does not gate.
    - disagree / out of scope → the reply *is* the answer; do not change code.
    Then resolve each inline thread you have answered (fix or reply). Never
    resolve the summary comment — the gate reads it.
+   A finding carried into a later round keeps its original inline thread;
+   use the bundle from the round that first posted that thread when resolving
+   it. Later bundles retain its key to avoid creating a duplicate thread.
    ```bash
    tools/review-resolve.sh <dir> --file path/in/repo --line N --reply "Addressed in <sha>."
    tools/review-resolve.sh <dir> --reply "Addressed in <sha>."   # every open thread in the bundle
@@ -88,6 +91,8 @@ reading of the diff does not gate.
 `tools/review-status.sh <repo> <n>` shows `current|stale|none` + verdict at
 any time. `pending` (a run is in flight) and `error` (a run failed) never open
 the gate.
+The ready gate also requires the local receipt written by `review-post.sh`;
+a status line in a comment posted by another path does not satisfy it.
 
 ## Multi-repo
 

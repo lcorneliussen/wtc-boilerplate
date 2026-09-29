@@ -3,7 +3,7 @@
 #
 # Run from inside the target repo worktree.
 # Passes only when tools/review-status.sh reports the PR's newest local review
-# as `current` (covers the PR head) with verdict pass or pass-with-notes
+# as `current` (covers the PR head and has a local posting receipt) with verdict pass or pass-with-notes
 # (not changes-requested, pending or error). Anything else needs
 #   --user-authorized "<verbatim quote of the user's instruction>"
 # Undrafting still happens only when the user asked for it; this adds a
@@ -84,7 +84,7 @@ repo="$(repo_from_cwd)"
 
 # state / verdict / blockers / round from the newest review comment on the PR.
 status_out=""
-if ! status_out="$("$script_dir/review-status.sh" "$repo" "$pr_num" 2>&1)"; then
+if ! status_out="$("$script_dir/review-status.sh" "$repo" "$pr_num" --trusted-local 2>&1)"; then
   status_out="unreadable: $status_out"
 fi
 state="${status_out%% *}"
@@ -110,6 +110,7 @@ if [ "$ok" -ne 1 ]; then
           error)   why="the last local review run of PR #$pr_num failed (verdict error)" ;;
           *)       why="the current local review of PR #$pr_num is $verdict" ;;
         esac ;;
+      untrusted) why="the newest review status was not posted by the local review tool" ;;
       *)       why="the review state of PR #$pr_num could not be read: $status_out" ;;
     esac
     cat <<EOF >&2
