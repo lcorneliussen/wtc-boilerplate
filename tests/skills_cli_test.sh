@@ -46,20 +46,23 @@ assert_eq "$root/alpha|skills render --collection $root/alpha --dry-run --seed-s
 
 it 'a version mismatch keeps the shell bootstrap path'
 export SKILLS_TEST_MISMATCH=yes
-"$runner" --collection "$root/alpha" --dry-run >/dev/null
+fallback_out="$("$runner" --collection "$root/alpha" --dry-run)"
 assert_eq 1 "$(wc -l < "$SKILLS_TEST_CALLS" | tr -d ' ')" 'native renderer not called'
+assert_contains "$fallback_out" 'already-current=' 'shell fallback completed'
 unset SKILLS_TEST_MISMATCH
 
 it '--all dispatches once per target collection'
 : > "$SKILLS_TEST_CALLS"
 printf '0.1.7\n' > "$root/beta/harness/.wtc-cli-version"
-"$runner" --all --dry-run >/dev/null
+sweep_out="$("$runner" --all --dry-run)"
 assert_eq 2 "$(wc -l < "$SKILLS_TEST_CALLS" | tr -d ' ')" 'native render for supported target pins'
 for name in main alpha; do
   assert_contains "$(cat "$SKILLS_TEST_CALLS")" \
     "$root/$name|skills render --collection $root/$name --dry-run" "$name selected"
 done
 assert_not_contains "$(cat "$SKILLS_TEST_CALLS")" "$root/beta|" 'older target uses shell fallback'
+assert_contains "$sweep_out" '=== beta' 'older target included in sweep'
+assert_contains "$sweep_out" 'already-current=' 'older target completed shell setup'
 
 it 'catch-up refreshes the target pin before skill setup'
 mkdir -p "$root/gamma"
