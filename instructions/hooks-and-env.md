@@ -160,5 +160,5 @@ system interpreters once PATH is injected.
 |---|---|---|
 | Collection created | `tools/branch-off.sh` | `init` for every included repo (after env is written and skills are linked) |
 | Repo added later | `tools/add-repo.sh` | `init` for the new repos only |
-| Collection retired | `tools/retire.sh` | `teardown` for every repo, then worktrees removed (pre-flight refuses on dirty/unpushed work unless `--force`; branches are never deleted) |
+| Collection retired | `wtc retire` (`tools/retire.sh` compatibility entry) | `teardown` for every repo, then worktrees removed (pre-flight refuses on dirty/unpushed work unless `--force`; branches are never deleted) |
 | Generator or registry changed | `tools/refresh-env.sh` | none — regenerates `.env.collection`, preserving the port base |
