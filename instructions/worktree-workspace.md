@@ -169,7 +169,7 @@ files).
 ## Retiring a collection
 
 ```bash
-tools/retire.sh <collection>        # from a different collection's harness
+wtc retire <collection>             # from a different collection
 ```
 
 Runs teardown hooks, refuses if any sibling has uncommitted or unpushed work

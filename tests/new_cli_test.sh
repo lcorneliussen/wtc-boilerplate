@@ -14,7 +14,7 @@ cat > "$mock/mise" <<'MOCK'
 [ "$1 $2 $3" = 'exec -- wtc' ] || exit 2
 shift 3
 case "$*" in
-  --version) printf 'wtc version %s\n' "${NEW_TEST_VERSION:-0.1.11}" ;;
+  --version) printf 'wtc version %s\n' "${NEW_TEST_VERSION:-0.1.12}" ;;
   'new --help') exit 0 ;;
   *) printf '%s|%s\n' "$PWD" "$*" >> "$NEW_TEST_CALLS" ;;
 esac
@@ -48,6 +48,7 @@ assert_not_contains "$(cat "$NEW_TEST_CALLS")" 'new --no-open mismatched widget'
 # supplies WTC_TEST_RELEASE_BINARY and exercises the actual pinned command.
 if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
   it 'the released CLI opens a PR at its exact head with a pushable review branch'
+  printf '0.1.12\n' > "$root/main/harness/.wtc-cli-version"
   export NEW_TEST_REAL_CLI="$WTC_TEST_RELEASE_BINARY"
   source_repo="$(git --git-dir="$root/.bare/widget.git" remote get-url origin)"
   git -C "$source_repo" checkout -qb review-head
@@ -76,8 +77,10 @@ REAL_MISE
 printf '{"headRefName":"review-head","headRefOid":"%s","title":"Fixture review"}\n' "$NEW_TEST_PR_HEAD"
 MOCK_GH
   chmod +x "$mock/mise" "$mock/gh"
-  WTC_HARNESS_REPO=agent-harness WTC_CONFIG_ROOT="$root/control" \
-    "$runner" --pr widget#41 --no-open >/dev/null 2>&1
+  new_out="$(WTC_HARNESS_REPO=agent-harness WTC_CONFIG_ROOT="$root/control" \
+    "$runner" --pr widget#41 --no-open 2>&1)"
+  new_rc=$?
+  assert_eq 0 "$new_rc" "released CLI created review collection: $new_out"
   review="$root/widget-pr41"
   assert_eq "$NEW_TEST_PR_HEAD" "$(git -C "$review/widget" rev-parse HEAD)" 'exact PR head'
   assert_eq 'wtc-pr-41-review' "$(git -C "$review/widget" branch --show-current)" 'occupied branch gets a distinct local name'

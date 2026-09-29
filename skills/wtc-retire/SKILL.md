@@ -49,12 +49,14 @@ it there first.
 ## 3. Retire
 
 ```bash
-harness/tools/retire.sh <collection>
+wtc retire <collection>
 ```
 
 It runs teardown hooks for every repo, refuses on dirty or unpushed work,
 removes the worktrees, closes the collection's herdr workspace if one is open,
-and deletes the folder.
+and deletes the folder when it contains no other files. It leaves unexpected
+files visible for inspection. `harness/tools/retire.sh` is the compatibility
+entry point for an older CLI pin or before the pinned binary is installed.
 
 `--force` overrides the pre-flight refusal. Use it only when you have
 established the work is genuinely disposable — and say in your report that you
@@ -64,7 +66,7 @@ used it and why. It is not the way past a refusal you haven't read.
 
 **Remote branches.** Merged or not, they are the per-issue record of work —
 `git branch -r | grep <issue-id>` is how anyone finds what was done for an issue
-later. `retire.sh` doesn't touch them and neither do you.
+later. `wtc retire` doesn't touch them and neither do you.
 
 Local refs go with the worktrees, which is exactly why the pre-flight refuses
 on anything unpushed: pushed work is safe on the remote, unpushed work only

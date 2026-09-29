@@ -19,6 +19,7 @@ EOF
   exit "${1:-1}"
 }
 
+original_args=("$@")
 force=no
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -35,6 +36,36 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 HARNESS_DIR="$(dirname "$script_dir")"
 . "$script_dir/lib.sh"
 harness_lib_init
+
+# Keep the shell path available for older pins and before mise has installed
+# the requested binary. A matching pin can use the native retirement checks.
+native_retire_supported() { # v0.1.12 first shipped wtc retire
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 12))
+  }'
+}
+source_collection="$(dirname "$HARNESS_DIR")"
+if [ -f "$HARNESS_DIR/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$HARNESS_DIR/.wtc-cli-version")"
+  cli_version=""
+  cli_cmd=()
+  if native_retire_supported "$cli_pin" && command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$source_collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+  fi
+  if native_retire_supported "$cli_pin" && [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$source_collection" && wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(wtc)
+  fi
+  if [ "$cli_version" = "wtc version $cli_pin" ] &&
+      (cd "$source_collection" && "${cli_cmd[@]}" retire --help >/dev/null 2>&1); then
+    cd "$source_collection"
+    exec "${cli_cmd[@]}" retire "${original_args[@]}"
+  fi
+fi
 
 dest_root="$ROOT/$collection"
 [ -d "$dest_root/harness" ] || { echo "error: $dest_root is not a collection (no harness/)" >&2; exit 1; }
