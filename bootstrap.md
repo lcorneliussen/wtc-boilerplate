@@ -135,6 +135,14 @@ Now finish wiring the collection:
 ./tools/link-skills.sh --seed-scope   # AGENTS.md entry point, skills, WTC-SCOPE.md
 ```
 
+To use a released `wtc` CLI, commit its exact version (without the `v` tag
+prefix) in `harness/.wtc-cli-version`, then run `./tools/refresh-env.sh` and
+`mise install` from the collection root. The refresh generates the CLI tool
+entry in the collection-root `mise.toml`, inherited by every sibling. Upgrade
+the checked-in version file to change the pin; edits to generated `mise.toml`
+are replaced on the next refresh. Existing shell commands remain available
+while their CLI equivalents are migrated.
+
 `branch-off.sh` does both for every collection it creates; this first one is
 by hand because the tools only exist once their own worktree does. Without
 them the collection has no ports, no `WTC_CONFIG_ROOT`, and no `AGENTS.md`
