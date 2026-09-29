@@ -59,16 +59,16 @@ assert_file "$c/mise.toml"
 assert_contains "$(cat "$c/mise.toml")" ".env.collection"
 
 it "refresh-env retains a harness-pinned CLI release"
-assert_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.2"'
-printf '0.1.3\n' > "$c/harness/.wtc-cli-version"
+assert_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.3"'
+printf '0.1.4\n' > "$c/harness/.wtc-cli-version"
 dry_out="$("$c/harness/tools/refresh-env.sh" --collection "$c" --dry-run)"
-assert_contains "$dry_out" '"github:lcorneliussen/wtc-cli" = "0.1.3"'
-assert_not_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.3"'
+assert_contains "$dry_out" '"github:lcorneliussen/wtc-cli" = "0.1.4"'
+assert_not_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.4"'
+"$c/harness/tools/refresh-env.sh" --collection "$c" >/dev/null
+assert_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.4"'
+printf '0.1.3\n' > "$c/harness/.wtc-cli-version"
 "$c/harness/tools/refresh-env.sh" --collection "$c" >/dev/null
 assert_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.3"'
-printf '0.1.2\n' > "$c/harness/.wtc-cli-version"
-"$c/harness/tools/refresh-env.sh" --collection "$c" >/dev/null
-assert_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.2"'
 
 it "the agent entry point and the scope note are seeded"
 assert_file "$c/AGENTS.md" "collection AGENTS.md"
