@@ -53,7 +53,7 @@ generator, preserving the collection's port base. Leaves
                       harness worktree).
   --all               Every collection under the workspace root. Use after
                       landing a generator change.
-  --dry-run           Show the diff; write nothing.
+  --dry-run           Preview generated env and mise config; write nothing.
   -h, --help          Show this help.
 
 Already-open herdr panes keep the environment they were created with —
@@ -99,15 +99,23 @@ collection="$(cd "$collection" && pwd)"
 
 # The target collection's mise.toml chooses its CLI version. Keep the shell
 # implementation for bootstrap and older pins; --all re-enters here per target.
+native_env_supported() { # 0.1.9 first trusted generated mise.toml
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 9))
+  }'
+}
 if [ -f "$collection/$harness_dirname/.wtc-cli-version" ]; then
   cli_pin="$(tr -d '[:space:]' < "$collection/$harness_dirname/.wtc-cli-version")"
   cli_version=""
   cli_cmd=()
-  if command -v mise >/dev/null 2>&1; then
+  if native_env_supported "$cli_pin" && command -v mise >/dev/null 2>&1; then
     cli_version="$(cd "$collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
     [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
   fi
-  if [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+  if native_env_supported "$cli_pin" && [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
     cli_version="$(cd "$collection" && wtc --version 2>/dev/null)" || cli_version=""
     [ -z "$cli_version" ] || cli_cmd=(wtc)
   fi

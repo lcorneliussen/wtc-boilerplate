@@ -72,7 +72,8 @@ printf '[tools]\n"github:lcorneliussen/wtc-cli" = "0.1.7"\n' > "$root/gamma/mise
 "$root/main/harness/tools/catch-up.sh" --harness-only --no-secrets --no-mcp gamma \
   > "$root/catch-up.out" 2> "$root/catch-up.err"
 assert_eq 0 "$?" 'catch-up succeeded'
-assert_contains "$(cat "$root/gamma/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.8"' \
+pin="$(cat "$root/gamma/harness/.wtc-cli-version")"
+assert_contains "$(cat "$root/gamma/mise.toml")" "\"github:lcorneliussen/wtc-cli\" = \"$pin\"" \
   'generated pin refreshed'
 assert_contains "$(cat "$SKILLS_TEST_CALLS")" \
   "$root/gamma|skills render --collection $root/gamma" 'native render used refreshed pin'
