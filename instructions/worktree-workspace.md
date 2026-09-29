@@ -114,6 +114,13 @@ For a PR review collection, the native command verifies the exact head and
 records the appropriate push command in `HANDOFF.md`, including when another
 worktree already has the PR branch checked out.
 
+`wtc add-repo <repo> [repo ...]` extends the current collection. With a
+matching v0.1.11 or newer pin installed, `add-repo.sh` selects the native
+command from the target collection; the shell path handles bootstrap and
+older pins. Use `--collection <name>` only when deliberately targeting another
+collection. The native command refreshes the env, links gitignored secrets,
+updates skills and MCP configuration, then runs each new repo's init hook.
+
 Naming follows the source: `<slug>`, `<issue-id>-<slug>`, `<tracker-key>-<slug>`,
 or `<repo>-pr<n>`. That name is the branch the work is *expected* to get — it
 goes into the launch note, and a tracker wtc's linking issue is created while
