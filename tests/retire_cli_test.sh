@@ -54,6 +54,13 @@ if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
   mkdir -p "$root_real/finished"
   add_fixture_worktree "$root_real" agent-harness "$root_real/finished/harness"
   head_before="$(git --git-dir="$root_real/.bare/agent-harness.git" rev-parse refs/remotes/origin/main)"
+  export RETIRE_TEST_NATIVE_MARKER="$root_real/native-retire-ran"
+  mkdir -p "$root_real/main/harness/hooks/wtc"
+  cat > "$root_real/main/harness/hooks/wtc/retire.pre.sh" <<'HOOK'
+#!/bin/sh
+printf 'native\n' > "$RETIRE_TEST_NATIVE_MARKER"
+HOOK
+  chmod +x "$root_real/main/harness/hooks/wtc/retire.pre.sh"
   export RETIRE_TEST_REAL_CLI="$WTC_TEST_RELEASE_BINARY"
   cat > "$mock/mise" <<'REAL_MISE'
 #!/usr/bin/env bash
@@ -67,6 +74,7 @@ exit 2
 REAL_MISE
   chmod +x "$mock/mise"
   "$root_real/main/harness/tools/retire.sh" finished >/dev/null 2>&1
+  assert_file "$RETIRE_TEST_NATIVE_MARKER" 'matching release used native retirement'
   assert_no_file "$root_real/finished" 'native command removed the collection'
   assert_eq "$head_before" "$(git --git-dir="$root_real/.bare/agent-harness.git" rev-parse refs/remotes/origin/main)" 'remote ref remains'
 fi
