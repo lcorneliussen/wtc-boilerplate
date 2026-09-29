@@ -28,6 +28,13 @@ esac
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 harness_dir="$(dirname "$script_dir")"
+# Older init hooks call this path. Use the native registry writer after install;
+# keep the shell implementation for a collection being bootstrapped.
+collection="$(dirname "$harness_dir")"
+if (cd "$collection" && command -v wtc >/dev/null 2>&1 && wtc registry refresh --help >/dev/null 2>&1); then
+  cd "$collection"
+  exec wtc registry refresh --collection "$collection"
+fi
 root="$harness_dir"
 while [ "$root" != "/" ] && [ ! -d "$root/.bare" ]; do
   root="$(dirname "$root")"
