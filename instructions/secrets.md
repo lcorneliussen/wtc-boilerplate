@@ -60,12 +60,15 @@ path, so linking is mechanical.
 
 ## Wiring a worktree
 
-`tools/link-secrets.sh` does it, for every checked-out repo in a collection:
+`wtc secrets link` does it, for every checked-out repo in a collection. The
+`tools/link-secrets.sh` entry point dispatches to the pinned CLI when available
+and retains a shell fallback for a collection that has not installed it yet:
 
 ```sh
 tools/link-secrets.sh                 # this harness worktree's collection
 tools/link-secrets.sh --collection ../billing --dry-run
 tools/link-secrets.sh --repo api     # what init hooks pass
+wtc secrets link --repo api         # native command
 ```
 
 Because files are stored at their repo-relative path, the tool needs no
