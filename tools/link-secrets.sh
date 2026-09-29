@@ -30,8 +30,27 @@ HARNESS_DIR="$(dirname "$script_dir")"
 # Keep this entry point for init hooks and older collections. Once the pinned
 # CLI is installed, let its native command own the linking behavior. A fresh
 # collection can still bootstrap with the shell implementation before install.
-if command -v wtc >/dev/null 2>&1 && wtc secrets link --help >/dev/null 2>&1; then
-  exec wtc secrets link --collection "$(dirname "$HARNESS_DIR")" "$@"
+_wtc_collection="$(dirname "$HARNESS_DIR")"
+_wtc_original_args=("$@")
+_wtc_native_args=()
+_wtc_selection_valid=yes
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --collection)
+      if [ "$#" -lt 2 ]; then _wtc_selection_valid=no; break; fi
+      _wtc_collection="$2"; shift 2 ;;
+    *) _wtc_native_args+=("$1"); shift ;;
+  esac
+done
+set -- "${_wtc_original_args[@]}"
+if [ "$_wtc_selection_valid" = yes ] && [ -d "$_wtc_collection" ]; then
+  _wtc_collection="$(cd "$_wtc_collection" && pwd -P)"
+  # mise shims load their environment from cwd. Select the target collection's
+  # pin and control root, including when a catch-up started in another one.
+  if (cd "$_wtc_collection" && command -v wtc >/dev/null 2>&1 && wtc secrets link --help >/dev/null 2>&1); then
+    cd "$_wtc_collection"
+    exec wtc secrets link --collection "$_wtc_collection" "${_wtc_native_args[@]}"
+  fi
 fi
 # The fallback has no TOML/YAML parser. Refuse configured production paths
 # until the native command is installed, so it cannot silently link one.

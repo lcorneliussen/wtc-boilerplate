@@ -34,6 +34,29 @@ if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ] && [ "${BASH_SOURC
   eval "$(BASH_ENV= bash "${BASH_SOURCE[0]}" --eval)"
   return 0
 fi
+# Keep the shell entry point for BASH_ENV and bootstrap. With a released CLI
+# installed, its native command owns cache refresh, exports and hook wrapping.
+_wtc_agent_dir="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+_wtc_collection="$(dirname "$(dirname "$_wtc_agent_dir")")"
+_wtc_original_args=("$@")
+_wtc_native_args=()
+_wtc_selection_valid=yes
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --collection)
+      if [ "$#" -lt 2 ]; then _wtc_selection_valid=no; break; fi
+      _wtc_collection="$2"; shift 2 ;;
+    *) _wtc_native_args+=("$1"); shift ;;
+  esac
+done
+set -- "${_wtc_original_args[@]}"
+if [ "$_wtc_selection_valid" = yes ] && [ -d "$_wtc_collection" ]; then
+  _wtc_collection="$(cd "$_wtc_collection" && pwd -P)"
+  if (cd "$_wtc_collection" && command -v wtc >/dev/null 2>&1 && wtc agent-env --help >/dev/null 2>&1); then
+    cd "$_wtc_collection"
+    exec wtc agent-env --collection "$_wtc_collection" "${_wtc_native_args[@]}"
+  fi
+fi
 set -u
 
 this="${BASH_SOURCE[0]:-$0}"

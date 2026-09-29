@@ -100,7 +100,7 @@ agent shell command sees repo-pinned tools on PATH, independent of cwd:
 
 | Surface | What it does |
 |---|---|
-| `tools/agent-env.sh` | trusts sibling `mise.toml` files, caches bins as `.env.toolchain`, prints `export PATH=…` |
+| `tools/agent-env.sh` | dispatches to `wtc agent-env` when installed; its bootstrap fallback trusts sibling `mise.toml` files, caches bins as `.env.toolchain`, and prints shell exports |
 | `hooks/agent-env.json` | SessionStart refreshes the cache; PreToolUse wraps `Bash` / `run_terminal_command` with `eval "$(agent-env.sh)"` and refuses a raw `gh pr ready` / `bb pr ready` (`hooks/guard-pr-ready.py`) |
 | collection-root `.envrc` | Grok `load_envrc` (and direnv) prepend PATH without needing project hook trust |
 | `wtc-open.sh` | new herdr workspaces get `WTC_TOOLCHAIN_PATH` and `BASH_ENV` at create time |
