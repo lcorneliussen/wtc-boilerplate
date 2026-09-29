@@ -139,6 +139,12 @@ rm -f "$dest_root/HANDOFF.md" "$dest_root/.env.collection" \
 # comment exists to prevent, and it has happened twice.
 rm -rf "$dest_root/.claude" "$dest_root/.agents" "$dest_root/.cursor" "$dest_root/.codex" \
   "$dest_root/.grok"
+# Native skill rendering materializes embedded defaults here. Remove only its
+# generated subtree; leave any other .wtc content visible for inspection.
+if [ -d "$dest_root/.wtc" ] && [ ! -L "$dest_root/.wtc" ]; then
+  rm -rf "$dest_root/.wtc/skills"
+  rmdir "$dest_root/.wtc" 2>/dev/null || :
+fi
 if rmdir "$dest_root" 2>/dev/null; then
   echo "done: retired $dest_root"
 else
