@@ -107,6 +107,13 @@ tools/branch-off.sh --pr api#41               # review wtc on the PR's head bran
 tools/add-repo.sh  <collection> <repo> […]             # bring repos in later
 ```
 
+`wtc new` accepts the same collection-creation options. With a matching
+v0.1.10 or newer pin installed, `branch-off.sh` selects that native command
+from the creating collection; the shell path remains available for bootstrap.
+For a PR review collection, the native command verifies the exact head and
+records the appropriate push command in `HANDOFF.md`, including when another
+worktree already has the PR branch checked out.
+
 Naming follows the source: `<slug>`, `<issue-id>-<slug>`, `<tracker-key>-<slug>`,
 or `<repo>-pr<n>`. That name is the branch the work is *expected* to get — it
 goes into the launch note, and a tracker wtc's linking issue is created while
