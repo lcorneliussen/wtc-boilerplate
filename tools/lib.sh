@@ -567,6 +567,15 @@ load_wtc_config() {
   # wide | narrow | auto — wtc-open.sh; flags still win. auto uses session width.
   : "${WTC_LAYOUT:=auto}"
   : "${WTC_LAYOUT_NARROW_AT:=140}"
+  # Local PR review (review/README.md). Each tier is an agent:model spec;
+  # an empty model means the agent's own default. review-run.sh flags still win.
+  : "${HARNESS_REVIEW_STRONG:=claude:opus}"
+  : "${HARNESS_REVIEW_STANDARD:=claude:sonnet}"
+  : "${HARNESS_REVIEW_FAST:=claude:haiku}"
+  : "${HARNESS_REVIEW_LEAD:=$HARNESS_REVIEW_STRONG}"
+  : "${HARNESS_REVIEW_PARALLEL:=4}"
+  : "${HARNESS_REVIEW_TIMEOUT:=900}"
+  : "${HARNESS_REVIEW_GROK_EFFORT:=low}"
 }
 
 herdr_present() { command -v herdr >/dev/null 2>&1; }

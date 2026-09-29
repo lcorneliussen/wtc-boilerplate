@@ -98,6 +98,12 @@ outside changes in; `/wtc-follow` carries this session's work to its outcome.
 A status-only request remains read-only. Procedure and resumption limits:
 `harness/skills/wtc-follow/SKILL.md`.
 
+## A draft PR is not ready until it has been reviewed
+
+`/wtc-local-review` bundles the diff and runs a separate headless review.
+The summary it posts is what `tools/bb-pr-ready.sh` reads before undrafting.
+Contract: `harness/review/README.md`.
+
 ## Widening the scope is a decision
 
 Needing another repo, another system, another service is normal — doing it

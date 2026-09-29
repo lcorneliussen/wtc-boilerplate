@@ -161,12 +161,15 @@ opened — `tools/wtc-pr.sh enlist` afterwards fixes it.
 ### 5.2 Ready for review
 
 ```bash
-gh pr ready <n>                       # if it exists as a draft
+harness/tools/bb-pr-ready.sh <n>      # if it exists as a draft
 gh pr edit <n> --add-reviewer <who>   # only if the repo doesn't auto-assign
 ```
 
 Marking ready is what summons reviewers and the review bots. Do it only when
 the change is genuinely reviewable — otherwise this is a `wtc-draft-pr` job.
+`bb-pr-ready.sh` opens the gate only when a current local review has passed
+(`/wtc-local-review`). A raw `gh pr ready` or `bb pr ready` is refused by
+`hooks/guard-pr-ready.py`.
 
 ## 6. Follow it
 
