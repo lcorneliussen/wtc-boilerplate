@@ -47,6 +47,11 @@ blocked=no
 for wt in "$dest_root"/*/; do
   wt="${wt%/}"
   [ -e "$wt/.git" ] || continue
+  bare="$(owner_of "$wt")"
+  if [ -z "$bare" ] || [ ! -d "$bare" ]; then
+    echo "blocked: cannot find Git owner for $wt" >&2
+    exit 1
+  fi
   if [ -n "$(git -C "$wt" status --porcelain)" ]; then
     echo "blocked: $wt has uncommitted changes" >&2
     blocked=yes

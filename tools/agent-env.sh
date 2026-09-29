@@ -27,6 +27,13 @@
 # Always exit 0: a missing mise is not a reason to fail a hook or a command.
 #
 # Bash 3.2-safe (macOS default): no mapfile, no associative arrays.
+# BASH_ENV sources this in every child shell. Run the script in a child and
+# evaluate only its exports, so shell options, functions and scratch variables
+# never leak into the caller. Clear BASH_ENV in that child to avoid recursion.
+if [ -n "${BASH_VERSION:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ] && [ "${BASH_SOURCE[0]}" != "$0" ]; then
+  eval "$(BASH_ENV= bash "${BASH_SOURCE[0]}" --eval)"
+  return 0
+fi
 set -u
 
 this="${BASH_SOURCE[0]:-$0}"
