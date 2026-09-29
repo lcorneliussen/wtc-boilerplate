@@ -4,12 +4,12 @@ title: Tests and evidence
 tier: standard
 applies: always
 ---
-Is the change exercised, and does the evidence in `pr.md` match the diff?
+Is the change exercised, and does the evidence in the PR description match the diff?
 
 Check:
 
 - changed behaviour is covered by a test, a check the pipeline runs, or
-  concrete evidence in `pr.md` (commands with output, counts, sample rows or
+  concrete evidence in the PR description (commands with output, counts, sample rows or
   payloads)
 - tests actually assert the new behaviour and would fail without the change;
   not only happy paths when the diff adds error handling

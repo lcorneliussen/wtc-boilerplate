@@ -6,7 +6,7 @@ applies: always
 ---
 Is the diff only what the PR says it is, and is it clean to merge?
 
-Check `diff.patch`, `changed-files.txt`, `log.txt` against `pr.md`:
+Check `diff.patch`, `changed-files.txt`, `log.txt` against the PR description:
 
 - unrelated changes: files or hunks outside the stated purpose, drive-by
   refactors, reformat-only churn mixed into logic changes
@@ -16,7 +16,7 @@ Check `diff.patch`, `changed-files.txt`, `log.txt` against `pr.md`:
   generated artefacts, lockfile churn without a dependency change
 - merge-conflict markers, accidental mode changes, broken whitespace in files
   where it matters
-- `pr.md` title and description describe the diff (nothing major missing,
+- the PR description's title and body describe the diff (nothing major missing,
   nothing described that is not there)
 
 Severities:

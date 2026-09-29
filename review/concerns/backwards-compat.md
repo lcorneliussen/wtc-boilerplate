@@ -30,7 +30,7 @@ For each contract answer explicitly:
 2. **New downstream, old upstream** — if `new/` exists and can deploy first,
    does it work against the upstream as it is in production today (the base of
    this diff)?
-3. **Rollout** — if neither order is safe, does `pr.md` state the required
+3. **Rollout** — if neither order is safe, does the PR description state the required
    order, the transition (dual-write, alias, deprecation window), and any
    manual step? Is that order actually sufficient?
 

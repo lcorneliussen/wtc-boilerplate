@@ -225,11 +225,16 @@ mkdir -p "$dir"
 dir="$(cd "$dir" && pwd)"
 
 # --- core files ---------------------------------------------------------------
+# The description is not a repository path. Name it so a citation reads as
+# the pull request it came from: 42-pr-description.md, or pr-description.md
+# when this run has no PR number.
+if [ -n "$pr" ]; then pr_desc="${pr}-pr-description.md"
+else pr_desc="pr-description.md"; fi
 if [ -s "$tmp/pr.md" ]; then
-  cp "$tmp/pr.md" "$dir/pr.md"
+  cp "$tmp/pr.md" "$dir/$pr_desc"
 else
   printf '# %s\n\n(no PR text: %s)\n' "${head_branch:-$(short "$head_sha")}" \
-    "$([ -n "$pr" ] && echo "PR #$pr not readable" || echo "branch-only review")" >"$dir/pr.md"
+    "$([ -n "$pr" ] && echo "PR #$pr not readable" || echo "branch-only review")" >"$dir/$pr_desc"
 fi
 git -C "$wt" diff --no-color "$base_sha" "$head_sha" >"$dir/diff.patch"
 git -C "$wt" diff --name-only "$base_sha" "$head_sha" >"$dir/changed-files.txt"
@@ -362,6 +367,7 @@ q() { printf '%q' "$1"; }
   echo "# review bundle manifest (sourceable)"
   echo "REPO=$(q "$repo")"
   echo "PR=$(q "$pr")"
+  echo "PR_DESCRIPTION=$(q "$pr_desc")"
   echo "FORGE=$(q "$forge")"
   echo "SLUG=$(q "$slug")"
   echo "URL=$(q "$pr_url")"

@@ -14,8 +14,8 @@ Usage: tools/review-resolve.sh <bundle-dir> [--reply TEXT]
 
 Resolve inline review threads posted for this bundle. With no filter, every
 unresolved thread that has a comment id. --reply is posted on each thread
-first (the next round reads it from prior/comments.md). The summary comment
-in comment.id is left alone.
+first (the next round reads it from prior/comments.md). The verdict comment
+in comment.id and the progress comment in progress.id are left alone.
 
 Bitbucket: bb pr comments reply / resolve (or the REST API).
 GitHub: a pull-comment reply, then resolveReviewThread.

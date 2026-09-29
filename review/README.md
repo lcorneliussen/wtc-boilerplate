@@ -19,7 +19,7 @@ own under `.review/concerns/`.
 | `skills/wtc-local-review/` | main-thread procedure: bundle → run → read → post → fix → resolve inline threads → re-run |
 | `tools/review-bundle.sh` | builds a review bundle (diff, PR text, concerns, downstream snapshots, prior rounds) |
 | `tools/review-run.sh` | fans out one headless agent per concern, then one lead pass; writes `summary.md` + `verdict` + per-run stats; `--post` runs the comment lifecycle |
-| `tools/review-post.sh` | creates or updates the bundle's one summary comment (bb or gh): `--progress`, final summary, `--failed`; a summary post also adds inline comments |
+| `tools/review-post.sh` | progress comment, then a separate verdict comment (bb or gh); a verdict post also adds inline comments |
 | `tools/review-resolve.sh` | replies to and resolves the bundle's inline threads (not the summary comment) |
 | `tools/review-status.sh` | reads the latest review comment on a PR: `current|stale|none` + verdict (incl. `pending` / `error`) |
 | `tools/bb-pr-ready.sh` | the gate: undrafts only when the review is current and its verdict is `pass` or `pass-with-notes` |
@@ -111,7 +111,7 @@ Default location `<collection>/.wtc-reviews/<repo>-pr<N>-<sha7>-r<round>/`
 
 ```text
 manifest.env        REPO PR FORGE URL BASE_REF BASE_SHA HEAD_SHA HEAD_BRANCH ROUND REPO_DIR COLLECTION
-pr.md               PR title + description (empty body allowed for branch-only runs)
+<N>-pr-description.md   PR title + description (`pr-description.md` when there is no PR number)
 diff.patch          git diff BASE_SHA...HEAD_SHA
 changed-files.txt   one path per line
 log.txt             git log --oneline BASE_SHA..HEAD_SHA
@@ -132,12 +132,13 @@ stats/<id>.json     per agent run (concerns and `lead`), written by the runner:
                      turns|null, status: ok|error|timeout|skipped}
 summary.md          lead output + `### Run stats` + status line (assembled by review-run.sh)
 verdict             one word: pass | pass-with-notes | changes-requested
-comment.id          id of the bundle's summary comment (written by review-post.sh)
+progress.id         id of the progress comment (written by review-post.sh --progress)
+comment.id          id of the verdict comment (written by review-post.sh)
 inline-comments.json  one row per inline thread: key, concern, file, line, severity,
                     title, id, url, error, resolved (written by review-post.sh /
                     review-resolve.sh)
 .inline/            bodies of the inline comments, for the poster
-progress.md         the last "in progress" body; failed.md the last "failed" body
+progress.md         the last "in progress" body; progress-done.md the short finished note; failed.md the last "failed" body
 lead.spec           the lead's agent:model for this run
 run.log             launcher output, for debugging
 ```
@@ -206,34 +207,37 @@ mode, so another commenter cannot satisfy it by copying a status line.
 The receipt is collection-local; a different machine needs its own review
 bundle and post before its ready gate can pass.
 
-### Comment lifecycle (one comment per bundle)
+### Comment lifecycle
 
 `review-run.sh <dir> --post` (the skill's default flow):
 
 1. **before** any agent starts: `⏳ **Local review: in progress**` — round, head
    (7 chars), concerns with tier and agent list, start time — ending in the
    readable footer with `verdict=pending`, and the machine line under a Gate
-   record heading. That published comment is the
-   pending review: forges have no separate "review in progress" state others
-   can see. The comment id goes to `<bundle>/comment.id`. The stale-head check
-   applies: a bundle whose head is not the PR head is refused before any agent
-   time is spent.
-2. **at the end**: that same comment is *updated* with `summary.md`. The poster
-   marks the verdict (🟢 pass, 🟡 pass-with-notes, 🔴 changes-requested), turns
-   `` `path:line` `` into a source link (`#lines-N` on Bitbucket, `#L` on
-   GitHub), and keeps Minor, Concerns, Addressed and Run stats as headings on
-   Bitbucket (an expand fence collapses there, and the Markdown inside it is
-   not rendered). GitHub collapses those sections with `<details>`. Inline comments
-   carry the same severity mark and sit on the diff line. No second summary
-   comment.
-3. **on failure**: the same comment becomes `❌ **Local review: failed**` with the
-   reason and the redacted tail of `run.log`, status line `verdict=error`.
+   record heading. That published comment is the pending review: forges have
+   no separate "review in progress" state others can see. Its id goes to
+   `<bundle>/progress.id`. Later progress updates edit this comment. The
+   stale-head check applies: a bundle whose head is not the PR head is refused
+   before any agent time is spent.
+2. **at the end**: inline notes are posted first, then `summary.md` is posted
+   as a **new** comment (`<bundle>/comment.id`). The poster marks the verdict
+   (🟢 pass, 🟡 pass-with-notes, 🔴 changes-requested), turns `` `path:line` ``
+   into a source link (`#lines-N` on Bitbucket, `#L` on GitHub), and keeps
+   Minor, Concerns, Addressed and Run stats as headings on Bitbucket (an
+   expand fence collapses there, and the Markdown inside it is not rendered).
+   GitHub collapses those sections with `<details>`. The progress comment is
+   then shortened to a finished note with **no** status line, so it stays
+   where it was created and the verdict sorts after the notes.
+3. **on failure**: the progress comment becomes `❌ **Local review: failed**`
+   with the reason and the redacted tail of `run.log`, status line
+   `verdict=error`. There is no verdict comment.
 
-`review-post.sh <dir>` creates when there is no `comment.id`, else updates
-(Bitbucket: REST `PUT …/comments/<id>` with the bb credentials, fallback
-`bb pr comments edit`; GitHub: `gh api -X PATCH …/issues/comments/<id>`).
-`review-post.sh <dir> --progress` posts only the progress comment.
-`WTC_REVIEW_NO_API=1` forces the CLI fallback (tests, no REST credentials).
+`review-post.sh <dir>` creates the verdict when there is no `comment.id`, else
+updates it (Bitbucket: REST `PUT …/comments/<id>` with the bb credentials,
+fallback `bb pr comments edit`; GitHub: `gh api -X PATCH
+…/issues/comments/<id>`). `review-post.sh <dir> --progress` posts only the
+progress comment. `WTC_REVIEW_NO_API=1` forces the CLI fallback (tests, no REST
+credentials).
 
 ### Inline comments
 

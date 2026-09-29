@@ -25,6 +25,7 @@ Subcommands (all print to stdout; non-zero exit = failure):
                                           turn one agent run's raw output into stats + human text
   stats-table <bundle> <wall-seconds>     "### Run stats" markdown from <bundle>/stats/*.json
   progress-md <bundle> <strong> <standard> <fast> <lead> [only-ids]
+  progress-done <bundle>                  short "finished" note; no status line
                                           the "in progress" comment (with pending status line)
   failure-md <bundle> <lead> [reason]     the "failed" comment (with verdict=error status line)
   present <bundle>                        color summary.md, link file:line, fold secondary sections
@@ -654,15 +655,31 @@ def cmd_progress(bundle, strong, standard, fast, lead, only):
              "Round %s, head `%s`. Started %s." % (
                  _manifest_value(bundle, "ROUND") or "1", head[:7], started),
              "",
-             "This comment is the pending review. It is updated in place when the run "
-             "finishes — there is no second comment. The gate stays closed "
-             "(`verdict=pending`) until then.",
+             "This comment is only the progress marker. It is updated while the run "
+             "is going. The verdict is a new comment when the run finishes, so "
+             "notes posted along the way stay above it. The gate stays closed "
+             "(`verdict=pending`) until that verdict comment exists.",
              "", "| Concern | Tier | Agent |", "|---|---|---|"]
     for cid, tier, spec in rows:
         lines.append("| %s | %s | %s |" % (cid, tier, spec))
     lines.append("| lead (aggregation) | - | %s |" % lead)
     lines += ["", _status_footer(bundle, "pending", 0, lead)]
     print("\n".join(lines))
+
+
+def cmd_progress_done(bundle):
+    """Short replacement for the progress comment once the verdict is its own comment.
+
+    No status line: the gate must keep reading the verdict comment, which is
+    created later and therefore sorts after this one.
+    """
+    head = (_manifest_value(bundle, "HEAD_SHA") or "")[:7] or "?"
+    round_n = _manifest_value(bundle, "ROUND") or "1"
+    print("\n".join([
+        "✅ **Local review finished.** Round %s · `%s`" % (round_n, head),
+        "",
+        "The verdict is a separate comment, after the notes on the diff.",
+    ]))
 
 
 _SECRET_RES = [
@@ -868,8 +885,40 @@ def _sev_mark(sev):
     return _SEV_MARK.get(sev, "⚪")
 
 
+def _is_pr_description(path):
+    """The pull-request text is a pseudo file, not a path in the repository."""
+    if not path:
+        return False
+    return path == "pr.md" or bool(re.match(r"^(?:\d+-)?pr-description\.md$", path))
+
+
+def _pr_description_name(bundle):
+    name = _manifest_value(bundle, "PR_DESCRIPTION")
+    if name:
+        return name
+    pr = _manifest_value(bundle, "PR")
+    if pr.isdigit():
+        return pr + "-pr-description.md"
+    return "pr-description.md"
+
+
+def _rewrite_pr_description_cites(text, bundle):
+    """Older notes say `pr.md:N`. Show the numbered pseudo file instead."""
+    name = _pr_description_name(bundle)
+    if name == "pr.md":
+        return text
+    text = text.replace("`pr.md:", "`%s:" % name)
+    return text.replace("`pr.md`", "`%s`" % name)
+
+
 def _hunk_url(bundle, path, line):
-    """Link a new-file line. Inline comments already sit on the diff hunk."""
+    """Link a new-file line. Inline comments already sit on the diff hunk.
+
+    A pull-request description is not in the tree, so its citation opens the
+    pull request rather than a source line that does not exist.
+    """
+    if _is_pr_description(path):
+        return _manifest_value(bundle, "URL")
     forge = _manifest_value(bundle, "FORGE")
     sha = _manifest_value(bundle, "HEAD_SHA")
     slug = _manifest_value(bundle, "SLUG")
@@ -941,7 +990,8 @@ def cmd_present(bundle):
             status.append(line)
             continue
         body.append(line)
-    text = _linkify_hunks("\n".join(body), bundle)
+    text = _rewrite_pr_description_cites("\n".join(body), bundle)
+    text = _linkify_hunks(text, bundle)
     text = _color_verdict(text)
     preamble, title, buf, sections = [], None, [], []
     for line in text.splitlines():
@@ -1008,6 +1058,8 @@ def cmd_inline_plan(bundle):
             if not isinstance(f, dict) or f.get("prior") == "addressed":
                 continue
             path = _safe_repo_path(f.get("file"))
+            if _is_pr_description(path):
+                continue
             line = _finding_line(f)
             title = (f.get("title") or "").strip()
             sev = f.get("severity")
@@ -1158,6 +1210,8 @@ def main(argv):
         cmd_stats_table(a[0], a[1])
     elif c == "progress-md":
         cmd_progress(a[0], a[1], a[2], a[3], a[4], a[5] if len(a) > 5 else "")
+    elif c == "progress-done":
+        cmd_progress_done(a[0])
     elif c == "failure-md":
         cmd_failure(a[0], a[1], a[2] if len(a) > 2 else "")
     elif c == "json-field":

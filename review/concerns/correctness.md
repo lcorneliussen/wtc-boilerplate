@@ -4,7 +4,7 @@ title: Correctness
 tier: strong
 applies: always
 ---
-Does the change do what `pr.md` says it does, and does it keep doing what the
+Does the change do what the PR description says it does, and does it keep doing what the
 code did before where it was not meant to change?
 
 Check, reading the surrounding code and not just the hunks:

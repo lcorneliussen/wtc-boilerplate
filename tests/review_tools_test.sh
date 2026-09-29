@@ -215,7 +215,7 @@ B="$h/tools/review-bundle.sh"
 out="$("$B" demo 2>"$T/bundle.err")" || { cat "$T/bundle.err" >&2; fail "bundle builds"; }
 bd="$(printf '%s\n' "$out" | tail -n1)"
 check "bundle dir printed and exists" test -d "$bd"
-for f in manifest.env pr.md diff.patch changed-files.txt log.txt; do
+for f in manifest.env pr-description.md diff.patch changed-files.txt log.txt; do
   check "bundle has $f" test -s "$bd/$f"
 done
 check "diff mentions x.sql" grep -q 'models/a/x.sql' "$bd/diff.patch"
@@ -553,7 +553,7 @@ check "update did not create a second comment" test "$(count '^bb pr comments ad
 pb2="$T/pb2"; mkbundle "$pb2" >/dev/null; : >"$BBSTUB/calls.log"
 check "--progress posts a pending comment" bash -c "'$h/tools/review-post.sh' '$pb2' --progress >/dev/null 2>&1 && grep -q 'Local review: in progress' '$BBSTUB/calls.log' && grep -q 'verdict=pending blockers=0 round=2' '$BBSTUB/calls.log'"
 check "progress lists concerns with tier -> agent:model" bash -c "grep -q '| c1 | strong | claude:opus |' '$pb2/progress.md' && grep -q '| c2 | fast | claude:haiku |' '$pb2/progress.md'"
-check "progress stores comment.id" test "$(cat "$pb2/comment.id")" = 501
+check "progress stores progress.id" test "$(cat "$pb2/progress.id")" = 501
 : >"$BBSTUB/calls.log"
 printf 'x\ntoken=SECRETVALUE123 something\nfinal error line\n' >"$pb2/run.log"
 "$h/tools/review-post.sh" "$pb2" --failed --reason "boom" >/dev/null 2>&1 || true
@@ -561,7 +561,7 @@ check "--failed updates the same comment to failed / verdict=error" bash -c "gre
 check "failure comment redacts secrets, keeps the log tail" bash -c "! grep -q SECRETVALUE123 '$BBSTUB/calls.log' && grep -q 'final error line' '$BBSTUB/calls.log'"
 : >"$BBSTUB/calls.log"
 "$h/tools/review-post.sh" "$pb2" >/dev/null 2>&1 || true
-check "final summary after progress updates that comment" bash -c "grep -q '^bb pr comments edit 7 501' '$BBSTUB/calls.log' && grep -q 'Local review: pass' '$BBSTUB/calls.log'"
+check "final summary is a new comment; progress comment becomes a short note" bash -c "grep '^bb pr comments add 7' '$BBSTUB/calls.log' | grep -q 'Local review: pass' && grep '^bb pr comments edit 7 501' '$BBSTUB/calls.log' | grep -q 'Local review finished' && ! grep '^bb pr comments edit 7 501' '$BBSTUB/calls.log' | grep -q 'verdict=pass'"
 
 pr_json "${O40:0:12}"; : >"$BBSTUB/calls.log"; rm -f "$pb/comment.id"
 rc=0; "$h/tools/review-post.sh" "$pb" >/dev/null 2>"$T/stale.err" || rc=$?
@@ -641,7 +641,7 @@ printf '%s\n' "$key" >"$pi2/prior/inline-keys.txt"
 "$h/tools/review-post.sh" "$pi2" >/dev/null 2>&1 || true
 check "inline: a key from older rounds is not posted again" bash -c "[ \$(grep -c -- '--line-to' '$BBSTUB/calls.log') -eq 0 ]"
 
-# --- review-run --post: progress first, then the same comment updated ----------
+# --- review-run --post: progress first, then a separate verdict comment --------
 mkrun() { # <dir> — copy of the first bundle, pointed at PR 7
   cp -R "$bd" "$1"; rm -rf "$1/comment.id" "$1/findings" "$1/stats" "$1/summary.md" "$1/verdict"
   sed -i.bak -e "s/^PR=.*/PR=7/" -e "s/^FORGE=.*/FORGE=bitbucket/" -e "s#^SLUG=.*#SLUG=x/demo#" "$1/manifest.env"; rm -f "$1/manifest.env.bak"
@@ -652,10 +652,12 @@ pr_json "${dhead:0:12}"; : >"$BBSTUB/calls.log"
 rc=0; "$h/tools/review-run.sh" "$rb" --post --only t-ok,t-sql >/dev/null 2>"$T/rb.err" || rc=$?
 [ "$rc" -eq 0 ] || cat "$T/rb.err" >&2
 check "run --post exits 0" test "$rc" -eq 0
-check "run --post: exactly one comment created, then updated in place" test "$(count '^bb pr comments add 7')" -eq 1 -a "$(count '^bb pr comments edit 7 501')" -ge 1
+check "run --post: progress comment, then a separate verdict comment" test "$(count '^bb pr comments add 7')" -eq 2
 check "run --post: progress comment came first" bash -c "grep -n '^bb pr comments' '$BBSTUB/calls.log' | head -n1 | grep -q 'add 7.*in progress'"
-check "run --post: final update carries Run stats + final status line" bash -c "grep -A80 '^bb pr comments edit 7 501' '$BBSTUB/calls.log' | grep -q 'Run stats' && grep -q 'verdict=pass blockers=0 round=1' '$BBSTUB/calls.log'"
+check "run --post: verdict comment carries the status line" grep -q 'verdict=pass blockers=0 round=1' "$BBSTUB/calls.log"
+check "run --post: progress comment is shortened and drops the status line" bash -c "grep '^bb pr comments edit 7 501' '$BBSTUB/calls.log' | grep -q 'Local review finished' && ! grep '^bb pr comments edit 7 501' '$BBSTUB/calls.log' | grep -q 'verdict=pass'"
 check "run --post: comment.id stored in the bundle" test "$(cat "$rb/comment.id")" = 501
+check "run --post: progress.id stored in the bundle" test "$(cat "$rb/progress.id")" = 501
 check "run --post: never undrafts" test "$(count '^bb pr ready')" -eq 0
 
 rf="$T/rf"; mkrun "$rf"; : >"$BBSTUB/calls.log"
@@ -700,7 +702,7 @@ check "limit: verdict still posted in the summary" grep -q 'verdict=pass ' "$fl/
 # --- summary color, hunk links, collapsed secondary sections ------------------
 pbx="$T/present"
 mkdir -p "$pbx"
-printf 'FORGE=bitbucket\nURL=%s\nHEAD_SHA=%s\nSLUG=x/demo\n' \
+printf 'FORGE=bitbucket\nPR=7\nURL=%s\nHEAD_SHA=%s\nSLUG=x/demo\n' \
   'https://example.invalid/proj/pull-requests/7' "$H40" >"$pbx/manifest.env"
 cat >"$pbx/summary.md" <<EOF
 **Local review: pass-with-notes** — round 2
@@ -708,6 +710,7 @@ cat >"$pbx/summary.md" <<EOF
 ### Major
 
 - \`tools/review-run.sh:12\` — something
+- \`pr.md:4\` — description
 
 ### Minor / nits
 
@@ -721,6 +724,8 @@ printf '\n`wtc-review v1 head=%s verdict=pass-with-notes blockers=0 round=2 lead
 python3 "$h/tools/review_lib.py" present "$pbx"
 check "summary: verdict is marked" grep -q '🟡 \*\*Local review: pass-with-notes\*\*' "$pbx/summary.md"
 check "summary: file:line links to the source line" grep -q "src/$H40/tools/review-run.sh#lines-12" "$pbx/summary.md"
+check "summary: PR description cite uses the PR number" grep -q '\[`7-pr-description.md:4`\](https://example.invalid/proj/pull-requests/7)' "$pbx/summary.md"
+check "summary: PR description is not a source link" bash -c "! grep -q 'src/.*/pr' '$pbx/summary.md'"
 check "summary: bitbucket keeps minor and run stats as headings" bash -c "! grep -q '^\`\`\`expand$' '$pbx/summary.md' && grep -q '^### Minor / nits$' '$pbx/summary.md' && grep -q '^### Run stats$' '$pbx/summary.md'"
 check "summary: readable status sits outside the gate record" bash -c "
   pretty=\$(grep -n '· round 2 ·' '$pbx/summary.md' | head -n1 | cut -d: -f1)
@@ -737,9 +742,12 @@ check "summary: github folds with details, verdict marked" bash -c "grep -q '�
 git -C "$demo" switch -q -c side
 pr_json "$(git -C "$demo" rev-parse feature)"
 co_rc=0
-"$B" demo 7 --no-catch-up >/dev/null 2>"$T/co.err" || co_rc=$?
+co_out="$("$B" demo 7 --no-catch-up 2>"$T/co.err")" || co_rc=$?
 [ "$co_rc" -eq 0 ] || { echo "--- co.err" >&2; cat "$T/co.err" >&2; }
+co_dir="$(printf '%s\n' "$co_out" | tail -n1)"
 check "PR review checks out the PR branch" test "$(git -C "$demo" branch --show-current)" = feature
+check "PR description file is numbered" test -s "$co_dir/7-pr-description.md"
+check "manifest names the PR description" grep -q 'PR_DESCRIPTION=7-pr-description.md' "$co_dir/manifest.env"
 check "PR review says which branch it checked out" grep -q 'checking out feature for PR #7' "$T/co.err"
 check "PR review with --no-catch-up does not catch up" bash -c "! grep -q 'catch-up before review' '$T/co.err'"
 

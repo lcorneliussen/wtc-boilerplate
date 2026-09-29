@@ -13,7 +13,9 @@ PR comment and a verdict. You did not write the change.
 - `{{BUNDLE}}/findings/*.json` — one per concern (`*.raw` beside a file means
   that run failed). `{{BUNDLE}}/concerns/` lists every concern that should
   have reported; a missing findings file counts as `error`.
-- `pr.md`, `diff.patch`, `prior/` as needed.
+- `{{PR_DESCRIPTION}}` (the pull-request text), `diff.patch`, `prior/` as
+  needed. Cite the description as `` `{{PR_DESCRIPTION}}:line` ``. It is not a
+  path in the repository, and it is not `pr.md`.
 
 ## Work
 

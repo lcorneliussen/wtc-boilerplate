@@ -14,7 +14,9 @@ this change and you owe its author nothing. You review one concern only:
 
 1. `{{CONCERN_FILE}}` — scope and the meaning of each severity. Follow it.
 2. `{{MANIFEST}}` — repo, PR, base/head SHAs, round.
-3. In `{{BUNDLE}}`: `pr.md`, `changed-files.txt`, `diff.patch`, `log.txt`.
+3. In `{{BUNDLE}}`: `{{PR_DESCRIPTION}}` (the pull-request text; not a file in
+   the repository), `changed-files.txt`, `diff.patch`, `log.txt`. Cite the
+   description as `` `{{PR_DESCRIPTION}}:line` ``. Do not cite `pr.md`.
 4. `related/` (other PRs in the same change set) and `downstream/<repo>/{old,new}`
    with `REFS` (consumers at their production ref and at their PR head), when
    present.
@@ -50,7 +52,7 @@ Write exactly this JSON (no prose, no code fence) to `{{FINDINGS_FILE}}`:
   "findings": [
     {
       "severity": "blocker | major | minor | nit",
-      "file": "path/relative/to/repo",
+      "file": "path/relative/to/repo, or {{PR_DESCRIPTION}} for the pull-request text",
       "line": 42,
       "title": "short claim",
       "detail": "why, with evidence",

@@ -1,25 +1,28 @@
 #!/usr/bin/env bash
-# review-post.sh — post a bundle's review comment to its PR (create or update in place).
+# review-post.sh — post a bundle's review to its PR.
 #
-# One summary comment per bundle: the first post creates it and stores its id in
-# <bundle>/comment.id; every later post updates that comment. A summary post also
-# adds one inline comment per open finding that names a file and a new-file line
-# (skipped when that finding was already commented, or prior is "addressed").
-# Refuses when the bundle was built for a commit that is no longer the PR's head
-# unless --force. Prints the summary comment URL (or "posted").
+# The progress comment (progress.id) is created and updated while a run is going.
+# The verdict is a new comment (comment.id), posted after the inline notes, and
+# the progress comment is then shortened so it no longer looks like the result.
+# A summary post also adds one inline comment per open finding that names a file
+# and a new-file line (skipped when that finding was already commented, or prior
+# is "addressed"). Refuses when the bundle was built for a commit that is no
+# longer the PR's head unless --force. Prints the verdict comment URL (or "posted").
 set -euo pipefail
 
 usage() {
   cat <<'EOF' >&2
 Usage:
-  tools/review-post.sh <bundle-dir> [--force]                 post/update the final summary
-  tools/review-post.sh <bundle-dir> --progress [--body FILE]  post/update the "in progress" comment
-  tools/review-post.sh <bundle-dir> --failed [--reason TEXT]  turn the comment into "failed"
+  tools/review-post.sh <bundle-dir> [--force]                 post/update the verdict comment
+  tools/review-post.sh <bundle-dir> --progress [--body FILE]  post/update the progress comment
+  tools/review-post.sh <bundle-dir> --failed [--reason TEXT]  turn the progress comment into "failed"
 
-One summary comment per bundle: the first post creates it and stores its id in
-<bundle>/comment.id; every later post updates that comment in place
-(no comment.id -> create). The default body is <bundle>/summary.md, which ends
-in the `wtc-review v1 …` status line written by review-run.sh.
+The progress comment lives in <bundle>/progress.id and is updated in place.
+The verdict is a separate comment in <bundle>/comment.id: the first summary
+post creates it (after the inline notes), and a later post updates that
+comment. The progress comment is then shortened and no longer carries a
+status line. The default verdict body is <bundle>/summary.md, which ends in
+the `wtc-review v1 …` status line written by review-run.sh.
 A summary post also writes inline comments for open findings (file + line) and
 records them in <bundle>/inline-comments.json. --progress and --failed do not.
 GitHub via `gh pr comment` / `gh api -X PATCH`; Bitbucket via the REST API with
@@ -106,10 +109,6 @@ if review_pr_json "$FORGE" "$SLUG" "$REPO_DIR" "$PR" "$tmp/pr.json"; then
 else
   [ "$force" -eq 1 ] || die "cannot read PR #$PR from the forge to check it is current (offline? CLI missing?); --force to post anyway"
 fi
-
-idfile="$bundle/comment.id"
-cid=""
-[ ! -s "$idfile" ] || cid="$(tr -d '[:space:]' <"$idfile")"
 
 # Each backend prints "<id><TAB><url>" (either may be empty); non-zero = failure.
 gh_create() {
@@ -205,27 +204,61 @@ case "$FORGE" in
   bitbucket) fn=bb ;;
   *) die "unknown forge '$FORGE'" ;;
 esac
-result=""
-if [ -n "$cid" ]; then
-  result="$("${fn}_update" "$cid")" || {
-    echo "review-post: warn: updating comment $cid failed; posting a new comment" >&2
-    result="" cid=""
-  }
-fi
-if [ -z "$cid" ]; then
-  result="$("${fn}_create")" || die "posting the comment failed"
-fi
-new_id="${result%%$'\t'*}"
-url="${result#*$'\t'}"
-[ -z "$new_id" ] || printf '%s\n' "$new_id" >"$idfile"
+
+# Create or update the comment whose id is stored in $idfile. Sets url.
+# A failed update falls back to a new comment so a lost id does not drop the post.
+publish() {
+  local cid="" result="" new_id=""
+  [ ! -s "$idfile" ] || cid="$(tr -d '[:space:]' <"$idfile")"
+  result=""
+  if [ -n "$cid" ]; then
+    result="$("${fn}_update" "$cid")" || {
+      echo "review-post: warn: updating comment $cid failed; posting a new comment" >&2
+      result="" cid=""
+    }
+  fi
+  if [ -z "$cid" ]; then
+    result="$("${fn}_create")" || return 1
+  fi
+  new_id="${result%%$'\t'*}"
+  url="${result#*$'\t'}"
+  [ -z "$new_id" ] || printf '%s\n' "$new_id" >"$idfile"
+}
+
+case "$mode" in
+  progress) idfile="$bundle/progress.id" ;;
+  failed)
+    # A run that already posted a progress marker turns that marker into the
+    # failure. A post with no marker creates the failure as the only comment.
+    if [ -s "$bundle/progress.id" ]; then idfile="$bundle/progress.id"
+    else idfile="$bundle/comment.id"; fi
+    ;;
+  summary) idfile="$bundle/comment.id" ;;
+esac
+
+# Inline notes are created before the verdict comment, so on the forge they
+# sort between the progress marker and the result.
 if [ "$mode" = summary ]; then
-  if [ -n "$new_id" ]; then
-    receipt="$(review_trust_marker "$(this_collection_dir)" "$FORGE" "$SLUG" "$PR" "$posted_head" "$new_id" "$posted_verdict")" || die "could not build local review receipt"
+  post_inline || echo "review-post: warn: inline comments were not all posted" >&2
+fi
+url=""
+publish || die "posting the comment failed"
+verdict_url="$url"
+if [ "$mode" = summary ]; then
+  vid=""
+  [ ! -s "$bundle/comment.id" ] || vid="$(tr -d '[:space:]' <"$bundle/comment.id")"
+  if [ -n "$vid" ]; then
+    receipt="$(review_trust_marker "$(this_collection_dir)" "$FORGE" "$SLUG" "$PR" "$posted_head" "$vid" "$posted_verdict")" || die "could not build local review receipt"
     mkdir -p "$(dirname "$receipt")"
     : >"$receipt"
   else
     echo "review-post: warn: no comment id; the ready gate cannot verify this post" >&2
   fi
-  post_inline || echo "review-post: warn: inline comments were not all posted" >&2
 fi
-echo "${url:-posted}"
+if [ "$mode" = summary ] && [ -s "$bundle/progress.id" ]; then
+  python3 "$py" progress-done "$bundle" >"$bundle/progress-done.md"
+  post_file="$bundle/progress-done.md"
+  idfile="$bundle/progress.id"
+  publish || echo "review-post: warn: could not shorten the progress comment" >&2
+fi
+echo "${verdict_url:-posted}"

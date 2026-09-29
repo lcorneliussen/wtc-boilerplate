@@ -21,11 +21,11 @@ Usage:
               HARNESS_REVIEW_GROK_EFFORT (grok --reasoning-effort; default low).
   --only      run just these concern ids (others keep no findings file)
   --post      post an "in progress" comment BEFORE the agents start, then
-              update that same comment with summary.md (or a "failed" note)
-              via tools/review-post.sh. A finished summary also posts one inline
-              comment per open finding that has a file and line. The summary
-              comment id lives in <bundle>/comment.id; inline ids in
-              <bundle>/inline-comments.json
+              post summary.md as a new comment and shorten the progress
+              comment (a failed run turns the progress comment into the
+              failure instead). Inline notes are posted before the verdict.
+              Progress id: <bundle>/progress.id. Verdict id: <bundle>/comment.id.
+              Inline ids: <bundle>/inline-comments.json
 
 Env: WTC_REVIEW_AGENT_CMD replaces the launcher; it is run as
   $WTC_REVIEW_AGENT_CMD <agent> <model> <prompt-file> <cwd>
@@ -77,6 +77,10 @@ printf '%s' "$HARNESS_REVIEW_TIMEOUT" | grep -Eq '^[0-9]+$' || { echo "error: HA
 
 # shellcheck disable=SC1091
 . "$bundle/manifest.env"
+if [ -z "${PR_DESCRIPTION:-}" ]; then
+  if [ -n "${PR:-}" ]; then PR_DESCRIPTION="${PR}-pr-description.md"
+  else PR_DESCRIPTION="pr-description.md"; fi
+fi
 prompts="$HARNESS_DIR/review/prompts"
 for f in concern.md lead.md; do
   [ -f "$prompts/$f" ] || { echo "error: missing $prompts/$f" >&2; exit 1; }
@@ -249,7 +253,8 @@ run_concern() { # <id> — subshell job; all output goes to .logs/<id>.log
   prompt="$bundle/.prompts/$id.md"
   render "$prompts/concern.md" "$prompt" \
     "BUNDLE=$bundle" "REPO_DIR=$REPO_DIR" "CONCERN_FILE=$cfile" "CONCERN_ID=$id" \
-    "FINDINGS_FILE=$out" "MANIFEST=$bundle/manifest.env"
+    "FINDINGS_FILE=$out" "MANIFEST=$bundle/manifest.env" \
+    "PR_DESCRIPTION=$PR_DESCRIPTION"
   export WTC_REVIEW_STATS_FILE="$bundle/stats/$id.json"
   run_chain "$id tier=$tier" "$bundle/.logs/$id.out" "$prompt" "$spec" || rc=$?
   agent="$CHAIN_AGENT" model="$CHAIN_MODEL" rc="$CHAIN_RC"
@@ -314,7 +319,7 @@ if [ "$post" -eq 1 ]; then
   "$script_dir/review-post.sh" "$bundle" --progress --body "$bundle/progress.md" >&2 ||
     { log "error: could not post the progress comment; not starting (run without --post to review offline)"; exit 1; }
   progress_posted=1
-  log "progress comment posted (comment.id=$(cat "$bundle/comment.id" 2>/dev/null || echo unknown))"
+  log "progress comment posted (progress.id=$(cat "$bundle/progress.id" 2>/dev/null || echo unknown))"
 fi
 
 pids=() pid_ids=()
@@ -348,7 +353,8 @@ rm -f "$bundle/summary.md" "$bundle/verdict"
 lead_prompt="$bundle/.prompts/lead.md"
 render "$prompts/lead.md" "$lead_prompt" \
   "BUNDLE=$bundle" "REPO_DIR=$REPO_DIR" "SUMMARY_FILE=$bundle/summary.md" \
-  "VERDICT_FILE=$bundle/verdict" "MANIFEST=$bundle/manifest.env"
+  "VERDICT_FILE=$bundle/verdict" "MANIFEST=$bundle/manifest.env" \
+  "PR_DESCRIPTION=$PR_DESCRIPTION"
 export WTC_REVIEW_STATS_FILE="$bundle/stats/lead.json"
 rc=0
 run_chain "lead" "$bundle/.logs/lead.out" "$lead_prompt" "$spec_lead" || rc=$?
@@ -390,7 +396,7 @@ python3 "$py" present "$bundle" || log "warn: could not color the summary"
 log "verdict=$verdict blockers=$blockers round=$ROUND -> $bundle/summary.md"
 
 if [ "$post" -eq 1 ]; then
-  # Updates the progress comment in place.
+  # New verdict comment. The progress comment is shortened afterwards.
   if ! "$script_dir/review-post.sh" "$bundle" >&2; then
     fail_reason="posting the summary failed (see review-post output; summary.md is kept in the bundle)"
     log "error: $fail_reason"; exit 1

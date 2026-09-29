@@ -39,10 +39,11 @@ reading of the diff does not gate.
    If you pushed, bundle again so the diff is that head.
 4. **Run** — `tools/review-run.sh <dir> --post` for a private PR. It first posts an
    "in progress" comment on the PR (round, head, concerns, agent:model), runs
-   one agent per concern and a lead (minutes), then **updates that same
-   comment** with the summary — no second summary comment; on failure the
-   comment becomes "failed". It also posts **one inline comment per open
-   finding** that has a file and a new-file line (`<dir>/inline-comments.json`).
+   one agent per concern and a lead (minutes), then posts the summary as a
+   **new comment** and shortens the progress comment to a finished note. On
+   failure the progress comment becomes "failed". It also posts **one inline
+   comment per open finding** that has a file and a new-file line
+   (`<dir>/inline-comments.json`), before the verdict comment.
    Posting is part of this workflow (the gate reads the summary comment); tell
    the user it was posted, including how many inline threads. For a public or
    unknown-audience PR, run without `--post`, inspect `summary.md` and every
@@ -56,9 +57,9 @@ reading of the diff does not gate.
    cause is not obvious. The `### Run stats` section gives time, tokens and
    cost per agent run (`<dir>/stats/*.json`); mention the total to the user.
 6. **Post** — automatic with `--post` for private PRs. Standalone: `tools/review-post.sh <dir>`
-   creates or updates the summary in `<dir>/comment.id` and posts any missing
-   inline comments. `tools/review-post.sh <dir> --progress` posts only the
-   progress comment (no inline comments).
+   posts inline notes, then creates or updates the verdict in `<dir>/comment.id`.
+   The progress comment (`<dir>/progress.id`) is shortened to a finished note.
+   `tools/review-post.sh <dir> --progress` posts only the progress comment.
 7. **Follow the review in this same thread. Do not stop to ask whether to.**
    For every open finding:
    - agree → fix and commit on the PR branch;
