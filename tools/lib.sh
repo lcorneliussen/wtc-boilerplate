@@ -1271,10 +1271,11 @@ herdr_first_pane_id() { # reads a herdr JSON response on stdin -> first pane id
     | head -n1
 }
 
-write_collection_env() { # <collection-dir> <collection-name> [harness-dir]
-  local cli_harness cli_version
+write_collection_env() { # <collection-dir> <collection-name> [harness-dir] [skip-trust]
+  local cli_harness cli_version skip_trust
   dir="$1" name="$2"
   cli_harness="${3:-$dir/harness}"
+  skip_trust="${4:-no}"
   # Regeneration keeps the collection's existing port base (idempotent).
   base=""
   if [ -f "$dir/.env.collection" ]; then
@@ -1401,7 +1402,7 @@ EOF
 [env]
 _.file = [".env.collection", ".env.collection.local"]
 EOF
-  trust_mise "$dir"
+  [ "$skip_trust" = yes ] || trust_mise "$dir"
   echo "wrote $dir/.env.collection (port base $base) + $dir/mise.toml + $dir/.env.collection.local"
 }
 
