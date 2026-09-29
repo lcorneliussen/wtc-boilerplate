@@ -116,17 +116,24 @@ if [ -f "$target" ]; then
 else
   : > "$work/before"
 fi
+if [ -f "$collection/mise.toml" ]; then
+  cp "$collection/mise.toml" "$work/mise-before"
+else
+  : > "$work/mise-before"
+fi
 
 if [ "$dry_run" = yes ]; then
   [ -f "$target" ] && cp "$target" "$work/.env.collection"
-  write_collection_env "$work" "$name" >/dev/null
+  write_collection_env "$work" "$name" "$collection/$harness_dirname" >/dev/null
   cp "$work/.env.collection" "$work/after"
+  cp "$work/mise.toml" "$work/mise-after"
 else
   write_collection_env "$collection" "$name" >/dev/null
   cp "$target" "$work/after"
+  cp "$collection/mise.toml" "$work/mise-after"
 fi
 
-if cmp -s "$work/before" "$work/after"; then
+if cmp -s "$work/before" "$work/after" && cmp -s "$work/mise-before" "$work/mise-after"; then
   echo "$name: already current"
   exit 0
 fi
@@ -140,3 +147,4 @@ fi
 # diff exits 1 when files differ, which is the expected path here; `|| :` keeps
 # that from tripping set -e. Head trimmed: the ---/+++ lines name temp paths.
 diff -u "$work/before" "$work/after" 2>/dev/null | sed -n '4,$p' | sed 's/^/  /' || :
+diff -u "$work/mise-before" "$work/mise-after" 2>/dev/null | sed -n '4,$p' | sed 's/^/  /' || :

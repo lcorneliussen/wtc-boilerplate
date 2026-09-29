@@ -58,6 +58,17 @@ it "mise.toml points at the collection env"
 assert_file "$c/mise.toml"
 assert_contains "$(cat "$c/mise.toml")" ".env.collection"
 
+it "refresh-env retains a harness-pinned CLI release"
+printf '0.1.1\n' > "$c/harness/.wtc-cli-version"
+dry_out="$("$c/harness/tools/refresh-env.sh" --collection "$c" --dry-run)"
+assert_contains "$dry_out" '"github:lcorneliussen/wtc-cli" = "0.1.1"'
+assert_not_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.1"'
+"$c/harness/tools/refresh-env.sh" --collection "$c" >/dev/null
+assert_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.1"'
+"$c/harness/tools/refresh-env.sh" --collection "$c" >/dev/null
+assert_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.1"'
+rm "$c/harness/.wtc-cli-version"
+
 it "the agent entry point and the scope note are seeded"
 assert_file "$c/AGENTS.md" "collection AGENTS.md"
 assert_file "$c/WTC-SCOPE.md" "seeded scope"

@@ -70,7 +70,9 @@ uncommitted files at the collection root:
   shared dev instance or start them on demand. It also carries the optional
   tool-identity variables (`GH_CONFIG_DIR` and friends) when the workspace has
   opted into them — `secrets.md` → Tool identity.
-- `mise.toml` — loads `.env.collection` via `[env] _.file`. mise treats the
+- `mise.toml` — loads `.env.collection` via `[env] _.file` and, when the
+  harness commits `.wtc-cli-version`, pins that exact `wtc` GitHub release
+  through `[tools]`. mise treats the
   collection root as a parent config, so **every sibling repo worktree
   inherits these variables automatically** in any mise-activated shell or
   `mise run` task. The harness tools run `mise trust` on generated
