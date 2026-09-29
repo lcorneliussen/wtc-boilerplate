@@ -14,7 +14,7 @@ cat > "$mock/mise" <<'MOCK'
 [ "$1 $2 $3" = 'exec -- wtc' ] || exit 2
 shift 3
 case "$*" in
-  --version) printf 'wtc version %s\n' "${NEW_TEST_VERSION:-0.1.10}" ;;
+  --version) printf 'wtc version %s\n' "${NEW_TEST_VERSION:-0.1.11}" ;;
   'new --help') exit 0 ;;
   *) printf '%s|%s\n' "$PWD" "$*" >> "$NEW_TEST_CALLS" ;;
 esac
@@ -39,8 +39,8 @@ assert_file "$root/old/HANDOFF.md" 'shell bootstrap created the collection'
 assert_not_contains "$(cat "$NEW_TEST_CALLS")" 'new --no-open old widget' 'old pin did not dispatch'
 
 it 'a mismatched installed CLI retains the shell creation path'
-printf '0.1.10\n' > "$root/main/harness/.wtc-cli-version"
-NEW_TEST_VERSION=0.1.9 "$runner" --no-open mismatched widget >/dev/null 2>&1
+printf '0.1.11\n' > "$root/main/harness/.wtc-cli-version"
+NEW_TEST_VERSION=0.1.10 "$runner" --no-open mismatched widget >/dev/null 2>&1
 assert_file "$root/mismatched/HANDOFF.md" 'mismatched CLI did not block bootstrap'
 assert_not_contains "$(cat "$NEW_TEST_CALLS")" 'new --no-open mismatched widget' 'mismatch did not dispatch'
 

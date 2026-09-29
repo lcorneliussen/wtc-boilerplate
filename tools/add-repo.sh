@@ -27,6 +27,7 @@ EOF
   exit "${1:-1}"
 }
 
+original_args=("$@")
 branch="" collection=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -59,6 +60,36 @@ fi
 
 dest_root="$ROOT/$collection"
 [ -d "$dest_root/harness" ] || { echo "error: $dest_root is not a collection (no harness/)" >&2; exit 1; }
+
+# The target collection owns its pin. Its generated mise.toml may still name
+# an older release immediately after a harness upgrade; keep shell bootstrap
+# available until both the pin and installed command agree.
+native_add_repo_supported() { # v0.1.11 first shipped wtc add-repo
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 11))
+  }'
+}
+if [ -f "$dest_root/harness/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$dest_root/harness/.wtc-cli-version")"
+  cli_version=""
+  cli_cmd=()
+  if native_add_repo_supported "$cli_pin" && command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$dest_root" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+  fi
+  if native_add_repo_supported "$cli_pin" && [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$dest_root" && wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(wtc)
+  fi
+  if [ "$cli_version" = "wtc version $cli_pin" ] &&
+      (cd "$dest_root" && "${cli_cmd[@]}" add-repo --help >/dev/null 2>&1); then
+    cd "$dest_root"
+    exec "${cli_cmd[@]}" add-repo "${original_args[@]}"
+  fi
+fi
 
 for repo in "$@"; do
   case "$repo" in "$(harness_repo)"|harness) echo "skip: harness is already in every collection"; continue ;; esac
