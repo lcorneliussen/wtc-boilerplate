@@ -146,7 +146,7 @@ different lever:
 ```sh
 GH_CONFIG_DIR=$WTC_CONFIG_ROOT/gh
 JIRA_CONFIG_FILE=$WTC_CONFIG_ROOT/jira/.config.yml
-TWG_SITE=<your-site>.atlassian.net
+TWG_SITE=<your-site-prefix>
 ```
 
 | Tool | Lever | Credential at rest |
@@ -201,7 +201,7 @@ survives) followed by `refresh-env.sh`.
 location, so setting it once in the control root is the opt-in:
 
 ```sh
-echo 'WTC_TWG_SITE=<your-site>.atlassian.net' >> "$WTC_CONFIG_ROOT"/wtc.env
+echo 'WTC_TWG_SITE=<your-site-prefix>' >> "$WTC_CONFIG_ROOT"/wtc.env
 harness/tools/refresh-env.sh --all     # TWG_SITE now appears in every collection
 ```
 

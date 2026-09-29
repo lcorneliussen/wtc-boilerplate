@@ -88,6 +88,12 @@ out="$(env -i HOME="$HOME" PATH=/usr/bin:/bin \
       /bin/bash -c 'echo "$PATH"' </dev/null)"
 assert_contains "$out" "$fake_bin/alpha"
 
+it "BASH_ENV leaves shell options and scratch names alone"
+out="$(env -i HOME="$HOME" PATH=/usr/bin:/bin \
+      CLAUDE_PROJECT_DIR="$collection" BASH_ENV="$agent_env" \
+      /bin/bash -c 'case $- in *u*) echo NOUNSET ;; *) echo CLEAN ;; esac; declare -F find_collection_root >/dev/null && echo LEAKED || true; echo "${collection-unset}"' </dev/null)"
+assert_eq $'CLEAN\nunset' "$out"
+
 # --- PATH hygiene -----------------------------------------------------------
 
 it "eval-ing it repeatedly does not grow PATH"

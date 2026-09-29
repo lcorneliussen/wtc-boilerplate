@@ -19,11 +19,31 @@ harness_lib_init() {
   [ -f "$REGISTRY" ] || { echo "error: $REGISTRY missing" >&2; exit 1; }
 }
 
-# The collection folder is always `harness/`; the repo behind it is whatever
-# you named your fork of this one. Set WTC_HARNESS_REPO to that name — it has
-# to match the bare in `.bare/` and the `name:` in the registry.
+# The collection folder is always `harness/`. Infer its repository from Git,
+# with an explicit override for unusual owner names or offline fixtures.
 harness_repo() {
-  printf '%s\n' "${WTC_HARNESS_REPO:-agent-harness}"
+  if [ -n "${WTC_HARNESS_REPO:-}" ]; then
+    printf '%s\n' "$WTC_HARNESS_REPO"
+    return 0
+  fi
+  _harness_owner="$(git -C "$HARNESS_DIR" rev-parse --git-common-dir 2>/dev/null || true)"
+  _harness_name="${_harness_owner##*/}"
+  _harness_name="${_harness_name%.git}"
+  if [ -n "$_harness_name" ] && [ -n "$(registry_field "$_harness_name" remote)" ]; then
+    printf '%s\n' "$_harness_name"
+    return 0
+  fi
+  _harness_remote="$(git -C "$HARNESS_DIR" remote get-url origin 2>/dev/null || true)"
+  if [ -n "$_harness_remote" ]; then
+    for _harness_name in $(registry_all_names); do
+      if [ "$(registry_field "$_harness_name" remote)" = "$_harness_remote" ]; then
+        printf '%s\n' "$_harness_name"
+        return 0
+      fi
+    done
+  fi
+  echo "error: cannot infer harness repo; set WTC_HARNESS_REPO" >&2
+  return 1
 }
 
 registry_field() { # <repo-name> <field> — one scalar field from the repo's block

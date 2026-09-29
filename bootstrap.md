@@ -147,8 +147,8 @@ commit (`git switch -c <issue-id>-<slug>`), not now.
 
 ```bash
 # still from main/harness — collection name is the folder next to harness/
-./tools/add-repo.sh main api
-./tools/add-repo.sh main api console
+./tools/add-repo.sh --collection main api
+./tools/add-repo.sh --collection main api console
 ```
 
 Missing bares are cloned from the forge on demand. A repo added only for
