@@ -298,7 +298,11 @@ harness_concerns="$HARNESS_DIR/review/concerns"
 if [ "$(cd "$wt" && pwd)" = "$HARNESS_DIR" ]; then
   git -C "$wt" archive "$base_sha" review/concerns 2>/dev/null |
     tar -x -C "$tmp/base-concerns" 2>/dev/null || true
-  harness_concerns="$tmp/base-concerns/review/concerns"
+  if [ -d "$tmp/base-concerns/review/concerns" ]; then
+    harness_concerns="$tmp/base-concerns/review/concerns"
+  else
+    warn "base has no generic concerns; using the current harness concerns for bootstrap"
+  fi
 fi
 n_concerns="$(python3 "$py" concerns "$dir/concerns" "$dir/changed-files.txt" \
   "$harness_concerns" "$HARNESS_DIR/review/concerns.d" "$tmp/base-concerns/.review/concerns" |

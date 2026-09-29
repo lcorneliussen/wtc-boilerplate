@@ -51,7 +51,9 @@ blocker / major / minor / nit for this concern.
 Layer order, later wins by `id`: `review/concerns/` → `review/concerns.d/` →
 `<repo>/.review/concerns/` at the review base commit. The PR cannot change
 its own review criteria; when the harness itself is reviewed, its generic
-concerns also come from the base commit. The `.d` is the usual drop-in directory pattern
+concerns also come from the base commit if present. An initial review of a
+harness that has no base concerns uses the new concern files. The `.d` is the
+usual drop-in directory pattern
 (same idea as `cron.d`): concerns dropped in that directory override a generic
 concern with the same `id`. That directory is a local overlay, not part of
 this repository.
