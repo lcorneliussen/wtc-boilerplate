@@ -109,6 +109,37 @@ collection="$(cd "$collection" && pwd)"
 [ -d "$collection/$harness_dirname" ] || {
   echo "error: $collection has no $harness_dirname/ — not a collection" >&2; exit 1; }
 
+# Use the target collection's CLI pin. The --all sweep above re-enters this
+# script per target so mixed-version workspaces remain safe during upgrades.
+native_mcp_supported() { # v0.1.13 first shipped workspace-wide MCP rendering
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 13))
+  }'
+}
+if [ -f "$collection/$harness_dirname/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$collection/$harness_dirname/.wtc-cli-version")"
+  cli_version=""
+  cli_cmd=()
+  if native_mcp_supported "$cli_pin" && command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+  fi
+  if native_mcp_supported "$cli_pin" && [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$collection" && wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(wtc)
+  fi
+  if [ "$cli_version" = "wtc version $cli_pin" ] &&
+      (cd "$collection" && "${cli_cmd[@]}" mcp render --help >/dev/null 2>&1); then
+    cli_args=(render --collection "$collection")
+    [ "$dry_run" = no ] || cli_args+=(--dry-run)
+    cd "$collection"
+    exec "${cli_cmd[@]}" mcp "${cli_args[@]}"
+  fi
+fi
+
 # Read the registry from the TARGET collection's harness worktree, not the one
 # running this script — same reasoning as link-skills.sh reading its skills
 # there: a collection mid-change on the harness renders what it actually has.
