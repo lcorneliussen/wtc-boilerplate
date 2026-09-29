@@ -27,6 +27,19 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 HARNESS_DIR="$(dirname "$script_dir")"
+# Keep this entry point for init hooks and older collections. Once the pinned
+# CLI is installed, let its native command own the linking behavior. A fresh
+# collection can still bootstrap with the shell implementation before install.
+if command -v wtc >/dev/null 2>&1 && wtc secrets link --help >/dev/null 2>&1; then
+  exec wtc secrets link --collection "$(dirname "$HARNESS_DIR")" "$@"
+fi
+# The fallback has no TOML/YAML parser. Refuse configured production paths
+# until the native command is installed, so it cannot silently link one.
+if grep -Eq '^[[:space:]]*prod_paths[[:space:]]*[:=]' \
+    "$HARNESS_DIR/wtc.toml" "$HARNESS_DIR/.harness-repos.yml" 2>/dev/null; then
+  echo "link-secrets: wtc v0.1.5 is required to enforce prod_paths" >&2
+  exit 1
+fi
 # shellcheck source=lib.sh
 . "$script_dir/lib.sh"
 harness_lib_init
