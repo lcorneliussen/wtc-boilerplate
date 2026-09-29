@@ -97,6 +97,29 @@ collection="$(cd "$collection" && pwd)"
 [ -d "$collection/$harness_dirname" ] || {
   echo "error: $collection has no $harness_dirname/ — not a collection" >&2; exit 1; }
 
+# The target collection's mise.toml chooses its CLI version. Keep the shell
+# implementation for bootstrap and older pins; --all re-enters here per target.
+if [ -f "$collection/$harness_dirname/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$collection/$harness_dirname/.wtc-cli-version")"
+  cli_version=""
+  cli_cmd=()
+  if command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+  fi
+  if [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$collection" && wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(wtc)
+  fi
+  if [ "$cli_version" = "wtc version $cli_pin" ] &&
+      (cd "$collection" && "${cli_cmd[@]}" env --help >/dev/null 2>&1); then
+    cli_args=(--collection "$collection")
+    [ "$dry_run" = no ] || cli_args+=(--dry-run)
+    cd "$collection"
+    exec "${cli_cmd[@]}" env "${cli_args[@]}"
+  fi
+fi
+
 name="$(basename "$collection")"
 target="$collection/.env.collection"
 
