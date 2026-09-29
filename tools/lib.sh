@@ -26,20 +26,21 @@ harness_repo() {
     printf '%s\n' "$WTC_HARNESS_REPO"
     return 0
   fi
-  _harness_remote="$(git -C "$HARNESS_DIR" remote get-url origin 2>/dev/null || true)"
-  _harness_name="${_harness_remote##*/}"
-  _harness_name="${_harness_name##*:}"
-  _harness_name="${_harness_name%.git}"
-  if [ -n "$_harness_name" ] && [ -n "$(registry_field "$_harness_name" remote)" ]; then
-    printf '%s\n' "$_harness_name"
-    return 0
-  fi
   _harness_owner="$(git -C "$HARNESS_DIR" rev-parse --git-common-dir 2>/dev/null || true)"
   _harness_name="${_harness_owner##*/}"
   _harness_name="${_harness_name%.git}"
   if [ -n "$_harness_name" ] && [ -n "$(registry_field "$_harness_name" remote)" ]; then
     printf '%s\n' "$_harness_name"
     return 0
+  fi
+  _harness_remote="$(git -C "$HARNESS_DIR" remote get-url origin 2>/dev/null || true)"
+  if [ -n "$_harness_remote" ]; then
+    for _harness_name in $(registry_all_names); do
+      if [ "$(registry_field "$_harness_name" remote)" = "$_harness_remote" ]; then
+        printf '%s\n' "$_harness_name"
+        return 0
+      fi
+    done
   fi
   echo "error: cannot infer harness repo; set WTC_HARNESS_REPO" >&2
   return 1

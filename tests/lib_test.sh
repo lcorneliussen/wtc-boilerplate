@@ -50,6 +50,16 @@ assert_empty "$(registry_field widget nosuchfield)"
 it "registry_all_names lists every block, in file order"
 assert_eq "agent-harness widget gadget sprocket cog" "$(registry_all_names | tr '\n' ' ' | sed 's/ $//')"
 
+it "harness_repo uses the Git owner before an origin name that collides with a sibling"
+saved_override="$WTC_HARNESS_REPO"
+saved_remote="$(git -C "$HARNESS_DIR" remote get-url origin)"
+unset WTC_HARNESS_REPO
+git -C "$HARNESS_DIR" remote set-url origin git@github.com:example/widget.git
+assert_eq "agent-harness" "$(harness_repo)"
+git -C "$HARNESS_DIR" remote set-url origin "$saved_remote"
+WTC_HARNESS_REPO="$saved_override"
+export WTC_HARNESS_REPO
+
 it "registry lookups soft-fail when the registry is gone"
 # A wtc-status --watch outlives the harness worktree it was started from
 # (retire removes the worktree under a running pane). Losing the file must
