@@ -73,7 +73,9 @@ esac
 exit 2
 REAL_MISE
   chmod +x "$mock/mise"
-  "$root_real/main/harness/tools/retire.sh" finished >/dev/null 2>&1
+  retire_out="$("$root_real/main/harness/tools/retire.sh" finished 2>&1)"
+  retire_rc=$?
+  assert_eq 0 "$retire_rc" "released native retirement succeeded: $retire_out"
   assert_file "$RETIRE_TEST_NATIVE_MARKER" 'matching release used native retirement'
   assert_no_file "$root_real/finished" 'native command removed the collection'
   assert_eq "$head_before" "$(git --git-dir="$root_real/.bare/agent-harness.git" rev-parse refs/remotes/origin/main)" 'remote ref remains'
