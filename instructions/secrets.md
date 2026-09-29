@@ -30,6 +30,13 @@ CLI flags still win.
 | `WTC_STATUS_FOCUS_EVERY` | `10` | ticks (≈seconds) between focus checks while waiting; the check spawns herdr |
 | `WTC_STATUS_NO_CLICK` | `no` | `yes` → no mouse capture, no constant redraw |
 | `WTC_TWG_SITE` | — | Atlassian site emitted as `TWG_SITE` into `.env.collection` (→ Tool identity) |
+| `HARNESS_REVIEW_STRONG` | `claude:opus` | agent:model list for strong-tier review concerns |
+| `HARNESS_REVIEW_STANDARD` | `claude:sonnet` | agent:model list for standard-tier concerns |
+| `HARNESS_REVIEW_FAST` | `claude:haiku` | agent:model list for fast-tier concerns |
+| `HARNESS_REVIEW_LEAD` | same as strong | agent:model list for the final review pass |
+| `HARNESS_REVIEW_PARALLEL` | `4` | concurrent concern runs |
+| `HARNESS_REVIEW_TIMEOUT` | `900` | seconds allowed per agent run |
+| `HARNESS_REVIEW_GROK_EFFORT` | `low` | `grok --reasoning-effort` when grok runs a concern |
 
 It holds defaults, not credentials — but it lives in the control root because
 that is the machine-scoped, never-committed place that already exists.

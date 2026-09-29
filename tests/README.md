@@ -20,6 +20,7 @@ workspace you are standing in.
 | `status_args_test.sh` | `wtc-status.sh` watch-interval handling — the argument that can turn a status pane into a busy loop |
 | `retire_test.sh` | The one tool whose job is deletion: generated paths go, authored files survive |
 | `collection_test.sh` | `branch-off` → `add-repo` → `retire` end to end, on a real workspace |
+| `review_tools_test.sh` | Local review bundle, headless run, posted summary, and the ready gate |
 
 ## The rules the fixtures follow
 
