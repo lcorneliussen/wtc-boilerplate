@@ -43,3 +43,44 @@ printf '0.1.10\n' > "$root/main/harness/.wtc-cli-version"
 NEW_TEST_VERSION=0.1.9 "$runner" --no-open mismatched widget >/dev/null 2>&1
 assert_file "$root/mismatched/HANDOFF.md" 'mismatched CLI did not block bootstrap'
 assert_not_contains "$(cat "$NEW_TEST_CALLS")" 'new --no-open mismatched widget' 'mismatch did not dispatch'
+
+# Optional release-binary contract. CI remains offline; release verification
+# supplies WTC_TEST_RELEASE_BINARY and exercises the actual pinned command.
+if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
+  it 'the released CLI opens a PR at its exact head with a pushable review branch'
+  export NEW_TEST_REAL_CLI="$WTC_TEST_RELEASE_BINARY"
+  source_repo="$(git --git-dir="$root/.bare/widget.git" remote get-url origin)"
+  git -C "$source_repo" checkout -qb review-head
+  printf 'review fixture\n' > "$source_repo/review.txt"
+  git -C "$source_repo" add review.txt
+  git -C "$source_repo" -c user.name=fixture -c user.email=fixture@example.invalid commit -qm 'review fixture'
+  export NEW_TEST_PR_HEAD="$(git -C "$source_repo" rev-parse HEAD)"
+  git -C "$source_repo" update-ref refs/pull/41/head "$NEW_TEST_PR_HEAD"
+  git -C "$source_repo" checkout -q main
+  git --git-dir="$root/.bare/widget.git" fetch -q origin '+refs/heads/*:refs/remotes/origin/*'
+  mkdir -p "$root/already"
+  git --git-dir="$root/.bare/widget.git" worktree add -q -b review-head "$root/already/widget" origin/review-head
+  cat > "$mock/mise" <<'REAL_MISE'
+#!/usr/bin/env bash
+case "$1" in
+  trust|tasks|bin-paths) exit 0 ;;
+  exec)
+    [ "$2 $3" = '-- wtc' ] || exit 2
+    shift 3
+    exec "$NEW_TEST_REAL_CLI" "$@" ;;
+esac
+exit 2
+REAL_MISE
+  cat > "$mock/gh" <<'MOCK_GH'
+#!/usr/bin/env bash
+printf '{"headRefName":"review-head","headRefOid":"%s","title":"Fixture review"}\n' "$NEW_TEST_PR_HEAD"
+MOCK_GH
+  chmod +x "$mock/mise" "$mock/gh"
+  WTC_HARNESS_REPO=agent-harness WTC_CONFIG_ROOT="$root/control" \
+    "$runner" --pr widget#41 --no-open >/dev/null 2>&1
+  review="$root/widget-pr41"
+  assert_eq "$NEW_TEST_PR_HEAD" "$(git -C "$review/widget" rev-parse HEAD)" 'exact PR head'
+  assert_eq 'wtc-pr-41-review' "$(git -C "$review/widget" branch --show-current)" 'occupied branch gets a distinct local name'
+  assert_contains "$(cat "$review/HANDOFF.md")" "git -C 'widget' push 'origin' 'HEAD:refs/heads/review-head'" 'launch note has push target'
+  assert_contains "$(cat "$review/.wtc-prs")" 'widget 41 wtc-pr-41-review' 'PR is enlisted'
+fi
