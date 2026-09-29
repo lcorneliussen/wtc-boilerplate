@@ -74,10 +74,9 @@ collection="$(cd "$collection" && pwd)"
 
 # Control root: explicit env wins, then the collection's generated env, then
 # the documented default. Catch-up may run in a shell mise never touched.
-config_root="${WTC_CONFIG_ROOT:-${WTC_CONFIG_ROOT:-}}"
+config_root="${WTC_CONFIG_ROOT:-}"
 if [ -z "$config_root" ] && [ -f "$collection/.env.collection" ]; then
   config_root="$(sed -n 's/^WTC_CONFIG_ROOT=//p' "$collection/.env.collection" | head -n1)"
-  [ -n "$config_root" ] || config_root="$(sed -n 's/^WTC_CONFIG_ROOT=//p' "$collection/.env.collection" | head -n1)"
 fi
 [ -n "$config_root" ] || config_root="$HOME/.config/wtc"
 

@@ -277,7 +277,7 @@ query($owner:String!,$name:String!,$num:Int!){
   reviewThreads(first:50){nodes{id isResolved isOutdated path line
    comments(first:10){nodes{databaseId author{login} body}}}}}}}' \
  --jq '.data.repository.pullRequest.reviewThreads.nodes[]
-       | select(.isResolved | not) | "\(.path):\(.line) [\(.comments.nodes[0].author.login)]"'
+       | select(.isResolved | not) | "\(.id) \(.path):\(.line) [\(.comments.nodes[0].author.login)]"'
 ```
 
 For each unresolved comment, do **both** halves — a change without an answer
