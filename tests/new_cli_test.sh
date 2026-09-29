@@ -37,3 +37,9 @@ printf '0.1.9\n' > "$root/main/harness/.wtc-cli-version"
 "$runner" --no-open old widget >/dev/null 2>&1
 assert_file "$root/old/HANDOFF.md" 'shell bootstrap created the collection'
 assert_not_contains "$(cat "$NEW_TEST_CALLS")" 'new --no-open old widget' 'old pin did not dispatch'
+
+it 'a mismatched installed CLI retains the shell creation path'
+printf '0.1.10\n' > "$root/main/harness/.wtc-cli-version"
+NEW_TEST_VERSION=0.1.9 "$runner" --no-open mismatched widget >/dev/null 2>&1
+assert_file "$root/mismatched/HANDOFF.md" 'mismatched CLI did not block bootstrap'
+assert_not_contains "$(cat "$NEW_TEST_CALLS")" 'new --no-open mismatched widget' 'mismatch did not dispatch'
