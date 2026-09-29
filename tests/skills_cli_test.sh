@@ -22,10 +22,15 @@ if [ "$1" = --version ]; then
   if [ "${SKILLS_TEST_MISMATCH:-}" = yes ]; then
     echo 'wtc version 0.1.7'
   else
-    printf 'wtc version %s\n' "$(cat "$PWD/harness/.wtc-cli-version")"
+    pin="$(cat "$PWD/harness/.wtc-cli-version")"
+    if [ -f "$PWD/mise.toml" ]; then
+      generated="$(sed -n 's/.*"github:lcorneliussen\/wtc-cli" = "\([^"]*\)".*/\1/p' "$PWD/mise.toml" | head -n1)"
+      [ -z "$generated" ] || pin="$generated"
+    fi
+    printf 'wtc version %s\n' "$pin"
   fi
 elif [ "$1 $2 $3" = 'skills render --help' ]; then
-  exit 0
+  [ "$(cat "$PWD/harness/.wtc-cli-version")" != 0.1.7 ]
 else
   printf '%s|%s\n' "$PWD" "$*" >> "$SKILLS_TEST_CALLS"
 fi
@@ -47,9 +52,24 @@ unset SKILLS_TEST_MISMATCH
 
 it '--all dispatches once per target collection'
 : > "$SKILLS_TEST_CALLS"
+printf '0.1.7\n' > "$root/beta/harness/.wtc-cli-version"
 "$runner" --all --dry-run >/dev/null
-assert_eq 3 "$(wc -l < "$SKILLS_TEST_CALLS" | tr -d ' ')" 'one CLI render per collection'
-for name in main alpha beta; do
+assert_eq 2 "$(wc -l < "$SKILLS_TEST_CALLS" | tr -d ' ')" 'native render for supported target pins'
+for name in main alpha; do
   assert_contains "$(cat "$SKILLS_TEST_CALLS")" \
     "$root/$name|skills render --collection $root/$name --dry-run" "$name selected"
 done
+assert_not_contains "$(cat "$SKILLS_TEST_CALLS")" "$root/beta|" 'older target uses shell fallback'
+
+it 'catch-up refreshes the target pin before skill setup'
+mkdir -p "$root/gamma"
+add_fixture_worktree "$root" agent-harness "$root/gamma/harness"
+printf '[tools]\n"github:lcorneliussen/wtc-cli" = "0.1.7"\n' > "$root/gamma/mise.toml"
+: > "$SKILLS_TEST_CALLS"
+"$root/main/harness/tools/catch-up.sh" --harness-only --no-secrets --no-mcp gamma \
+  > "$root/catch-up.out" 2> "$root/catch-up.err"
+assert_eq 0 "$?" 'catch-up succeeded'
+assert_contains "$(cat "$root/gamma/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.8"' \
+  'generated pin refreshed'
+assert_contains "$(cat "$SKILLS_TEST_CALLS")" \
+  "$root/gamma|skills render --collection $root/gamma" 'native render used refreshed pin'
