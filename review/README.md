@@ -118,6 +118,7 @@ log.txt             git log --oneline BASE_SHA..HEAD_SHA
 concerns/<id>.md    only the concerns that apply to this diff (resolved layers)
 prior/r<k>.md       earlier review summaries for this PR, oldest first
 prior/comments.md   other PR comments since the last review (replies to findings)
+prior/inline-keys.txt  keys from all earlier inline comments, across rounds
 related/<repo>-pr<N>.patch   other PRs enlisted in the same collection (cross-PR context)
 downstream/<repo>/old/       snapshot (git archive) of the downstream repo at its production ref
 downstream/<repo>/new/       snapshot at its enlisted PR head, when there is one

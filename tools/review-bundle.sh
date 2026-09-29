@@ -329,6 +329,8 @@ if [ -n "$pr" ] && forge_cli_usable "$forge"; then
       ;;
   esac
   if [ -s "$tmp/comments.json" ]; then
+    python3 "$py" inline-keys "$tmp/comments.json" >"$dir/prior/inline-keys.txt" 2>/dev/null || : >"$dir/prior/inline-keys.txt"
+    [ -s "$dir/prior/inline-keys.txt" ] || rm -f "$dir/prior/inline-keys.txt"
     python3 "$py" comments "$tmp/comments.json" --after-review >"$dir/prior/comments.md" 2>/dev/null || :
     [ -s "$dir/prior/comments.md" ] || rm -f "$dir/prior/comments.md"
   fi

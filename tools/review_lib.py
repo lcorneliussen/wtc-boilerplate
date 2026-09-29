@@ -13,6 +13,7 @@ Subcommands (all print to stdout; non-zero exit = failure):
                                           the newest review comment with the flag)
   merge-comments <conversation.json> <inline-pages.json> <out.json>
                                           combine GitHub conversation and inline comments
+  inline-keys <comments.json>             all previously posted inline finding keys
   latest-status <comments.json>           newest status line: "<head> <verdict> <blockers> <round> <url>"
   validate-findings <file> <concern-id>   exit 0 when the findings JSON is valid
   blockers <findings-dir>                 count open blocker findings (prior != addressed)
@@ -237,6 +238,14 @@ def cmd_comments(path, after_review):
         if STATUS_RE.search(c["body"]):
             continue
         print("### %s, %s\n\n%s\n" % (c["who"], c["when"], c["body"].strip()))
+
+
+def cmd_inline_keys(path):
+    keys = set()
+    for comment in _sorted_comments(path):
+        keys.update(re.findall(r"wtc-review-inline v1 key=([0-9a-f]{10})", comment["body"]))
+    for key in sorted(keys):
+        print(key)
 
 
 def cmd_latest_status(path):
@@ -814,13 +823,21 @@ def _write_inline_rows(bundle, rows):
 
 def _prior_inline_keys(bundle):
     keys = set()
+    path = os.path.join(bundle, "prior", "inline-keys.txt")
+    try:
+        for line in open(path, encoding="utf-8"):
+            key = line.strip()
+            if re.fullmatch(r"[0-9a-f]{10}", key):
+                keys.add(key)
+    except OSError:
+        pass
+    # Older bundles recorded markers only in the recent comments transcript.
     path = os.path.join(bundle, "prior", "comments.md")
     try:
         text = open(path, encoding="utf-8").read()
+        keys.update(re.findall(r"wtc-review-inline v1 key=([0-9a-f]{10})", text))
     except OSError:
-        return keys
-    for m in re.finditer(r"wtc-review-inline v1 key=([0-9a-f]{10})", text):
-        keys.add(m.group(1))
+        pass
     return keys
 
 
@@ -1108,6 +1125,8 @@ def main(argv):
         cmd_comments(a[0], "--after-review" in a[1:])
     elif c == "merge-comments":
         cmd_merge_comments(a[0], a[1], a[2])
+    elif c == "inline-keys":
+        cmd_inline_keys(a[0])
     elif c == "latest-status":
         cmd_latest_status(a[0])
     elif c == "validate-findings":

@@ -65,7 +65,16 @@ cat >"$T/stubbin/gh" <<'EOF'
 #!/usr/bin/env bash
 echo "gh $*" >>"$BBSTUB/calls.log"
 case "$1 $2" in
+  "--version ") echo 'gh version 2.0.0' ;;
   "pr ready") exit 0 ;;
+  "pr view")
+    case "$*" in
+      *"--json comments"*) cat "$BBSTUB/gh-comments.json" ;;
+      *) cat "$BBSTUB/gh-pr.json" ;;
+    esac ;;
+  "api repos/"*)
+    [ -z "${GH_INLINE_FAIL:-}" ] || exit 1
+    cat "$BBSTUB/gh-inline-pages.json" ;;
   *) exit 1 ;;
 esac
 EOF
@@ -231,6 +240,34 @@ printf '{"comments":[{"id":1,"body":"summary","createdAt":"2026-01-01T00:00:00Z"
 printf '[[{"id":2,"body":"inline","created_at":"2026-01-02T00:00:00Z"}]]' >"$T/inline-pages.json"
 python3 "$h/tools/review_lib.py" merge-comments "$T/conversation.json" "$T/inline-pages.json" "$T/merged.json"
 check "GitHub conversation and inline comments merge" python3 -c "import json; d=json.load(open('$T/merged.json')); assert [x['id'] for x in d['comments']]==[1,2]"
+python3 - "$h/.harness-repos.yml" "$BBSTUB" "$(git -C "$demo" rev-parse HEAD)" <<'PY'
+import json, os, sys
+p, stub, head = sys.argv[1:]
+s = open(p).read().replace('git@bitbucket.org:x/demo.git', 'git@github.com:x/demo.git')
+open(p, 'w').write(s)
+def put(name, value):
+    with open(os.path.join(stub, name), 'w') as f: json.dump(value, f)
+put('gh-pr.json', {'title':'test','body':'body','baseRefName':'main','headRefOid':head,
+                   'headRefName':'feature','url':'https://github.com/x/demo/pull/7','state':'OPEN','isDraft':True})
+put('gh-comments.json', {'comments':[{'id':1,'body':f'wtc-review v1 head={head} verdict=pass blockers=0 round=1',
+                                       'createdAt':'2026-01-01T00:00:00Z'}]})
+put('gh-inline-pages.json', [[{'id':2,'body':'wtc-review-inline v1 key=0123456789 concern=c1',
+                                'created_at':'2026-01-02T00:00:00Z'},
+                               {'id':3,'body':'reply to inline finding','created_at':'2026-01-03T00:00:00Z'}]])
+PY
+ghb="$T/gh-bundle"
+"$B" demo 7 --no-catch-up --head "$(git -C "$demo" rev-parse HEAD)" --dir "$ghb" >/dev/null 2>"$T/gh-bundle.err"
+check "GitHub bundle fetches inline replies" grep -q 'reply to inline finding' "$ghb/prior/comments.md"
+check "GitHub bundle keeps all inline keys" grep -q '^0123456789$' "$ghb/prior/inline-keys.txt"
+check "GitHub bundle calls inline comments API" grep -q '^gh api repos/x/demo/pulls/7/comments?per_page=100 --paginate --slurp$' "$BBSTUB/calls.log"
+GH_INLINE_FAIL=1 "$B" demo 7 --no-catch-up --head "$(git -C "$demo" rev-parse HEAD)" --dir "$T/gh-fail" >/dev/null 2>"$T/gh-fail.err"
+check "GitHub partial fetch does not use incomplete history" test ! -e "$T/gh-fail/prior/comments.md"
+python3 - "$h/.harness-repos.yml" <<'PY'
+import sys
+p = sys.argv[1]
+s = open(p).read().replace('git@github.com:x/demo.git', 'git@bitbucket.org:x/demo.git')
+open(p, 'w').write(s)
+PY
 
 # --- run ----------------------------------------------------------------------
 export HARNESS_REVIEW_TIMEOUT=3
@@ -567,6 +604,11 @@ printf 'earlier\nwtc-review-inline v1 key=%s concern=c1 file=tool.py line=4\n' "
 pr_json "${dh:0:12}"; : >"$BBSTUB/calls.log"
 "$h/tools/review-post.sh" "$pi2" >/dev/null 2>&1 || true
 check "inline: a key already in prior/comments.md is not posted again" bash -c "[ \$(grep -c '^bb pr comments add 7' '$BBSTUB/calls.log') -eq 1 ] && [ \$(grep -c -- '--line-to' '$BBSTUB/calls.log') -eq 0 ]"
+rm "$pi2/prior/comments.md"
+printf '%s\n' "$key" >"$pi2/prior/inline-keys.txt"
+: >"$BBSTUB/calls.log"
+"$h/tools/review-post.sh" "$pi2" >/dev/null 2>&1 || true
+check "inline: a key from older rounds is not posted again" bash -c "[ \$(grep -c -- '--line-to' '$BBSTUB/calls.log') -eq 0 ]"
 
 # --- review-run --post: progress first, then the same comment updated ----------
 mkrun() { # <dir> — copy of the first bundle, pointed at PR 7
