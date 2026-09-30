@@ -31,7 +31,7 @@ tab tools:  browse / shell     (stacked; shell 20%)
 ```
 
 Layout is applied on create. Explicit `--narrow` / `--wide` **switches** an
-existing workspace (the agent pane is kept; status is recreated). A partial
+existing workspace (live panes are moved). A partial
 workspace — common when you start the agent first, then open — is built out
 toward the resolved layout. `auto` never flips a complete wide ↔ narrow.
 `--wide` / `--narrow` override `WTC_LAYOUT` (and auto).
@@ -43,7 +43,7 @@ it does not bounce into `browse`.
 
 ## Reaching a collection's agent from your phone
 
-`wtc-open.sh` starts claude with **Remote Control** by default, so every
+`wtc open` starts claude with **Remote Control** by default, so every
 collection's agent shows up in the Claude mobile app and on claude.ai under
 `<session>--<collection>`. A wtc agent is meant to keep working while you are
 elsewhere; one you can only reach by walking back to this machine gives up
@@ -62,7 +62,7 @@ claude --remote-control "$WTC_AGENT_NAME" --dangerously-skip-permissions --conti
 `--no-remote-control` opts out for one open; passing `--agent-args` replaces the
 default arguments entirely and so drops it too.
 
-Re-running `wtc-open.sh` inspects every pane and only (re)starts what is
+Re-running `wtc open` inspects every pane and only (re)starts what is
 sitting at a bare prompt — that is how a session restored after a reboot gets
 its commands back. A workspace that already grew extra panes (a second agent,
 a one-off split) is left alone, and browse tools fall back to `shell` rather
@@ -74,15 +74,15 @@ folder minus a trailing `-wtc` or `-harness` — so `<project>-wtc/` → session
 **`<project>`**; override with `--session` or `$HARNESS_HERDR_SESSION`.
 
 ```bash
-tools/wtc-open.sh [<collection> …]    # this collection, or the named ones
-tools/wtc-open.sh --narrow            # switch to (or create) stacked tabs
-tools/wtc-open.sh --wide              # switch to (or create) stacked columns
-tools/wtc-open.sh --all --list        # open everything / show agent states
+wtc open [<collection> …]             # this collection, or the named ones
+wtc open --narrow                     # switch to (or create) stacked tabs
+wtc open --wide                       # switch to (or create) stacked columns
+wtc open --all --list                 # report every collection's agent state
 herdr --session <project>                  # attach
 ```
 
 Opening is idempotent and repairs a wtc whose agent exited. The session starts
-headless on demand, so opening never steals a terminal. `branch-off.sh` joins
+headless on demand, so opening never steals a terminal. `wtc new` joins
 a **running** session automatically (`--open` starts one, `--no-open` skips),
 and `retire.sh` closes the workspace with the collection.
 
@@ -96,7 +96,7 @@ overrides, `--no-agent` skips the agent.
 rollup (`✓ ✗ ● —`), and working-tree state, then the processes running under
 the session with CPU and memory.
 
-`wtc-open.sh` puts a `status` pane in every wtc, scoped to that collection —
+`wtc open` puts a `status` pane in every wtc, scoped to that collection —
 including wtcs opened before the pane existed, so re-running adds it without
 disturbing the agent. For the process view, run it wherever you want it:
 
@@ -196,7 +196,7 @@ record of one machine's directory layout.
 
 An agent is named **`<session>--<collection>`** — `wtc--billing-api`. That
 string is emitted as `WTC_AGENT_NAME` in `.env.collection` (and injected into
-every pane); `wtc-open` starts with `herdr agent start "$WTC_AGENT_NAME" …`,
+every pane); `wtc open` starts with `herdr agent start "$WTC_AGENT_NAME" …`,
 so the command shape is the same across collections and only the env differs.
 herdr caps names at 32 characters (`[a-z][a-z0-9_-]{0,31}`, unique among live
 agents); past that the collection half is trimmed and the session prefix
@@ -221,12 +221,12 @@ one only when the work is genuinely separate. **The prompt is ignition, not
 the record:** put the assignment in an issue, branch, or `HANDOFF.md` first and
 let the prompt point at it, so a dead agent costs nothing.
 
-The collection's own agent gets its ignition from `wtc-open.sh`: on a
+The collection's own agent gets its ignition from `wtc open`: on a
 collection whose `HANDOFF.md` is still present it submits `/wtc-start` the
 moment the agent is ready, and does not take the send on trust — a slash
 command typed into Claude opens its command palette, where the first Enter
 completes the command instead of sending it, so the text can sit in the chat
-entry looking submitted. wtc-open waits for the agent to be seen working and
+entry looking submitted. `wtc open` waits for the agent to be seen working and
 supplies the missing Enter when herdr reports the submission stalled.
 
 ```bash
@@ -240,7 +240,7 @@ herdr --session <project> agent prompt api-1234-paging-clamp \
 Panes hold live work — an agent mid-task, a server, a test run — and an agent
 conversation that dies is not recoverable from git. So: **no closing panes or
 workspaces, no `session stop`, no restarting an agent, to apply a change.**
-Add non-destructively and let re-running `wtc-open.sh` heal the workspace; it
+Add non-destructively and let re-running `wtc open` heal the workspace; it
 is written to repair in place for exactly this reason. If something genuinely
 cannot be fixed without killing a running pane, **ask the person first** —
 it is their session, and "it was only idle" is not yours to judge.
