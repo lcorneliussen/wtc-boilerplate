@@ -121,7 +121,7 @@ status pane never closes anything.
 
 ## Browse
 
-`wtc browse` opens **one** LazyVim with **one vim tab per sibling**
+`tools/wtc-browse.sh` opens **one** LazyVim with **one vim tab per sibling**
 (`:tcd` so gitsigns / neo-tree / Octo / lazygit see that repo). Tabs are
 LazyVim **bufferline** in `tabs` mode (click a tab, or `gt` / `gT`).
 `<leader><space>` / `<leader>ff` and `<leader>/` / `<leader>sg` search
@@ -152,8 +152,8 @@ clicks talk to it:
 | `PR` | `:Octo pr edit` in that tab, else the PR in the browser |
 
 ```bash
-wtc browse              # this collection
-wtc browse --here       # this terminal, even from an agent pane
+tools/wtc-browse.sh              # this collection
+tools/wtc-browse.sh --here       # this terminal, even from an agent pane
 ```
 
 A status pane opened before clicking existed keeps running the old command

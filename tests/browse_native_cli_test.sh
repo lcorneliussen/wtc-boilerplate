@@ -43,11 +43,25 @@ it 'older or mismatched pins retain the shell browser'
 assert_empty "$(cat "$BROWSE_CLI_CALLS")" 'older pin did not dispatch'
 assert_contains "$(cat "$BROWSE_NVIM_CALLS")" "$root/main|" 'shell browser opened Neovim'
 printf '0.1.17\n' > "$root/main/harness/.wtc-cli-version"
+before_mismatch="$(wc -l < "$BROWSE_NVIM_CALLS" | tr -d '[:space:]')"
 BROWSE_CLI_VERSION=0.1.16 "$browse" --here >/dev/null
+mismatch_rc=$?
+assert_eq 0 "$mismatch_rc" 'mismatched binary fell back successfully'
 assert_empty "$(cat "$BROWSE_CLI_CALLS")" 'mismatched binary did not dispatch'
+after_mismatch="$(wc -l < "$BROWSE_NVIM_CALLS" | tr -d '[:space:]')"
+assert_eq "$((before_mismatch + 1))" "$after_mismatch" 'mismatched binary opened shell browser'
+rm "$root/main/harness/.wtc-cli-version"
+before_bootstrap="$after_mismatch"
+"$browse" --here >/dev/null
+bootstrap_rc=$?
+assert_eq 0 "$bootstrap_rc" 'missing pin fell back successfully'
+assert_empty "$(cat "$BROWSE_CLI_CALLS")" 'missing pin did not dispatch'
+after_bootstrap="$(wc -l < "$BROWSE_NVIM_CALLS" | tr -d '[:space:]')"
+assert_eq "$((before_bootstrap + 1))" "$after_bootstrap" 'missing pin opened shell browser'
 
 if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
   it 'published CLI opens the bundled browse view through the shell entry point'
+  cp "$HARNESS_SRC/.wtc-cli-version" "$root/main/harness/.wtc-cli-version"
   export BROWSE_TEST_RELEASE_BINARY="$WTC_TEST_RELEASE_BINARY"
   cat > "$mock/mise" <<'REAL_MISE'
 #!/usr/bin/env bash
