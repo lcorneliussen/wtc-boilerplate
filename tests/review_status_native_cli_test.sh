@@ -62,10 +62,7 @@ GH
   chmod +x "$mock/gh"
   assert_eq 'current pass 0 1' "$("$runner" widget 7)" 'plain status matches shell contract'
   json="$("$runner" widget 7 --json)"
-  assert_contains "$json" '"state": "current"' 'JSON preserves raw state'
-  assert_contains "$json" '"pr": 7' 'JSON preserves PR number'
-  assert_contains "$json" '"comment_id": "11"' 'JSON preserves comment id'
-  assert_not_contains "$json" '"data"' 'JSON omits CLI envelope'
+  assert_status 0 python3 -c 'import json,sys; d=json.loads(sys.argv[1]); head="1234567890abcdef1234567890abcdef12345678"; assert d == {"state":"current","pr":7,"verdict":"pass","blockers":0,"round":1,"review_head":head,"pr_head":head,"comment_url":"https://github.com/example/widget/pull/7#issuecomment-11","comment_id":"11"}, d' "$json"
   assert_contains "$("$runner" widget 7 --trusted-local)" 'untrusted pass 0 1' \
     'trusted-local gate requires a local receipt'
 fi
