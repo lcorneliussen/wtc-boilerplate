@@ -28,8 +28,23 @@ if [ -f "$source_harness/.wtc-cli-version" ]; then
   fi
   if [ "$cli_version" = "wtc version $cli_pin" ] &&
       (cd "$source_collection" && "${cli_cmd[@]}" catch-up --help >/dev/null 2>&1); then
+    caller_dir="$(pwd -P)"
+    cli_args=()
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --report ] && [ "$#" -gt 1 ]; then
+        cli_args+=(--report)
+        case "$2" in
+          /*) cli_args+=("$2") ;;
+          *) cli_args+=("$caller_dir/$2") ;;
+        esac
+        shift 2
+      else
+        cli_args+=("$1")
+        shift
+      fi
+    done
     cd "$source_collection"
-    exec "${cli_cmd[@]}" catch-up "$@"
+    exec "${cli_cmd[@]}" catch-up "${cli_args[@]}"
   fi
 fi
 

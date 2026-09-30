@@ -28,6 +28,13 @@ it 'matching pin dispatches from the initiating collection'
 "$runner" --dry-run --harness-only --json >/dev/null
 assert_eq "$root/main|catch-up --dry-run --harness-only --json" "$(cat "$CATCH_CLI_CALLS")"
 
+it 'relative report paths keep the caller directory'
+mkdir -p "$root/reports"
+(cd "$root" && "$runner" --dry-run --report reports/result.json >/dev/null)
+assert_contains "$(cat "$CATCH_CLI_CALLS")" \
+  "$root/main|catch-up --dry-run --report $root/reports/result.json" \
+  'native command received caller-relative report as an absolute path'
+
 it 'older pin and mismatched installed version use shell catch-up'
 : > "$CATCH_CLI_CALLS"
 printf '0.1.14\n' > "$root/main/harness/.wtc-cli-version"
