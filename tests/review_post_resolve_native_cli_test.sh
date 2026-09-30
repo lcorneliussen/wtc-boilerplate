@@ -73,7 +73,7 @@ case "$*" in
   *'api graphql'*'resolveReviewThread'*) printf '{"data":{"resolveReviewThread":{"thread":{"isResolved":true}}}}\n' ;;
   *'api graphql'*'reviewThreads'*) printf '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[{"id":"THREAD_1","isResolved":false,"comments":{"nodes":[{"databaseId":401}]}}]}}}}}\n' ;;
   *'pulls/7/comments?per_page=100'*) printf '[[]]\n' ;;
-  *'repos/example/widget/pulls/7/comments'*) cat >/dev/null; printf '{"id":401,"html_url":"https://github.com/example/widget/pull/7#discussion_r401"}\n' ;;
+  *'repos/example/widget/pulls/7/comments'*) payload="$(cat)"; printf 'PAYLOAD %s\n' "$payload" >> "$REVIEW_FAKE_GH_LOG"; printf '{"id":401,"html_url":"https://github.com/example/widget/pull/7#discussion_r401"}\n' ;;
   *'repos/example/widget/issues/7/comments'*) cat >/dev/null; printf '{"id":301,"html_url":"https://github.com/example/widget/pull/7#issuecomment-301"}\n' ;;
   *'repos/example/widget/issues/comments/301'*) cat >/dev/null; printf '{"id":301,"html_url":"https://github.com/example/widget/pull/7#issuecomment-301"}\n' ;;
   *) printf 'unexpected gh call: %s\n' "$*" >&2; exit 2 ;;
@@ -102,4 +102,5 @@ PY
   assert_contains "$(cat "$root/resolve.out")" 'resolved 1 threads' 'one thread resolved'
   assert_contains "$(cat "$bundle/inline-comments.json")" '"resolved": true' 'resolution recorded'
   assert_contains "$(cat "$REVIEW_FAKE_GH_LOG")" 'resolveReviewThread' 'GitHub thread resolution invoked'
+  assert_status 0 python3 -c 'import pathlib,sys; log=pathlib.Path(sys.argv[1]).read_text(); assert log.index("\"in_reply_to\":401") < log.index("resolveReviewThread"); assert "\"body\":\"Fixed in the patch.\"" in log' "$REVIEW_FAKE_GH_LOG"
 fi
