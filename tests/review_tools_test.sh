@@ -204,6 +204,14 @@ J
     ;;
   LEAD*)
     [ -z "${FAKE_LEAD_FAIL:-}" ] || exit 3
+    if [ -n "${FAKE_REFUTE_BLOCKER:-}" ]; then
+      python3 - "$4/findings/t-block.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+d = json.load(open(p)); d['findings'][0]['prior'] = 'addressed'
+with open(p, 'w') as f: json.dump(d, f)
+PY
+    fi
     sum="$(printf '%s' "$p" | awk '{print $3}')"
     ver="$(printf '%s' "$p" | awk '{print $5}')"
     printf '**Local review: pass**\n\nbody\n\n`wtc-review v1 head=deadbeef verdict=pass blockers=0 round=9 lead=x`\n' >"$sum"
@@ -293,7 +301,8 @@ check "open blocker forces changes-requested" test "$(cat "$bd/verdict")" = chan
 check "status line format" grep -Eq 'wtc-review v1 head=[0-9a-f]{40} verdict=changes-requested blockers=1 round=1 lead=claude:opus' "$bd/summary.md"
 check "status footer reads as a sentence" grep -q '🔴 \*\*changes-requested\*\* · round 1 · `' "$bd/summary.md"
 check "exactly one status line" test "$(grep -c 'wtc-review v1 head=' "$bd/summary.md")" -eq 1
-check "lead heading kept" grep -q 'Local review: pass' "$bd/summary.md"
+check "lead summary body kept" grep -q '^body$' "$bd/summary.md"
+check "runner aligns lead heading with enforced verdict" grep -q 'Local review: changes-requested' "$bd/summary.md"
 check "run.log written" test -s "$bd/run.log"
 check "scheduled concern with no findings gets an error stub" bash -c "grep -q '\"error\"' '$bd/findings/t-die.json' && grep -q 'no findings file' '$bd/findings/t-die.json'"
 check "custom launcher stats are kept (tokens, cost)" python3 -c "
@@ -307,6 +316,12 @@ check "stats for lead written" test -s "$bd/stats/lead.json"
 check "summary has Run stats section" grep -q 'Run stats' "$bd/summary.md"
 check "Run stats: total row, wall-clock, humanized tokens, cost" bash -c "grep -q '^| \*\*Total\*\*' '$bd/summary.md' && grep -q 'Wall-clock for the whole run' '$bd/summary.md' && grep -q '182k / 9.1k (1.2M)' '$bd/summary.md' && grep -q '\\\$0.39' '$bd/summary.md'"
 check "Run stats sits before the status line" bash -c "[ \$(grep -n 'Run stats' '$bd/summary.md' | head -n1 | cut -d: -f1) -lt \$(grep -n 'wtc-review v1' '$bd/summary.md' | cut -d: -f1) ]"
+
+refuted="$T/refuted"; cp -R "$bd" "$refuted"
+rm -rf "$refuted/findings" "$refuted/stats" "$refuted/summary.md" "$refuted/verdict"
+FAKE_REFUTE_BLOCKER=1 "$h/tools/review-run.sh" "$refuted" --only t-block >/dev/null 2>&1
+check "lead may refute a blocker in findings" test "$(cat "$refuted/verdict")" = pass
+check "refuted blocker leaves zero open blockers" grep -q 'verdict=pass blockers=0' "$refuted/summary.md"
 
 # needs: downstream with no snapshots -> skipped (own bundle, no downstream repo registered)
 sed -i.bak '/downstream:/d' "$h/.harness-repos.yml"

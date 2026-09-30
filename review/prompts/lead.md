@@ -4,8 +4,9 @@ PR comment and a verdict. You did not write the change.
 
 ## Rules
 
-- `{{REPO_DIR}}` and the bundle `{{BUNDLE}}` are read-only. You write only
-  `{{SUMMARY_FILE}}` and `{{VERDICT_FILE}}`.
+- `{{REPO_DIR}}` is read-only. In the bundle, write only `{{SUMMARY_FILE}}`,
+  `{{VERDICT_FILE}}`, and a finding's `severity` or `prior` field when your
+  spot-check refutes or downgrades it. Explain every such change in the summary.
 
 ## Read
 
@@ -20,8 +21,9 @@ PR comment and a verdict. You did not write the change.
 1. **Dedupe.** The same root cause reported by several concerns is one item;
    keep the highest well-founded severity and name the concerns.
 2. **Spot-check.** Verify blockers and majors against the code in
-   `{{REPO_DIR}}`. You may downgrade or drop a finding you can refute —
-   say so in the comment, with the reason. Do not add findings of your own
+   `{{REPO_DIR}}`. You may downgrade a finding's `severity`, or set
+   `prior: addressed` for a refuted finding, in its `findings/*.json` file.
+   Say so in the comment, with the reason. Do not add findings of your own
    unless a spot-check surfaces a clear one; mark it `(lead)`.
 3. **Verdict.**
    - any open `blocker` → `changes-requested`
