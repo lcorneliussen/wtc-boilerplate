@@ -6,8 +6,8 @@ description: Open LazyVim on a worktree collection with one vim tab per sibling 
 # Browse a wtc in neovim
 
 One LazyVim, one vim tab per sibling (`:tcd`). Git plugins then see a real
-repo. The multi-repo map is `wtc-status`, not this buffer. Not a status
-answer — if you need to *say* what is in flight, run `wtc-status`.
+repo. The multi-repo map is `wtc status`, not this buffer. If you need to
+*say* what is in flight, run `wtc status`.
 
 ## 1. Confirm you are in a collection
 
@@ -17,14 +17,16 @@ collection root is the directory holding `harness/`.
 ## 2. Open it
 
 ```bash
-harness/tools/wtc-browse.sh                  # this collection
-harness/tools/wtc-browse.sh <collection>     # a named one under the workspace root
+wtc browse                  # this collection
+wtc browse <collection>     # a named one under the workspace root
 ```
 
 From a terminal (including the herdr `shell` pane) this opens nvim **in
 this window**. From an agent pane it sends nvim to the workspace `browse`
 pane — never into the agent itself — and opens a `pr` herdr tab with
 `gh dash` if that extension is installed. `--here` forces this terminal.
+The harness's `wtc-browse.sh` entry point uses this command when its exact
+release is installed and retains the shell path for bootstrap.
 
 Do not pass `--here` from an agent pane unless the user asked to take it over.
 

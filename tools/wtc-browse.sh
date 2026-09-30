@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # wtc-browse.sh — open a collection in one LazyVim, one vim tab per repo.
 set -euo pipefail
+original_args=("$@")
 
 usage() {
   cat <<'EOF'
@@ -58,6 +59,38 @@ fi
   echo "error: $collection is not a collection (no harness/)" >&2
   exit 1
 }
+
+# The selected collection owns its CLI pin. Keep this entry point available
+# during bootstrap and while older collections still use the shell browser.
+native_browse_supported() { # v0.1.17 first shipped wtc browse
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 17))
+  }'
+}
+if [ -f "$collection/harness/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$collection/harness/.wtc-cli-version")"
+  if native_browse_supported "$cli_pin"; then
+    if command -v mise >/dev/null 2>&1; then
+      cli_version="$(cd "$collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$collection" && mise exec -- wtc browse --help >/dev/null 2>&1); then
+        cd "$collection"
+        exec mise exec -- wtc browse "${original_args[@]+"${original_args[@]}"}"
+      fi
+    fi
+    if command -v wtc >/dev/null 2>&1; then
+      cli_version="$(cd "$collection" && wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$collection" && wtc browse --help >/dev/null 2>&1); then
+        cd "$collection"
+        exec wtc browse "${original_args[@]+"${original_args[@]}"}"
+      fi
+    fi
+  fi
+fi
 
 lua="$script_dir/wtc-browse.lua"
 [ -f "$lua" ] || { echo "error: missing $lua" >&2; exit 1; }
