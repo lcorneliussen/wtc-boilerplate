@@ -65,11 +65,31 @@ assert_contains "$(cat "$generated")" 'New setup.' 'patch rendered'
 assert_contains "$(cat "$generated")" 'Keep this.' 'other section preserved'
 assert_not_contains "$(cat "$generated")" 'Old setup.' 'old section removed'
 
-it 'an upstream base change is visible and blocks rendering'
-sed 's/## Setup/## Renamed setup/' "$base_dir/SKILL.md" > "$base_dir/changed"
+it 'a content-only base change is visible and blocks rendering on the stale digest'
+sed 's/Old setup\./Upstream setup changed./' "$base_dir/SKILL.md" > "$base_dir/changed"
 mv "$base_dir/changed" "$base_dir/SKILL.md"
 report="$("$cli" skills diff --collection "$collection" --changes)"
 assert_contains "$report" 'wtc-customize: drifted (overlays/skills/wtc-customize/sections)' 'base drift reported'
+assert_not_contains "$report" 'cannot apply:' 'heading remains applicable'
+assert_fails "$cli" skills render --collection "$collection" --dry-run
+assert_fails "$cli" skills render --collection "$collection"
+assert_contains "$(cat "$generated")" 'New setup.' 'failed render kept previous output'
+
+it 'reviewing the new base digest allows rendering again'
+python3 - "$base_dir/SKILL.md" "$overlay/.wtc-base.sha256" <<'PY'
+import hashlib, pathlib, sys
+pathlib.Path(sys.argv[2]).write_text(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest() + '\n')
+PY
+report="$("$cli" skills diff --collection "$collection")"
+assert_contains "$report" 'wtc-customize: reviewed (overlays/skills/wtc-customize/sections)' 'new base reviewed'
+assert_ok "$cli" skills render --collection "$collection"
+assert_contains "$(cat "$generated")" 'New setup.' 'patch still rendered'
+
+it 'a renamed heading remains visible as drift and cannot render'
+sed 's/## Setup/## Renamed setup/' "$base_dir/SKILL.md" > "$base_dir/changed"
+mv "$base_dir/changed" "$base_dir/SKILL.md"
+report="$("$cli" skills diff --collection "$collection" --changes)"
+assert_contains "$report" 'wtc-customize: drifted (overlays/skills/wtc-customize/sections)' 'renamed base drift reported'
 assert_contains "$report" 'cannot apply: setup.md: heading "## Setup" not found' 'renamed heading reported'
 assert_fails "$cli" skills render --collection "$collection" --dry-run
 assert_fails "$cli" skills render --collection "$collection"
