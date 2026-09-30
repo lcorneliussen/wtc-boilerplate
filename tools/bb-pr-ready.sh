@@ -10,6 +10,57 @@
 # precondition, not an automatic step. See review/README.md § Gate.
 set -euo pipefail
 
+# Use the exact pinned native gate when installed. Keep the shell gate for
+# bootstrap and older pins. The repository identity comes from the caller's
+# worktree before switching to the collection for mise.
+native_review_ready_supported() {
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 24))
+  }'
+}
+source_harness="$(cd "$(dirname "$0")/.." && pwd)"
+source_collection="$(dirname "$source_harness")"
+if [ -f "$source_harness/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$source_harness/.wtc-cli-version")"
+  if native_review_ready_supported "$cli_pin"; then
+    cli_cmd=()
+    if command -v mise >/dev/null 2>&1; then
+      cli_version="$(cd "$source_collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$source_collection" && mise exec -- wtc review ready --help >/dev/null 2>&1); then
+        cli_cmd=(mise exec -- wtc)
+      fi
+    fi
+    if [ "${#cli_cmd[@]}" -eq 0 ] && command -v wtc >/dev/null 2>&1; then
+      cli_version="$(cd "$source_collection" && wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$source_collection" && wtc review ready --help >/dev/null 2>&1); then
+        cli_cmd=(wtc)
+      fi
+    fi
+    if [ "${#cli_cmd[@]}" -gt 0 ]; then
+      for arg in "$@"; do
+        if [ "$arg" = --help ] || [ "$arg" = -h ]; then
+          cli_cmd=()
+          break
+        fi
+      done
+    fi
+    if [ "${#cli_cmd[@]}" -gt 0 ]; then
+      caller_top="$(git rev-parse --show-toplevel 2>/dev/null)" || {
+        echo 'error: not inside a git worktree' >&2
+        exit 1
+      }
+      caller_repo="$(basename "$caller_top")"
+      cd "$source_collection"
+      exec "${cli_cmd[@]}" review ready "$@" --repo "$caller_repo"
+    fi
+  fi
+fi
+
 usage() {
   cat <<'EOF' >&2
 Usage (from inside the repo worktree):
