@@ -5,7 +5,8 @@ description: Open or reshape a worktree collection in herdr — ensure the agent
 
 # Open a collection in herdr
 
-Mechanism: `wtc open` (the matching-pin `harness/tools/wtc-open.sh` is a compatibility entry point). Canon: `harness/instructions/herdr.md`.
+Mechanism: `harness/tools/wtc-open.sh` selects a matching native `wtc open`
+or its shell fallback. Canon: `harness/instructions/herdr.md`.
 
 A workspace is ergonomics only — worktrees already exist. Opening is
 idempotent: reuse the workspace, keep a live agent, fill idle panes, and
@@ -16,15 +17,17 @@ only reshape when asked (or when the layout is still partial).
 From the collection root (or name the collection):
 
 ```bash
-wtc open                 # this collection; auto layout
-wtc open --narrow        # stacked tabs; switch if needed
-wtc open --wide          # stacked columns; switch if needed
-wtc open --list          # pane-by-pane report; change nothing
-wtc open --dry-run       # plan only
+harness/tools/wtc-open.sh                 # this collection; auto layout
+harness/tools/wtc-open.sh --narrow        # stacked tabs; switch if needed
+harness/tools/wtc-open.sh --wide          # stacked columns; switch if needed
+harness/tools/wtc-open.sh --list          # pane-by-pane report; change nothing
+harness/tools/wtc-open.sh --dry-run       # plan only
 ```
 
 Bare args after flags are collection names under the workspace root. `--all`
 is always something you typed.
+Run `wtc open` directly when the selected collection has an installed CLI
+matching its v0.1.21-or-newer pin.
 
 ### Narrow vs wide
 
@@ -35,17 +38,17 @@ is always something you typed.
 | When | default when the session is wide enough | `--narrow`, or `WTC_LAYOUT=narrow` / auto under `WTC_LAYOUT_NARROW_AT` |
 
 `--narrow` / `--wide` **switch** an existing workspace. The agent pane is
-preserved; the status pane moves with its running process. Auto never flips a complete wide ↔
-narrow on its own.
+preserved. Native `wtc open` moves the live status pane; the shell fallback
+recreates it. Auto never flips a complete wide ↔ narrow on its own.
 
 ## 2. Agent-first is normal
 
 Often the human (or you) starts the agent in a bare workspace, then opens:
 
-1. `wtc open` detects a **partial** layout and builds wide or narrow around
+1. The opener detects a **partial** layout and builds wide or narrow around
    the existing agent pane.
 2. If the agent pane already has a live agent, it is left alone.
-3. If that pane is empty (or the agent exited), `wtc open` starts one —
+3. If that pane is empty (or the agent exited), the opener starts one —
    unless `--no-agent`.
 
 Do not restart a working agent to "apply" a layout. Do not close panes to
