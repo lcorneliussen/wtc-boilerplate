@@ -8,6 +8,54 @@
 # forge cannot be read (then 1) — the state is data, not an exit code.
 set -euo pipefail
 
+# Use the pinned native status reader when available. Preserve the raw JSON
+# shape of this shell entry point for callers that request --json.
+native_review_status_supported() {
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 24))
+  }'
+}
+source_harness="$(cd "$(dirname "$0")/.." && pwd)"
+source_collection="$(dirname "$source_harness")"
+if [ -f "$source_harness/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$source_harness/.wtc-cli-version")"
+  if native_review_status_supported "$cli_pin"; then
+    cli_cmd=()
+    if command -v mise >/dev/null 2>&1; then
+      cli_version="$(cd "$source_collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$source_collection" && mise exec -- wtc review status --help >/dev/null 2>&1); then
+        cli_cmd=(mise exec -- wtc)
+      fi
+    fi
+    if [ "${#cli_cmd[@]}" -eq 0 ] && command -v wtc >/dev/null 2>&1; then
+      cli_version="$(cd "$source_collection" && wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$source_collection" && wtc review status --help >/dev/null 2>&1); then
+        cli_cmd=(wtc)
+      fi
+    fi
+    if [ "${#cli_cmd[@]}" -gt 0 ]; then
+      json=0
+      native_args=()
+      for arg in "$@"; do
+        if [ "$arg" = --json ]; then json=1; else native_args+=("$arg"); fi
+      done
+      cd "$source_collection"
+      if [ "$json" -eq 1 ]; then
+        "${cli_cmd[@]}" review status "${native_args[@]}" --json |
+          python3 -c 'import json,sys; d=json.load(sys.stdin)["data"]; keys=("state","pr","verdict","blockers","round","review_head","pr_head","comment_url","comment_id"); print(json.dumps({k:d.get(k) for k in keys}))'
+      else
+        exec "${cli_cmd[@]}" review status "${native_args[@]}"
+      fi
+      exit $?
+    fi
+  fi
+fi
+
 usage() {
   cat <<'EOF' >&2
 Usage (run anywhere in the collection):
