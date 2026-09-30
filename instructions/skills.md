@@ -54,6 +54,15 @@ complete skill in `harness/skills/<name>/SKILL.md` replaces an embedded default;
 real directories in the destination skill roots are preserved. See
 `wtc customize` for the override and lifecycle hook contract.
 
+For a targeted change, put a complete H2 section in
+`harness/overlays/skills/<name>/sections/<short-name>.md`. It replaces the
+matching section of the embedded or harness skill. Run
+`wtc skills diff --changes` to inspect overrides and upstream drift, then
+`wtc skills render --dry-run` to validate the assembled skill. Record the
+reviewed base digest in the overlay's `.wtc-base.sha256` so a later base
+change stops rendering until the patch is reviewed again. `wtc customize`
+documents the format.
+
 The same tool installs the collection's **entry point**, `AGENTS.md`: the file
 every one of those CLIs reads on its own when it opens the collection, which
 makes it the one place shared guidance lands without a per-tool rule file. It
