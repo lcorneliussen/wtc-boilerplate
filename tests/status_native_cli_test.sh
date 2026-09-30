@@ -59,6 +59,15 @@ assert_contains "$pane_command" 'wtc-status-tui.sh' 'foreground script identity 
 kill "$pane_pid" 2>/dev/null || true
 wait "$pane_pid" 2>/dev/null || true
 
+it 'watch through the one-shot entry point keeps the status script identifiable'
+STATUS_CLI_HOLD=yes "$status" --watch 30 --no-fetch >/dev/null 2>&1 &
+pane_pid=$!
+sleep 1
+pane_command="$(ps -p "$pane_pid" -o command= 2>/dev/null)"
+assert_contains "$pane_command" 'wtc-status.sh' 'watch pane retained script identity'
+kill "$pane_pid" 2>/dev/null || true
+wait "$pane_pid" 2>/dev/null || true
+
 it 'older or mismatched pins keep the shell entry point'
 : > "$STATUS_CLI_CALLS"
 printf '0.1.15\n' > "$root/main/harness/.wtc-cli-version"

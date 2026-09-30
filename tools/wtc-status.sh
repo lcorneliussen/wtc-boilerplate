@@ -35,10 +35,12 @@ if [ "$native_status" = yes ]; then
     # Drop that selector and preserve the shell's last-selector-wins rule.
     cli_args=()
     status_mode=repos
+    status_watch=no
     for arg in "$@"; do
       case "$arg" in
         --repos) status_mode=repos ;;
         --procs) status_mode=procs ;;
+        --watch|--watch=*) status_watch=yes; cli_args+=("$arg") ;;
         *) cli_args+=("$arg") ;;
       esac
     done
@@ -46,8 +48,9 @@ if [ "$native_status" = yes ]; then
     # The shell selector retains PR rows, including when configured in wtc.env.
     export WTC_STATUS_REPOS=no
     cd "$(dirname "$source_harness")"
-    if [ "$WTC_STATUS_UI" = tui ]; then
-      wtc_status_native_tui --tui "${cli_args[@]+"${cli_args[@]}"}"
+    if [ "$WTC_STATUS_UI" = tui ] || [ "$status_watch" = yes ]; then
+      [ "$WTC_STATUS_UI" != tui ] || cli_args=(--tui "${cli_args[@]+"${cli_args[@]}"}")
+      wtc_status_native_tui "${cli_args[@]+"${cli_args[@]}"}"
       exit $?
     fi
     exec "${WTC_STATUS_NATIVE[@]}" status "${cli_args[@]+"${cli_args[@]}"}"

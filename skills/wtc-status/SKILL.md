@@ -38,7 +38,8 @@ wtc status --watch 120             # interactive view, 120-second refresh
 PR section and does not run other collections' build hooks. The CLI's `--repos`
 flag hides the enlisted PR section when a compact table is needed; the
 compatibility scripts keep their older selector behavior. The interactive
-view starts with the last snapshot while a fresh one loads. `r` refreshes,
+view shows repositories and PRs by default; `--procs` selects the process view.
+It starts with the last snapshot while a fresh one loads. `r` refreshes,
 `?` shows help, `a` toggles archived PRs, and `q` quits. It refreshes less
 often when unfocused. Captured output prints one pass and exits, so use a
 one-shot command to answer a question rather than leaving a watch loop open.
