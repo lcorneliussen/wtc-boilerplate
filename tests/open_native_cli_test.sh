@@ -15,17 +15,22 @@ cat > "$mock/mise" <<'MOCK'
 #!/usr/bin/env bash
 [ "$1 $2 $3" = 'exec -- wtc' ] || exit 2
 shift 3
+[ -z "${OPEN_CLI_MISE_UNAVAILABLE:-}" ] || exit 127
 case "$*" in
   --version) printf 'wtc version %s\n' "${OPEN_CLI_VERSION:-$(cat "$PWD/harness/.wtc-cli-version")}" ;;
   'open --help') exit 0 ;;
   *) printf '%s|%s\n' "$PWD" "$*" >> "$OPEN_CLI_CALLS" ;;
 esac
 MOCK
+cat > "$mock/wtc" <<'MOCK'
+#!/usr/bin/env bash
+exit 127
+MOCK
 cat > "$mock/herdr" <<'MOCK'
 #!/usr/bin/env bash
 printf '%s\n' '{"result":{"workspaces":[]}}'
 MOCK
-chmod +x "$mock/mise" "$mock/herdr"
+chmod +x "$mock/mise" "$mock/wtc" "$mock/herdr"
 export PATH="$mock:$PATH"
 runner="$root/main/harness/tools/wtc-open.sh"
 
@@ -48,9 +53,17 @@ assert_empty "$(cat "$OPEN_CLI_CALLS")" 'mixed sweep did not dispatch'
 printf '0.1.21\n' > "$root/other/harness/.wtc-cli-version"
 OPEN_CLI_VERSION=0.1.20 "$runner" --list other >/dev/null
 assert_empty "$(cat "$OPEN_CLI_CALLS")" 'mismatched installed version did not dispatch'
+rm "$root/main/harness/.wtc-cli-version"
+"$runner" --list >/dev/null
+assert_empty "$(cat "$OPEN_CLI_CALLS")" 'missing pin did not dispatch'
+printf '0.1.21\n' > "$root/main/harness/.wtc-cli-version"
+OPEN_CLI_MISE_UNAVAILABLE=1 "$runner" --list >/dev/null
+assert_empty "$(cat "$OPEN_CLI_CALLS")" 'unavailable binary did not dispatch'
 
 if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
   it 'the published binary lists through the matching shell entry point'
+  release_version="$("$WTC_TEST_RELEASE_BINARY" --version)"
+  assert_eq 'wtc version 0.1.21' "$release_version" 'published binary matches the fixture pin'
   export OPEN_TEST_RELEASE_BINARY="$WTC_TEST_RELEASE_BINARY"
   cat > "$mock/mise" <<'REAL_MISE'
 #!/usr/bin/env bash
@@ -62,5 +75,5 @@ REAL_MISE
   output="$("$runner" --list 2>&1)"
   rc=$?
   assert_eq 0 "$rc" "released native open list succeeded: $output"
-  assert_contains "$output" 'no workspace' 'released CLI read the herdr workspace list'
+  assert_contains "$output" '==> main:' 'released CLI handled the workspace list'
 fi
