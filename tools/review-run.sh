@@ -375,6 +375,11 @@ if [ "$verdict" = pass ] && grep -l '"status": *"error"' "$bundle"/findings/*.js
 fi
 
 blockers="$(python3 "$py" blockers "$bundle/findings")"
+if [ "$blockers" -gt 0 ] && [ "$verdict" != changes-requested ]; then
+  verdict=changes-requested
+  printf '%s\n' "$verdict" >"$bundle/verdict"
+  log "verdict set to changes-requested: $blockers open blocker finding(s)"
+fi
 # The tool owns the status line: drop any the lead wrote, append ours.
 tmp_summary="$bundle/.summary.tmp"
 grep -v 'wtc-review v1 head=' "$bundle/summary.md" >"$tmp_summary" || true

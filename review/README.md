@@ -176,6 +176,10 @@ A run that does not produce valid JSON is recorded by the runner as
 
 ## Verdict rule (lead)
 
+- The lead can refute a finding by setting `prior: "addressed"`, or lower its
+  `severity`, in `findings/<id>.json`. It must explain the decision in the
+  summary. The runner counts open blockers after those dispositions and forces
+  `changes-requested` if any remain, even when the lead wrote a passing verdict.
 - any open `blocker` → `changes-requested`
 - `major` findings, no blockers → `pass-with-notes` unless the lead judges them
   merge-stopping, then `changes-requested`
@@ -277,7 +281,7 @@ cost); grok reports usage and cost on its JSON result; anything unknown shows `-
 ## Gate
 
 `tools/bb-pr-ready.sh <n>` undrafts only when `review-status.sh` reports
-`current` and the verdict is `pass` or `pass-with-notes` — `changes-requested`,
+`current`, zero open blockers, and a verdict of `pass` or `pass-with-notes` — `changes-requested`,
 `pending` (a run is in flight) and `error` (it failed) stay closed. Anything else needs
 `--user-authorized "<the user's words>"`, the same escape as `bb-pr-merge.sh`.
 Undrafting still happens only when the user asks for it; the gate adds a

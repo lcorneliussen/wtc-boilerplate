@@ -907,15 +907,18 @@ def _linkify_hunks(text, bundle):
     return re.sub(r"(?<!\[)`([A-Za-z0-9_./+-]+):(\d+)`", repl, text)
 
 
-def _color_verdict(text):
+def _color_verdict(text, final_verdict=None):
     lines = text.splitlines()
     for i, line in enumerate(lines):
         m = re.match(r"^(?:[🟢🟡🔴⏳❌]\s+)?\*\*Local review: ([a-z-]+)\*\*(.*)$", line)
         if not m:
             continue
-        mark = _VERDICT_MARK.get(m.group(1))
-        if mark and not line.startswith(mark):
-            lines[i] = "%s **Local review: %s**%s" % (mark, m.group(1), m.group(2))
+        verdict = final_verdict or m.group(1)
+        mark = _VERDICT_MARK.get(verdict)
+        if verdict != m.group(1):
+            lines[i] = "%s **Local review: %s** — The runner adjusted the lead verdict; see the findings and gate record." % (mark or "", verdict)
+        elif mark and not line.startswith(mark):
+            lines[i] = "%s **Local review: %s**%s" % (mark, verdict, m.group(2))
         break
     return "\n".join(lines) + ("\n" if text.endswith("\n") else "")
 
@@ -942,7 +945,8 @@ def cmd_present(bundle):
             continue
         body.append(line)
     text = _linkify_hunks("\n".join(body), bundle)
-    text = _color_verdict(text)
+    verdict = open(os.path.join(bundle, "verdict"), encoding="utf-8").read().strip() if os.path.isfile(os.path.join(bundle, "verdict")) else None
+    text = _color_verdict(text, verdict)
     preamble, title, buf, sections = [], None, [], []
     for line in text.splitlines():
         m = re.match(r"^###\s+(.+?)\s*$", line)
