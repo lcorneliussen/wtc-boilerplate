@@ -42,7 +42,7 @@ old="$root/old-bundle"
 assert_eq 0 "$?" "older pin shell bundle: $(cat "$root/old.err")"
 assert_empty "$(cat "$REVIEW_CLI_CALLS")" 'older pin did not dispatch'
 assert_file "$old/manifest.env"
-printf '0.1.23\n' > "$root/main/harness/.wtc-cli-version"
+printf '0.1.24\n' > "$root/main/harness/.wtc-cli-version"
 mismatch="$root/mismatch-bundle"
 REVIEW_CLI_VERSION=0.1.21 "$runner" widget --public --no-catch-up --base origin/main --dir "$mismatch" >/dev/null 2> "$root/mismatch.err"
 assert_eq 0 "$?" "mismatched CLI shell bundle: $(cat "$root/mismatch.err")"
@@ -50,7 +50,7 @@ assert_empty "$(cat "$REVIEW_CLI_CALLS")" 'mismatched CLI did not dispatch'
 
 if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
   it 'the published binary builds a public bundle through the shim'
-  assert_eq 'wtc version 0.1.23' "$("$WTC_TEST_RELEASE_BINARY" --version)"
+  assert_eq 'wtc version 0.1.24' "$("$WTC_TEST_RELEASE_BINARY" --version)"
   export REVIEW_TEST_RELEASE_BINARY="$WTC_TEST_RELEASE_BINARY"
   cat > "$mock/mise" <<'REAL_MISE'
 #!/usr/bin/env bash

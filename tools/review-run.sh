@@ -6,6 +6,65 @@
 # line that review-status.sh / bb-pr-ready.sh parse. Contract: review/README.md.
 set -euo pipefail
 
+# Use the exact pinned native runner when available. The shell implementation
+# remains the bootstrap path for older pins and installations without the CLI.
+native_review_run_supported() {
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 24))
+  }'
+}
+source_harness="$(cd "$(dirname "$0")/.." && pwd)"
+source_collection="$(dirname "$source_harness")"
+if [ -f "$source_harness/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$source_harness/.wtc-cli-version")"
+  if native_review_run_supported "$cli_pin"; then
+    cli_cmd=()
+    if command -v mise >/dev/null 2>&1; then
+      cli_version="$(cd "$source_collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$source_collection" && mise exec -- wtc review run --help >/dev/null 2>&1); then
+        cli_cmd=(mise exec -- wtc)
+      fi
+    fi
+    if [ "${#cli_cmd[@]}" -eq 0 ] && command -v wtc >/dev/null 2>&1; then
+      cli_version="$(cd "$source_collection" && wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$source_collection" && wtc review run --help >/dev/null 2>&1); then
+        cli_cmd=(wtc)
+      fi
+    fi
+    if [ "${#cli_cmd[@]}" -gt 0 ]; then
+      caller_dir="$(pwd -P)"
+      native_args=()
+      bundle_seen=0
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --strong|--standard|--fast|--lead|--parallel|--only)
+            native_args+=("$1")
+            shift
+            if [ "$#" -gt 0 ]; then native_args+=("$1"); shift; fi ;;
+          -*|*)
+            if [ "$bundle_seen" -eq 0 ] && [[ "$1" != -* ]]; then
+              bundle_seen=1
+              case "$1" in
+                /*) native_args+=("$1") ;;
+                *) native_args+=("$caller_dir/$1") ;;
+              esac
+            else
+              native_args+=("$1")
+            fi
+            shift ;;
+        esac
+      done
+      cd "$source_collection"
+      exec "${cli_cmd[@]}" review run "${native_args[@]}"
+    fi
+  fi
+fi
+
 usage() {
   cat <<'EOF' >&2
 Usage:
