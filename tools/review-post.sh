@@ -9,6 +9,82 @@
 # unless --force. Prints the summary comment URL (or "posted").
 set -euo pipefail
 
+# Delegate to the exact pinned CLI when available. The shell path remains for
+# bootstrap, older pins, and explicitly requested Bitbucket CLI fallback.
+native_review_post_supported() {
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 24))
+  }'
+}
+source_harness="$(cd "$(dirname "$0")/.." && pwd)"
+source_collection="$(dirname "$source_harness")"
+if [ "${WTC_REVIEW_NO_API:-}" != 1 ] && [ -f "$source_harness/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$source_harness/.wtc-cli-version")"
+  if native_review_post_supported "$cli_pin"; then
+    cli_cmd=()
+    if command -v mise >/dev/null 2>&1; then
+      cli_version="$(cd "$source_collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$source_collection" && mise exec -- wtc review post --help >/dev/null 2>&1); then
+        cli_cmd=(mise exec -- wtc)
+      fi
+    fi
+    if [ "${#cli_cmd[@]}" -eq 0 ] && command -v wtc >/dev/null 2>&1; then
+      cli_version="$(cd "$source_collection" && wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$source_collection" && wtc review post --help >/dev/null 2>&1); then
+        cli_cmd=(wtc)
+      fi
+    fi
+    if [ "${#cli_cmd[@]}" -gt 0 ]; then
+      caller_dir="$(pwd -P)"
+      native_args=()
+      bundle_seen=0
+      while [ "$#" -gt 0 ]; do
+        case "$1" in
+          --body)
+            native_args+=("$1")
+            shift
+            if [ "$#" -gt 0 ]; then
+              case "$1" in
+                /*) native_args+=("$1") ;;
+                *) native_args+=("$caller_dir/$1") ;;
+              esac
+              shift
+            fi ;;
+          --body=*)
+            value="${1#--body=}"
+            case "$value" in
+              /*) native_args+=("$1") ;;
+              *) native_args+=("--body=$caller_dir/$value") ;;
+            esac
+            shift ;;
+          --reason)
+            native_args+=("$1")
+            shift
+            if [ "$#" -gt 0 ]; then native_args+=("$1"); shift; fi ;;
+          -*|*)
+            if [ "$bundle_seen" -eq 0 ] && [[ "$1" != -* ]]; then
+              bundle_seen=1
+              case "$1" in
+                /*) native_args+=("$1") ;;
+                *) native_args+=("$caller_dir/$1") ;;
+              esac
+            else
+              native_args+=("$1")
+            fi
+            shift ;;
+        esac
+      done
+      cd "$source_collection"
+      exec "${cli_cmd[@]}" review post "${native_args[@]}"
+    fi
+  fi
+fi
+
 usage() {
   cat <<'EOF' >&2
 Usage:
