@@ -6,8 +6,8 @@ description: Open LazyVim on a worktree collection with one vim tab per sibling 
 # Browse a wtc in neovim
 
 One LazyVim, one vim tab per sibling (`:tcd`). Git plugins then see a real
-repo. The multi-repo map is `wtc-status`, not this buffer. Not a status
-answer — if you need to *say* what is in flight, run `wtc-status`.
+repo. The multi-repo map is `wtc status`, not this buffer. If you need to
+*say* what is in flight, run `wtc status`.
 
 ## 1. Confirm you are in a collection
 
@@ -25,6 +25,9 @@ From a terminal (including the herdr `shell` pane) this opens nvim **in
 this window**. From an agent pane it sends nvim to the workspace `browse`
 pane — never into the agent itself — and opens a `pr` herdr tab with
 `gh dash` if that extension is installed. `--here` forces this terminal.
+The entry point delegates to `wtc browse` when the selected collection has
+the matching release installed. It also works during bootstrap and for
+collections with an older pin.
 
 Do not pass `--here` from an agent pane unless the user asked to take it over.
 

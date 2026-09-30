@@ -14,7 +14,7 @@ cat > "$mock/mise" <<'MOCK'
 [ "$1 $2 $3" = 'exec -- wtc' ] || exit 2
 shift 3
 case "$*" in
-  --version) printf 'wtc version %s\n' "${STATUS_CLI_VERSION:-0.1.16}" ;;
+  --version) printf 'wtc version %s\n' "${STATUS_CLI_VERSION:-$(cat "$PWD/harness/.wtc-cli-version")}" ;;
   'status --help') exit 0 ;;
   *) printf '%s|%s\n' "$PWD" "$*" >> "$STATUS_CLI_CALLS"
      if [ "${STATUS_CLI_READ_KEY:-}" = yes ]; then
@@ -74,7 +74,7 @@ printf '0.1.15\n' > "$root/main/harness/.wtc-cli-version"
 "$status" --help > "$root/old.help"
 assert_empty "$(cat "$STATUS_CLI_CALLS")" 'older pin did not dispatch'
 assert_contains "$(cat "$root/old.help")" 'Usage:'
-printf '0.1.16\n' > "$root/main/harness/.wtc-cli-version"
+cat "$HARNESS_SRC/.wtc-cli-version" > "$root/main/harness/.wtc-cli-version"
 STATUS_CLI_VERSION=0.1.15 "$status" --help > "$root/mismatch.help"
 assert_empty "$(cat "$STATUS_CLI_CALLS")" 'mismatched version did not dispatch'
 
