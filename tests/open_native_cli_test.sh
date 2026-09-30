@@ -24,7 +24,12 @@ esac
 MOCK
 cat > "$mock/wtc" <<'MOCK'
 #!/usr/bin/env bash
-exit 127
+case "$*" in
+  --version) [ -n "${OPEN_CLI_STANDALONE_VERSION:-}" ] || exit 127
+             printf 'wtc version %s\n' "$OPEN_CLI_STANDALONE_VERSION" ;;
+  'open --help') [ -n "${OPEN_CLI_STANDALONE_VERSION:-}" ] ;;
+  *) printf '%s|%s\n' "$PWD" "$*" >> "$OPEN_CLI_CALLS" ;;
+esac
 MOCK
 cat > "$mock/herdr" <<'MOCK'
 #!/usr/bin/env bash
@@ -53,6 +58,13 @@ assert_empty "$(cat "$OPEN_CLI_CALLS")" 'mixed sweep did not dispatch'
 printf '0.1.21\n' > "$root/other/harness/.wtc-cli-version"
 OPEN_CLI_VERSION=0.1.20 "$runner" --list other >/dev/null
 assert_empty "$(cat "$OPEN_CLI_CALLS")" 'mismatched installed version did not dispatch'
+
+it 'matching standalone CLI wins when mise resolves an older version'
+OPEN_CLI_VERSION=0.1.20 OPEN_CLI_STANDALONE_VERSION=0.1.21 "$runner" --list other >/dev/null
+assert_contains "$(cat "$OPEN_CLI_CALLS")" "$root/other|open --list other"
+: > "$OPEN_CLI_CALLS"
+
+it 'missing pins and unavailable binaries keep a working shell listing'
 rm "$root/main/harness/.wtc-cli-version"
 missing_out="$("$runner" --list 2>&1)"; missing_rc=$?
 assert_eq 0 "$missing_rc" 'missing pin uses a working shell list'

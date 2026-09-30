@@ -137,17 +137,22 @@ for candidate in "${open_targets[@]}"; do
   if ! native_open_supported "$pin" || { [ -n "$native_pin" ] && [ "$pin" != "$native_pin" ]; }; then
     native_open=no; break
   fi
-  cli_version="" cli_cmd=()
+  cli_cmd=()
   if command -v mise >/dev/null 2>&1; then
     cli_version="$(cd "$candidate" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
-    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+    if [ "$cli_version" = "wtc version $pin" ] &&
+        (cd "$candidate" && mise exec -- wtc open --help >/dev/null 2>&1); then
+      cli_cmd=(mise exec -- wtc)
+    fi
   fi
-  if [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+  if [ "${#cli_cmd[@]}" -eq 0 ] && command -v wtc >/dev/null 2>&1; then
     cli_version="$(cd "$candidate" && wtc --version 2>/dev/null)" || cli_version=""
-    [ -z "$cli_version" ] || cli_cmd=(wtc)
+    if [ "$cli_version" = "wtc version $pin" ] &&
+        (cd "$candidate" && wtc open --help >/dev/null 2>&1); then
+      cli_cmd=(wtc)
+    fi
   fi
-  if [ "$cli_version" != "wtc version $pin" ] ||
-      ! (cd "$candidate" && "${cli_cmd[@]}" open --help >/dev/null 2>&1); then
+  if [ "${#cli_cmd[@]}" -eq 0 ]; then
     native_open=no; break
   fi
   [ -n "$native_pin" ] || { native_pin="$pin"; native_cwd="$candidate"; native_cli=("${cli_cmd[@]}"); }
