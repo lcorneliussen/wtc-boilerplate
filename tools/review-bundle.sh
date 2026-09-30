@@ -9,12 +9,12 @@ set -euo pipefail
 
 # Delegate to the exact pinned native bundle when it is installed. Keep this
 # shell path for bootstrap and older collection pins.
-native_review_bundle_supported() { # v0.1.22 first shipped private bundle parity
+native_review_bundle_supported() { # v0.1.23 includes custom-directory round parity
   awk -v version="$1" 'BEGIN {
     if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
     split(version, part, ".")
     exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
-           ((part[2] + 0) == 1 && (part[3] + 0) >= 22))
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 23))
   }'
 }
 source_harness="$(cd "$(dirname "$0")/.." && pwd)"

@@ -36,13 +36,13 @@ assert_contains "$(cat "$REVIEW_CLI_CALLS")" \
 
 it 'an older or mismatched pin retains the shell bundle'
 : > "$REVIEW_CLI_CALLS"
-printf '0.1.21\n' > "$root/main/harness/.wtc-cli-version"
+printf '0.1.22\n' > "$root/main/harness/.wtc-cli-version"
 old="$root/old-bundle"
 "$runner" widget --public --no-catch-up --base origin/main --dir "$old" >/dev/null 2> "$root/old.err"
 assert_eq 0 "$?" "older pin shell bundle: $(cat "$root/old.err")"
 assert_empty "$(cat "$REVIEW_CLI_CALLS")" 'older pin did not dispatch'
 assert_file "$old/manifest.env"
-printf '0.1.22\n' > "$root/main/harness/.wtc-cli-version"
+printf '0.1.23\n' > "$root/main/harness/.wtc-cli-version"
 mismatch="$root/mismatch-bundle"
 REVIEW_CLI_VERSION=0.1.21 "$runner" widget --public --no-catch-up --base origin/main --dir "$mismatch" >/dev/null 2> "$root/mismatch.err"
 assert_eq 0 "$?" "mismatched CLI shell bundle: $(cat "$root/mismatch.err")"
@@ -50,7 +50,7 @@ assert_empty "$(cat "$REVIEW_CLI_CALLS")" 'mismatched CLI did not dispatch'
 
 if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
   it 'the published binary builds a public bundle through the shim'
-  assert_eq 'wtc version 0.1.22' "$("$WTC_TEST_RELEASE_BINARY" --version)"
+  assert_eq 'wtc version 0.1.23' "$("$WTC_TEST_RELEASE_BINARY" --version)"
   export REVIEW_TEST_RELEASE_BINARY="$WTC_TEST_RELEASE_BINARY"
   cat > "$mock/mise" <<'REAL_MISE'
 #!/usr/bin/env bash
@@ -59,6 +59,24 @@ shift 3
 exec "$REVIEW_TEST_RELEASE_BINARY" "$@"
 REAL_MISE
   chmod +x "$mock/mise"
+  consumer_src="$root/consumer-source"
+  make_local_repo "$consumer_src" consumer >/dev/null
+  git init -q --bare "$root/.bare/consumer.git"
+  git --git-dir="$root/.bare/consumer.git" remote add origin "$consumer_src"
+  git --git-dir="$root/.bare/consumer.git" fetch -q origin '+refs/heads/*:refs/remotes/origin/*'
+  add_fixture_worktree "$root" consumer "$root/main/consumer"
+  python3 - "$root/main/harness/.harness-repos.yml" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+registry = path.read_text().replace('    port_offset: 1\n', '    downstream: consumer\n    port_offset: 1\n', 1)
+registry += '\n  - name: consumer\n    remote: https://github.com/example/consumer.git\n    default_ref: origin/main\n'
+path.write_text(registry)
+PY
+  private="$root/private-bundle"
+  "$runner" widget --no-catch-up --base origin/main --dir "$private" > "$root/private.out" 2> "$root/private.err"
+  assert_eq 0 "$?" "published private bundle: $(cat "$root/private.err")"
+  assert_file "$private/downstream/consumer/old/README.md"
   native="$root/native-bundle"
   "$runner" widget --public --no-catch-up --base origin/main --dir "$native" > "$root/native.out" 2> "$root/native.err"
   assert_eq 0 "$?" "published CLI bundle: $(cat "$root/native.err")"
@@ -66,4 +84,13 @@ REAL_MISE
   assert_contains "$(cat "$native/manifest.json")" '"public": true' 'public manifest retained'
   assert_file "$native/diff.patch"
   assert_status 1 test -e "$native/downstream"
+  printf 'First custom public round\n' > "$native/summary.md"
+  next="$root/next-bundle"
+  "$runner" widget --public --no-catch-up --base origin/main --dir "$next" > "$root/next.out" 2> "$root/next.err"
+  assert_eq 0 "$?" "next published bundle: $(cat "$root/next.err")"
+  first_round="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["round"])' "$native/manifest.json")"
+  next_round="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["round"])' "$next/manifest.json")"
+  assert_eq "$((first_round + 1))" "$next_round" 'custom bundle round advanced'
+  assert_contains "$(cat "$next/prior/r$first_round.md")" 'First custom public round' \
+    'custom prior summary carried forward'
 fi
