@@ -30,12 +30,14 @@ current passing build.
 wtc status other-collection        # one named collection
 wtc status --all                   # every collection, no scoped snapshot files
 wtc status --procs                 # processes under the herdr session
-wtc status --repos --tui           # interactive repository view
+wtc status --tui                   # interactive repositories and PRs
 wtc status --watch 120             # interactive view, 120-second refresh
 ```
 
 `--all` is explicit because it reads every collection; it omits the enlisted
-PR section and does not run other collections' build hooks. The interactive
+PR section and does not run other collections' build hooks. The CLI's `--repos`
+flag hides the enlisted PR section when a compact table is needed; the
+compatibility scripts keep their older selector behavior. The interactive
 view starts with the last snapshot while a fresh one loads. `r` refreshes,
 `?` shows help, `a` toggles archived PRs, and `q` quits. It refreshes less
 often when unfocused. Captured output prints one pass and exits, so use a

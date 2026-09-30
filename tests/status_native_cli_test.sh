@@ -16,7 +16,8 @@ shift 3
 case "$*" in
   --version) printf 'wtc version %s\n' "${STATUS_CLI_VERSION:-0.1.16}" ;;
   'status --help') exit 0 ;;
-  *) printf '%s|%s\n' "$PWD" "$*" >> "$STATUS_CLI_CALLS" ;;
+  *) printf '%s|%s\n' "$PWD" "$*" >> "$STATUS_CLI_CALLS"
+     [ "${STATUS_CLI_HOLD:-}" != yes ] || sleep 5 ;;
 esac
 MOCK
 chmod +x "$mock/mise"
@@ -29,8 +30,26 @@ it 'matching pin dispatches one-shot and TUI from the target collection'
 "$status" --repos --tui 120 --no-click >/dev/null
 "$tui" --procs --no-watch >/dev/null
 assert_contains "$(cat "$STATUS_CLI_CALLS")" "$root/main|status --json --no-fetch"
-assert_contains "$(cat "$STATUS_CLI_CALLS")" "$root/main|status --tui --repos --watch 120 --no-click"
+assert_contains "$(cat "$STATUS_CLI_CALLS")" "$root/main|status --tui --watch 120 --no-click"
 assert_contains "$(cat "$STATUS_CLI_CALLS")" "$root/main|status --tui --procs --no-watch"
+
+it 'last repository or process selector wins without hiding enlisted PRs'
+"$status" --repos --procs --json >/dev/null
+"$status" --procs --repos --json >/dev/null
+"$tui" --procs --repos --no-watch >/dev/null
+assert_contains "$(cat "$STATUS_CLI_CALLS")" "$root/main|status --procs --json"
+assert_contains "$(cat "$STATUS_CLI_CALLS")" "$root/main|status --json"
+assert_contains "$(cat "$STATUS_CLI_CALLS")" "$root/main|status --tui --no-watch"
+assert_not_contains "$(cat "$STATUS_CLI_CALLS")" '--repos' 'native view keeps the PR section'
+
+it 'native TUI keeps the status script identifiable for pane lifecycle tools'
+STATUS_CLI_HOLD=yes "$tui" --no-fetch >/dev/null 2>&1 &
+pane_pid=$!
+sleep 1
+pane_command="$(ps -p "$pane_pid" -o command= 2>/dev/null)"
+assert_contains "$pane_command" 'wtc-status-tui.sh' 'foreground script identity survived native dispatch'
+kill "$pane_pid" 2>/dev/null || true
+wait "$pane_pid" 2>/dev/null || true
 
 it 'older or mismatched pins keep the shell entry point'
 : > "$STATUS_CLI_CALLS"

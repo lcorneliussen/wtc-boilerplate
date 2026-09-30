@@ -31,9 +31,23 @@ if [ "$native_status" = yes ]; then
   # shellcheck source=wtc-status-native-common.sh
   . "$script_dir/wtc-status-native-common.sh"
   if wtc_status_native_command "$source_harness"; then
-    cli_args=("$@")
-    [ "$WTC_STATUS_UI" != tui ] || cli_args=(--tui "${cli_args[@]+"${cli_args[@]}"}")
+    # In the shell view, --repos keeps the PR section; native --repos hides it.
+    # Drop that selector and preserve the shell's last-selector-wins rule.
+    cli_args=()
+    status_mode=repos
+    for arg in "$@"; do
+      case "$arg" in
+        --repos) status_mode=repos ;;
+        --procs) status_mode=procs ;;
+        *) cli_args+=("$arg") ;;
+      esac
+    done
+    [ "$status_mode" != procs ] || cli_args=(--procs "${cli_args[@]+"${cli_args[@]}"}")
     cd "$(dirname "$source_harness")"
+    if [ "$WTC_STATUS_UI" = tui ]; then
+      wtc_status_native_tui --tui "${cli_args[@]+"${cli_args[@]}"}"
+      exit $?
+    fi
     exec "${WTC_STATUS_NATIVE[@]}" status "${cli_args[@]+"${cli_args[@]}"}"
   fi
 fi

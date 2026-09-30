@@ -35,3 +35,16 @@ wtc_status_native_command() { # harness path; sets WTC_STATUS_NATIVE
   fi
   return 1
 }
+
+# Keep the script as the foreground process that catch-up and retire identify.
+# Forward termination to the native child when a pane is restarted or closed.
+wtc_status_native_tui() {
+  local status_child status_rc
+  "${WTC_STATUS_NATIVE[@]}" status "$@" &
+  status_child=$!
+  trap 'kill "$status_child" 2>/dev/null || true' TERM INT HUP
+  status_rc=0
+  wait "$status_child" || status_rc=$?
+  trap - TERM INT HUP
+  return "$status_rc"
+}
