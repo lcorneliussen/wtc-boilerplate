@@ -78,7 +78,12 @@ case "$1 $2" in
   "api graphql")
     case "$*" in
       *resolveReviewThread*) echo '{"data":{"resolveReviewThread":{"thread":{"isResolved":true}}}}' ;;
-      *) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"THREAD1","isResolved":false,"comments":{"nodes":[{"databaseId":601}]}}]}}}}}' ;;
+      *"-f cursor=NEXT"*) echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"THREAD1","isResolved":false,"comments":{"nodes":[{"databaseId":601}]}}],"pageInfo":{"hasNextPage":false,"endCursor":null}}}}}}' ;;
+      *) if [ -n "${GH_THREAD_SECOND_PAGE:-}" ]; then
+           echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[],"pageInfo":{"hasNextPage":true,"endCursor":"NEXT"}}}}}}'
+         else
+           echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[{"id":"THREAD1","isResolved":false,"comments":{"nodes":[{"databaseId":601}]}}]}}}}}'
+         fi ;;
     esac ;;
   *) exit 1 ;;
 esac
@@ -284,9 +289,9 @@ check "findings t-ok valid" python3 "$h/tools/review_lib.py" validate-findings "
 check "findings t-fail is error + .raw" bash -c "grep -q '\"error\"' '$bd/findings/t-fail.json' && grep -q 'not json' '$bd/findings/t-fail.raw'"
 check "findings t-slow is error (timeout)" bash -c "grep -q 'timeout' '$bd/findings/t-slow.json'"
 check "findings t-never absent" test ! -e "$bd/findings/t-never.json"
-check "verdict downgraded (errored concerns)" test "$(cat "$bd/verdict")" = pass-with-notes
-check "status line format" grep -Eq 'wtc-review v1 head=[0-9a-f]{40} verdict=pass-with-notes blockers=1 round=1 lead=claude:opus' "$bd/summary.md"
-check "status footer reads as a sentence" grep -q '🟡 \*\*pass-with-notes\*\* · round 1 · `' "$bd/summary.md"
+check "open blocker forces changes-requested" test "$(cat "$bd/verdict")" = changes-requested
+check "status line format" grep -Eq 'wtc-review v1 head=[0-9a-f]{40} verdict=changes-requested blockers=1 round=1 lead=claude:opus' "$bd/summary.md"
+check "status footer reads as a sentence" grep -q '🔴 \*\*changes-requested\*\* · round 1 · `' "$bd/summary.md"
 check "exactly one status line" test "$(grep -c 'wtc-review v1 head=' "$bd/summary.md")" -eq 1
 check "lead heading kept" grep -q 'Local review: pass' "$bd/summary.md"
 check "run.log written" test -s "$bd/run.log"
@@ -507,6 +512,10 @@ mk_comments 1 "$T1" "$(sl "$H40" pass)"
 gate "allows current pass" 0 1
 mk_comments 1 "$T1" "$(sl "$H40" pass-with-notes)"
 gate "allows current pass-with-notes" 0 1
+mk_comments 1 "$T1" "$(sl "$H40" pass 1)"
+gate "refuses pass with open blockers" 1 0
+mk_comments 1 "$T1" "$(sl "$H40" pass-with-notes 1)"
+gate "refuses pass-with-notes with open blockers" 1 0
 mk_comments 1 "$T1" "$(sl "$H40" changes-requested 1)"
 gate "override on changes-requested with --user-authorized" 0 1 --user-authorized "undraft it anyway"
 mk_comments 1 "$T1" "$(sl "$H40" pending)"
@@ -621,6 +630,15 @@ PY
 "$h/tools/review-resolve.sh" "$pi_gh" >/dev/null 2>"$T/gh-resolve.err" || { cat "$T/gh-resolve.err" >&2; fail "GitHub resolve exits"; }
 check "GitHub resolve passes the GraphQL num variable" grep -q -- '-F num=7' "$BBSTUB/calls.log"
 check "GitHub resolve records the thread closed" python3 -c "import json; assert json.load(open('$pi_gh/inline-comments.json'))[0]['resolved'] is True"
+python3 - "$pi_gh/inline-comments.json" <<'PY'
+import json, sys
+p = sys.argv[1]
+rows = json.load(open(p)); rows[0]['resolved'] = False
+with open(p, 'w') as f: json.dump(rows, f)
+PY
+: >"$BBSTUB/calls.log"
+GH_THREAD_SECOND_PAGE=1 "$h/tools/review-resolve.sh" "$pi_gh" >/dev/null 2>"$T/gh-resolve-page.err" || { cat "$T/gh-resolve-page.err" >&2; fail "GitHub paged resolve exits"; }
+check "GitHub resolve fetches later review threads" grep -q -- '-f cursor=NEXT' "$BBSTUB/calls.log"
 
 pi2="$T/pi2"; mkbundle "$pi2" >/dev/null
 mkdir -p "$pi2/findings" "$pi2/prior"
@@ -675,6 +693,7 @@ deny_case  'eval "bb pr ready 5"'
 deny_case  'echo hi | bb pr ready 6'
 deny_case  'true || bb pr ready 8'
 deny_case  'echo $(bb pr ready 9)'
+deny_case  'echo "'"'"'$(gh pr ready 9)'"'"'"'
 deny_case  $'ls\nbb pr ready 7'
 deny_case  'echo "unbalanced; bb pr ready 1'
 allow_case 'gh pr ready --undo 3'

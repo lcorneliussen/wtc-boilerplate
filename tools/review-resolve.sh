@@ -62,11 +62,22 @@ gh_reply() { # <comment-id>
     -f body="$(cat "$tmp/reply.md")" -F in_reply_to="$1") >/dev/null
 }
 gh_resolve() { # <comment-id>
-  local owner repo q out tid
+  local owner repo q out tid cursor next
   owner="${SLUG%%/*}"; repo="${SLUG#*/}"
-  q='query($o:String!,$n:String!,$num:Int!){repository(owner:$o,name:$n){pullRequest(number:$num){reviewThreads(first:100){nodes{id isResolved comments(first:50){nodes{databaseId}}}}}}}'
-  out="$(gh api graphql -f query="$q" -f o="$owner" -f n="$repo" -F num="$PR")" || return 1
-  tid="$(printf '%s' "$out" | python3 "$py" gh-thread-id "$1")" || return 1
+  q='query($o:String!,$n:String!,$num:Int!,$cursor:String){repository(owner:$o,name:$n){pullRequest(number:$num){reviewThreads(first:100,after:$cursor){nodes{id isResolved comments(first:50){nodes{databaseId}}} pageInfo{hasNextPage endCursor}}}}}'
+  cursor=""
+  while :; do
+    if [ -n "$cursor" ]; then
+      out="$(gh api graphql -f query="$q" -f o="$owner" -f n="$repo" -F num="$PR" -f cursor="$cursor")" || return 1
+    else
+      out="$(gh api graphql -f query="$q" -f o="$owner" -f n="$repo" -F num="$PR")" || return 1
+    fi
+    tid="$(printf '%s' "$out" | python3 "$py" gh-thread-id "$1")" || tid=""
+    [ -z "$tid" ] || break
+    next="$(printf '%s' "$out" | python3 -c 'import json,sys; p=((((json.load(sys.stdin).get("data") or {}).get("repository") or {}).get("pullRequest") or {}).get("reviewThreads") or {}).get("pageInfo") or {}; print(p.get("endCursor") or "" if p.get("hasNextPage") else "")')" || return 1
+    [ -n "$next" ] && [ "$next" != "$cursor" ] || return 1
+    cursor="$next"
+  done
   [ "$tid" != already ] || return 0
   [ -n "$tid" ] || return 1
   q='mutation($id:ID!){resolveReviewThread(input:{threadId:$id}){thread{isResolved}}}'

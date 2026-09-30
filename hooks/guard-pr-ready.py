@@ -119,7 +119,26 @@ def _newlines_to_semicolons(cmd: str) -> str:
 def _substitutions(cmd: str):
     """Bodies of $(...) and `...` outside single quotes (the shell runs them,
     even inside double quotes)."""
-    no_single = re.sub(r"'[^']*'", "''", cmd)
+    masked, quote, escaped = [], None, False
+    for ch in cmd:
+        if escaped:
+            masked.append(" " if quote == "'" else ch)
+            escaped = False
+            continue
+        if ch == "\\" and quote != "'":
+            escaped = True
+            masked.append(" " if quote == "'" else ch)
+            continue
+        if ch == quote:
+            masked.append(" " if quote == "'" else ch)
+            quote = None
+            continue
+        if quote is None and ch in "'\"":
+            quote = ch
+            masked.append(" " if ch == "'" else ch)
+            continue
+        masked.append(" " if quote == "'" else ch)
+    no_single = "".join(masked)
     for m in re.finditer(r"\$\(([^()]*)\)", no_single):
         yield m.group(1)
     for m in re.finditer(r"`([^`]*)`", no_single):

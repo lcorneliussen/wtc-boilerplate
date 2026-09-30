@@ -89,11 +89,12 @@ if ! status_out="$("$script_dir/review-status.sh" "$repo" "$pr_num" --trusted-lo
 fi
 state="${status_out%% *}"
 verdict="$(printf '%s\n' "$status_out" | awk 'NR==1 { print $2 }')"
+blockers="$(printf '%s\n' "$status_out" | awk 'NR==1 { print $3 }')"
 echo "bb-pr-ready: repo=$repo pr=#$pr_num review=$status_out" >&2
 
 ok=0
 # Positive list: pending / error / changes-requested / anything unknown stays closed.
-if [ "$state" = current ]; then
+if [ "$state" = current ] && [ "$blockers" = 0 ]; then
   case "$verdict" in pass|pass-with-notes) ok=1 ;; esac
 fi
 
