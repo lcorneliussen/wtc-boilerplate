@@ -51,12 +51,18 @@ assert_contains "$(cat "$OPEN_CLI_CALLS")" "$root/main|open --all --list"
 it 'older, mixed, and mismatched pins retain the shell opener'
 : > "$OPEN_CLI_CALLS"
 printf '0.1.20\n' > "$root/other/harness/.wtc-cli-version"
-"$runner" --list other >/dev/null
+older_out="$("$runner" --list other 2>&1)"; older_rc=$?
+assert_eq 0 "$older_rc" 'older target uses a working shell list'
+assert_contains "$older_out" 'no workspace' 'older target reported the shell workspace list'
 assert_empty "$(cat "$OPEN_CLI_CALLS")" 'older target did not dispatch'
-"$runner" --all --list >/dev/null
+mixed_out="$("$runner" --all --list 2>&1)"; mixed_rc=$?
+assert_eq 0 "$mixed_rc" 'mixed sweep uses a working shell list'
+assert_contains "$mixed_out" 'no workspace' 'mixed sweep reported the shell workspace list'
 assert_empty "$(cat "$OPEN_CLI_CALLS")" 'mixed sweep did not dispatch'
 printf '0.1.21\n' > "$root/other/harness/.wtc-cli-version"
-OPEN_CLI_VERSION=0.1.20 "$runner" --list other >/dev/null
+mismatch_out="$(OPEN_CLI_VERSION=0.1.20 "$runner" --list other 2>&1)"; mismatch_rc=$?
+assert_eq 0 "$mismatch_rc" 'mismatched CLI uses a working shell list'
+assert_contains "$mismatch_out" 'no workspace' 'mismatched CLI reported the shell workspace list'
 assert_empty "$(cat "$OPEN_CLI_CALLS")" 'mismatched installed version did not dispatch'
 
 it 'matching standalone CLI wins when mise resolves an older version'
