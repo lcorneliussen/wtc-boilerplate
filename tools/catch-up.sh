@@ -2,6 +2,37 @@
 # catch-up.sh — selected worktrees, with one report anchored to the initiator.
 set -euo pipefail
 
+# Use the pinned native command when this harness has installed its release.
+# The shell implementation remains available during bootstrap and for older pins.
+native_catch_up_supported() { # v0.1.15 first shipped wtc catch-up
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 15))
+  }'
+}
+source_harness="$(cd "$(dirname "$0")/.." && pwd)"
+source_collection="$(dirname "$source_harness")"
+if [ -f "$source_harness/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$source_harness/.wtc-cli-version")"
+  cli_version=""
+  cli_cmd=()
+  if native_catch_up_supported "$cli_pin" && command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$source_collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+  fi
+  if native_catch_up_supported "$cli_pin" && [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$source_collection" && wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(wtc)
+  fi
+  if [ "$cli_version" = "wtc version $cli_pin" ] &&
+      (cd "$source_collection" && "${cli_cmd[@]}" catch-up --help >/dev/null 2>&1); then
+    cd "$source_collection"
+    exec "${cli_cmd[@]}" catch-up "$@"
+  fi
+fi
+
 # A selected initiating harness may replace these files during the sweep.
 # Execute a private copy; target hooks still come from each updated harness.
 rollout_location="$(cd "$(dirname "$0")" && pwd)"
