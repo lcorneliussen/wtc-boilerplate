@@ -40,7 +40,7 @@ wtc_status_native_command() { # harness path; sets WTC_STATUS_NATIVE
 # Forward termination to the native child when a pane is restarted or closed.
 wtc_status_native_tui() {
   local status_child status_rc
-  "${WTC_STATUS_NATIVE[@]}" status "$@" &
+  "${WTC_STATUS_NATIVE[@]}" status "$@" <&0 &
   status_child=$!
   trap 'kill "$status_child" 2>/dev/null || true' TERM INT HUP
   status_rc=0

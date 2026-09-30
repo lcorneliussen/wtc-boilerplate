@@ -17,6 +17,10 @@ case "$*" in
   --version) printf 'wtc version %s\n' "${STATUS_CLI_VERSION:-0.1.16}" ;;
   'status --help') exit 0 ;;
   *) printf '%s|%s\n' "$PWD" "$*" >> "$STATUS_CLI_CALLS"
+     if [ "${STATUS_CLI_READ_KEY:-}" = yes ]; then
+       IFS= read -r key || exit 3
+       printf 'key=%s\n' "$key" >> "$STATUS_CLI_CALLS"
+     fi
      [ "${STATUS_CLI_HOLD:-}" != yes ] || sleep 5 ;;
 esac
 MOCK
@@ -41,6 +45,10 @@ assert_contains "$(cat "$STATUS_CLI_CALLS")" "$root/main|status --procs --json"
 assert_contains "$(cat "$STATUS_CLI_CALLS")" "$root/main|status --json"
 assert_contains "$(cat "$STATUS_CLI_CALLS")" "$root/main|status --tui --no-watch"
 assert_not_contains "$(cat "$STATUS_CLI_CALLS")" '--repos' 'native view keeps the PR section'
+
+it 'the native TUI child receives keyboard input'
+printf 'q\n' | STATUS_CLI_READ_KEY=yes "$tui" --no-fetch >/dev/null
+assert_contains "$(cat "$STATUS_CLI_CALLS")" 'key=q' 'stdin reached native TUI'
 
 it 'native TUI keeps the status script identifiable for pane lifecycle tools'
 STATUS_CLI_HOLD=yes "$tui" --no-fetch >/dev/null 2>&1 &
