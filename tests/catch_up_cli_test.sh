@@ -15,7 +15,7 @@ cat > "$mock/mise" <<'MOCK'
 [ "$1 $2 $3" = 'exec -- wtc' ] || exit 2
 shift 3
 case "$*" in
-  --version) printf 'wtc version %s\n' "${CATCH_CLI_VERSION:-0.1.15}" ;;
+  --version) printf 'wtc version %s\n' "${CATCH_CLI_VERSION:-0.1.16}" ;;
   'catch-up --help') exit 0 ;;
   *) printf '%s|%s\n' "$PWD" "$*" >> "$CATCH_CLI_CALLS" ;;
 esac
@@ -51,7 +51,7 @@ printf '0.1.14\n' > "$root/main/harness/.wtc-cli-version"
 "$runner" --dry-run --harness-only --json --no-skills --no-mcp --no-env --no-secrets > "$root/old.json" 2> "$root/old.err"
 assert_empty "$(cat "$CATCH_CLI_CALLS")" 'older pin did not dispatch'
 assert_contains "$(cat "$root/old.json")" '"dry_run": true' 'shell report returned'
-printf '0.1.15\n' > "$root/main/harness/.wtc-cli-version"
+printf '0.1.16\n' > "$root/main/harness/.wtc-cli-version"
 CATCH_CLI_VERSION=0.1.14 "$runner" --dry-run --harness-only --json --no-skills --no-mcp --no-env --no-secrets > "$root/mismatch.json" 2> "$root/mismatch.err"
 assert_empty "$(cat "$CATCH_CLI_CALLS")" 'mismatched version did not dispatch'
 assert_contains "$(cat "$root/mismatch.json")" '"dry_run": true' 'shell report returned'

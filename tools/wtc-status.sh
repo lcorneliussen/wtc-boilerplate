@@ -21,6 +21,22 @@ while [ $# -gt 0 ]; do
 done
 set -- "${args[@]+"${args[@]}"}"
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source_harness="$(dirname "$script_dir")"
+# --load-only is a private shell worker mode; keep it on the legacy path.
+native_status=yes
+for arg in "$@"; do
+  [ "$arg" != --load-only ] || native_status=no
+done
+if [ "$native_status" = yes ]; then
+  # shellcheck source=wtc-status-native-common.sh
+  . "$script_dir/wtc-status-native-common.sh"
+  if wtc_status_native_command "$source_harness"; then
+    cli_args=("$@")
+    [ "$WTC_STATUS_UI" != tui ] || cli_args=(--tui "${cli_args[@]+"${cli_args[@]}"}")
+    cd "$(dirname "$source_harness")"
+    exec "${WTC_STATUS_NATIVE[@]}" status "${cli_args[@]+"${cli_args[@]}"}"
+  fi
+fi
 # shellcheck source=wtc-status-common.sh
 . "$script_dir/wtc-status-common.sh"
 if [ "$WTC_STATUS_UI" = tui ]; then
