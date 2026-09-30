@@ -24,9 +24,10 @@ reading of the diff does not gate.
 
 1. **Pick the PR(s)** — `tools/wtc-pr.sh list`. One repo the user named, or
    each enlisted PR of the collection (one bundle and run per PR).
-2. **Bundle** — `tools/review-bundle.sh <repo> [<n>]`; the last stdout line is
+2. **Bundle** — `wtc review bundle <repo> [<n>]` (or its
+   `tools/review-bundle.sh` compatibility entry point); the last stdout line is
    the bundle dir. When a PR number is known this **checks out that PR's
-   branch** (if the worktree is on another branch) and **runs `tools/catch-up.sh`
+   branch** (if the worktree is on another branch) and **runs collection catch-up
    first**. `--no-catch-up` skips only the catch-up. PR number defaults to the
    enlisted one. Rounds and prior summaries/comments are picked up
    automatically.

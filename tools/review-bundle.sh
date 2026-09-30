@@ -7,6 +7,65 @@
 # Prints the bundle directory as the LAST line of stdout.
 set -euo pipefail
 
+# Delegate to the exact pinned native bundle when it is installed. Keep this
+# shell path for bootstrap and older collection pins.
+native_review_bundle_supported() { # v0.1.23 includes custom-directory round parity
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 23))
+  }'
+}
+source_harness="$(cd "$(dirname "$0")/.." && pwd)"
+source_collection="$(dirname "$source_harness")"
+if [ -f "$source_harness/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$source_harness/.wtc-cli-version")"
+  if native_review_bundle_supported "$cli_pin"; then
+    cli_cmd=()
+    if command -v mise >/dev/null 2>&1; then
+      cli_version="$(cd "$source_collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$source_collection" && mise exec -- wtc review bundle --help >/dev/null 2>&1); then
+        cli_cmd=(mise exec -- wtc)
+      fi
+    fi
+    if [ "${#cli_cmd[@]}" -eq 0 ] && command -v wtc >/dev/null 2>&1; then
+      cli_version="$(cd "$source_collection" && wtc --version 2>/dev/null)" || cli_version=""
+      if [ "$cli_version" = "wtc version $cli_pin" ] &&
+          (cd "$source_collection" && wtc review bundle --help >/dev/null 2>&1); then
+        cli_cmd=(wtc)
+      fi
+    fi
+    if [ "${#cli_cmd[@]}" -gt 0 ]; then
+      caller_dir="$(pwd -P)"
+      native_args=()
+      while [ "$#" -gt 0 ]; do
+        if [ "$1" = --dir ] && [ "$#" -gt 1 ]; then
+          native_args+=(--dir)
+          case "$2" in
+            /*) native_args+=("$2") ;;
+            *) native_args+=("$caller_dir/$2") ;;
+          esac
+          shift 2
+        elif [[ "$1" == --dir=* ]]; then
+          dir_value="${1#--dir=}"
+          case "$dir_value" in
+            /*) native_args+=("$1") ;;
+            *) native_args+=("--dir=$caller_dir/$dir_value") ;;
+          esac
+          shift
+        else
+          native_args+=("$1")
+          shift
+        fi
+      done
+      cd "$source_collection"
+      exec "${cli_cmd[@]}" review bundle "${native_args[@]}"
+    fi
+  fi
+fi
+
 usage() {
   cat <<'EOF' >&2
 Usage:
