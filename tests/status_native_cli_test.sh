@@ -80,4 +80,10 @@ p=json.load(open(sys.argv[1]))
 assert p['schema']==1 and p['collection']=='main'
 assert any(row['dir']=='harness' for row in p['repos'])
 PY
+  cat > "$root/main/.wtc-status.json" <<'JSON'
+{"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[],"prs":[{"repo":"widget","number":"7","title":"Synthetic PR","display_title":"Synthetic PR"}],"orphans":[]}
+JSON
+  "$tui" --cached > "$root/cached-tui.txt"
+  assert_contains "$(cat "$root/cached-tui.txt")" 'Synthetic PR' \
+    'released TUI shim kept the enlisted PR section'
 fi
