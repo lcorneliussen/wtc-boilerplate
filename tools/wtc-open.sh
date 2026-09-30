@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # wtc-open.sh — open collections as herdr workspaces (terminal ergonomics).
 set -euo pipefail
+original_args=("$@")
 
 usage() {
   cat <<'EOF'
@@ -104,6 +105,62 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 HARNESS_DIR="$(dirname "$script_dir")"
 . "$script_dir/lib.sh"
 harness_lib_init
+
+# A released native opener owns the workspace when every selected collection
+# has that exact pin. Bootstrap and mixed-version collections keep the shell
+# path until they can use one CLI contract together.
+native_open_supported() { # v0.1.21 first shipped wtc open
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 21))
+  }'
+}
+
+open_targets=()
+if [ "$all" = yes ]; then
+  for candidate in "$ROOT"/*/; do
+    [ -d "$candidate/harness" ] || continue
+    open_targets+=("${candidate%/}")
+  done
+elif [ $# -gt 0 ]; then
+  for candidate in "$@"; do open_targets+=("$ROOT/$candidate"); done
+else
+  open_targets+=("$(dirname "$HARNESS_DIR")")
+fi
+native_open=yes native_pin="" native_cwd="" native_cli=()
+for candidate in "${open_targets[@]}"; do
+  pin_file="$candidate/harness/.wtc-cli-version"
+  if [ ! -f "$pin_file" ]; then native_open=no; break; fi
+  pin="$(tr -d '[:space:]' < "$pin_file")"
+  if ! native_open_supported "$pin" || { [ -n "$native_pin" ] && [ "$pin" != "$native_pin" ]; }; then
+    native_open=no; break
+  fi
+  cli_cmd=()
+  if command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$candidate" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    if [ "$cli_version" = "wtc version $pin" ] &&
+        (cd "$candidate" && mise exec -- wtc open --help >/dev/null 2>&1); then
+      cli_cmd=(mise exec -- wtc)
+    fi
+  fi
+  if [ "${#cli_cmd[@]}" -eq 0 ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$candidate" && wtc --version 2>/dev/null)" || cli_version=""
+    if [ "$cli_version" = "wtc version $pin" ] &&
+        (cd "$candidate" && wtc open --help >/dev/null 2>&1); then
+      cli_cmd=(wtc)
+    fi
+  fi
+  if [ "${#cli_cmd[@]}" -eq 0 ]; then
+    native_open=no; break
+  fi
+  [ -n "$native_pin" ] || { native_pin="$pin"; native_cwd="$candidate"; native_cli=("${cli_cmd[@]}"); }
+done
+if [ "$native_open" = yes ] && [ -n "$native_pin" ]; then
+  cd "$native_cwd"
+  exec "${native_cli[@]}" open "${original_args[@]+"${original_args[@]}"}"
+fi
 
 herdr_present || { echo "error: herdr is not installed (see instructions/herdr.md)" >&2; exit 1; }
 [ -n "$session" ] || session="$(herdr_session_name)"
