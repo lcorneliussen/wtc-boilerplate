@@ -32,12 +32,24 @@ assert_contains "$(cat "$REVIEW_READY_CLI_CALLS")" \
 
 it 'older and mismatched pins retain the shell gate'
 : > "$REVIEW_READY_CLI_CALLS"
+cat > "$mock/wtc" <<'OLD_WTC'
+#!/usr/bin/env bash
+if [ "$1" = --version ]; then printf 'wtc version 0.1.23\n'; else exit 2; fi
+OLD_WTC
+cat > "$mock/gh" <<'FALLBACK_GH'
+#!/usr/bin/env bash
+case "$*" in
+  'pr ready 7 --repo example/widget') exit 0 ;;
+  *) exit 2 ;;
+esac
+FALLBACK_GH
+chmod +x "$mock/wtc" "$mock/gh"
 printf '0.1.23\n' > "$root/main/harness/.wtc-cli-version"
-assert_contains "$(cd "$root/main/widget" && "$runner" --help 2>&1)" 'Usage' \
-  'older pin uses shell help'
+assert_contains "$(cd "$root/main/widget" && "$runner" 7 --user-authorized 'Synthetic authorization' 2>&1)" \
+  'gate overridden' 'older pin uses shell gate'
 printf '0.1.24\n' > "$root/main/harness/.wtc-cli-version"
-assert_contains "$(cd "$root/main/widget" && REVIEW_READY_CLI_VERSION=0.1.23 "$runner" --help 2>&1)" 'Usage' \
-  'mismatched pin uses shell help'
+assert_contains "$(cd "$root/main/widget" && REVIEW_READY_CLI_VERSION=0.1.23 "$runner" 7 --user-authorized 'Synthetic authorization' 2>&1)" \
+  'gate overridden' 'mismatched pin uses shell gate'
 assert_empty "$(cat "$REVIEW_READY_CLI_CALLS")" 'fallback did not dispatch'
 
 if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
