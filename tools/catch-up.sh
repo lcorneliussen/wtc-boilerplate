@@ -31,7 +31,10 @@ if [ -f "$source_harness/.wtc-cli-version" ]; then
     caller_dir="$(pwd -P)"
     cli_args=()
     while [ "$#" -gt 0 ]; do
-      if [ "$1" = --report ] && [ "$#" -gt 1 ]; then
+      if [ "$1" = --report ]; then
+        case "${2:-}" in
+          ''|-*) echo '--report requires a value' >&2; exit 2 ;;
+        esac
         cli_args+=(--report)
         case "$2" in
           /*) cli_args+=("$2") ;;
