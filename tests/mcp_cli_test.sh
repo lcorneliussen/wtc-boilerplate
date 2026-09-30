@@ -76,7 +76,8 @@ if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
   it 'released binary renders registry and runs the native hook'
   real_root="$(make_workspace)"
   TEST_TMPDIRS="$TEST_TMPDIRS $real_root"
-  printf '0.1.14\n' > "$real_root/main/harness/.wtc-cli-version"
+  release_version="$("$WTC_TEST_RELEASE_BINARY" --version | awk '{print $3}')"
+  printf '%s\n' "$release_version" > "$real_root/main/harness/.wtc-cli-version"
   cat > "$real_root/main/harness/.mcp-servers.yml" <<'YML'
 schema_version: 1
 servers:
