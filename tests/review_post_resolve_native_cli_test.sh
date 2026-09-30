@@ -38,21 +38,19 @@ assert_contains "$(cat "$REVIEW_WRITE_CLI_CALLS")" \
 it 'older and mismatched pins keep shell posting and resolution'
 : > "$REVIEW_WRITE_CLI_CALLS"
 printf '0.1.23\n' > "$root/main/harness/.wtc-cli-version"
-"$poster" --help >/dev/null 2>&1
-assert_eq 0 "$?" 'older pin post help'
-"$resolver" --help >/dev/null 2>&1
-assert_eq 0 "$?" 'older pin resolve help'
+assert_contains "$("$poster" --help 2>&1)" 'Usage:' 'older pin uses shell post help'
+assert_contains "$("$resolver" --help 2>&1)" 'Usage:' 'older pin uses shell resolve help'
 assert_empty "$(cat "$REVIEW_WRITE_CLI_CALLS")" 'older pin did not dispatch'
 printf '0.1.24\n' > "$root/main/harness/.wtc-cli-version"
-REVIEW_WRITE_CLI_VERSION=0.1.23 "$poster" --help >/dev/null 2>&1
-assert_eq 0 "$?" 'mismatched pin post help'
-REVIEW_WRITE_CLI_VERSION=0.1.23 "$resolver" --help >/dev/null 2>&1
-assert_eq 0 "$?" 'mismatched pin resolve help'
+assert_contains "$(REVIEW_WRITE_CLI_VERSION=0.1.23 "$poster" --help 2>&1)" 'Usage:' \
+  'mismatched pin uses shell post help'
+assert_contains "$(REVIEW_WRITE_CLI_VERSION=0.1.23 "$resolver" --help 2>&1)" 'Usage:' \
+  'mismatched pin uses shell resolve help'
 assert_empty "$(cat "$REVIEW_WRITE_CLI_CALLS")" 'mismatched CLI did not dispatch'
-WTC_REVIEW_NO_API=1 "$poster" --help >/dev/null 2>&1
-assert_eq 0 "$?" 'explicit API fallback keeps shell post'
-WTC_REVIEW_NO_API=1 "$resolver" --help >/dev/null 2>&1
-assert_eq 0 "$?" 'explicit API fallback keeps shell resolve'
+assert_contains "$(WTC_REVIEW_NO_API=1 "$poster" --help 2>&1)" 'Usage:' \
+  'explicit API fallback keeps shell post'
+assert_contains "$(WTC_REVIEW_NO_API=1 "$resolver" --help 2>&1)" 'Usage:' \
+  'explicit API fallback keeps shell resolve'
 assert_empty "$(cat "$REVIEW_WRITE_CLI_CALLS")" 'explicit API fallback did not dispatch'
 
 if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
