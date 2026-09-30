@@ -25,6 +25,7 @@ if [ "$native_status" = yes ]; then
   . "$script_dir/wtc-status-native-common.sh"
   if wtc_status_native_command "$source_harness"; then
     [ "$mode" != procs ] || cli_args=(--procs "${cli_args[@]+"${cli_args[@]}"}")
+    export WTC_STATUS_REPOS=no
     cd "$(dirname "$source_harness")"
     wtc_status_native_tui --tui "${cli_args[@]+"${cli_args[@]}"}"
     exit $?

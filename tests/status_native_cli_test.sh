@@ -83,7 +83,10 @@ PY
   cat > "$root/main/.wtc-status.json" <<'JSON'
 {"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[],"prs":[{"repo":"widget","number":"7","title":"Synthetic PR","display_title":"Synthetic PR"}],"orphans":[]}
 JSON
-  "$tui" --cached > "$root/cached-tui.txt"
+  WTC_STATUS_REPOS=yes "$tui" --cached > "$root/cached-tui.txt"
   assert_contains "$(cat "$root/cached-tui.txt")" 'Synthetic PR' \
-    'released TUI shim kept the enlisted PR section'
+    'released TUI shim kept the enlisted PR section despite repos default'
+  WTC_STATUS_REPOS=yes "$status" --cached > "$root/cached-status.txt"
+  assert_contains "$(cat "$root/cached-status.txt")" 'Synthetic PR' \
+    'released one-shot shim kept the enlisted PR section despite repos default'
 fi

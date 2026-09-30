@@ -43,6 +43,8 @@ if [ "$native_status" = yes ]; then
       esac
     done
     [ "$status_mode" != procs ] || cli_args=(--procs "${cli_args[@]+"${cli_args[@]}"}")
+    # The shell selector retains PR rows, including when configured in wtc.env.
+    export WTC_STATUS_REPOS=no
     cd "$(dirname "$source_harness")"
     if [ "$WTC_STATUS_UI" = tui ]; then
       wtc_status_native_tui --tui "${cli_args[@]+"${cli_args[@]}"}"
