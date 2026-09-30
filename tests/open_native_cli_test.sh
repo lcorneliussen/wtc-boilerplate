@@ -54,10 +54,14 @@ printf '0.1.21\n' > "$root/other/harness/.wtc-cli-version"
 OPEN_CLI_VERSION=0.1.20 "$runner" --list other >/dev/null
 assert_empty "$(cat "$OPEN_CLI_CALLS")" 'mismatched installed version did not dispatch'
 rm "$root/main/harness/.wtc-cli-version"
-"$runner" --list >/dev/null
+missing_out="$("$runner" --list 2>&1)"; missing_rc=$?
+assert_eq 0 "$missing_rc" 'missing pin uses a working shell list'
+assert_contains "$missing_out" 'no workspace' 'missing pin reported the shell workspace list'
 assert_empty "$(cat "$OPEN_CLI_CALLS")" 'missing pin did not dispatch'
 printf '0.1.21\n' > "$root/main/harness/.wtc-cli-version"
-OPEN_CLI_MISE_UNAVAILABLE=1 "$runner" --list >/dev/null
+unavailable_out="$(OPEN_CLI_MISE_UNAVAILABLE=1 "$runner" --list 2>&1)"; unavailable_rc=$?
+assert_eq 0 "$unavailable_rc" 'unavailable binary uses a working shell list'
+assert_contains "$unavailable_out" 'no workspace' 'unavailable binary reported the shell workspace list'
 assert_empty "$(cat "$OPEN_CLI_CALLS")" 'unavailable binary did not dispatch'
 
 if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
