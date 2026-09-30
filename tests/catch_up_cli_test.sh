@@ -38,6 +38,7 @@ assert_contains "$(cat "$CATCH_CLI_CALLS")" \
 assert_contains "$(cat "$CATCH_CLI_CALLS")" \
   "$root/main|catch-up --dry-run --report=$root/reports/equals.json" \
   'equals-form report path kept the caller directory'
+assert_status 2 "$runner" --report=
 
 it 'older pin and mismatched installed version use shell catch-up'
 : > "$CATCH_CLI_CALLS"

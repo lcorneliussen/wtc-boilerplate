@@ -40,6 +40,7 @@ if [ -f "$source_harness/.wtc-cli-version" ]; then
         shift 2
       else
         case "$1" in
+          --report=) echo '--report requires a value' >&2; exit 2 ;;
           --report=/*) cli_args+=("$1") ;;
           --report=*) cli_args+=("--report=$caller_dir/${1#--report=}") ;;
           *) cli_args+=("$1") ;;
