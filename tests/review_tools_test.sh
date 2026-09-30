@@ -717,6 +717,7 @@ allow_case 'git commit -m "note: bb pr ready is gated"'
 allow_case "git commit -m 'run bb pr ready later'"
 allow_case 'echo "bb pr ready"; ls'
 allow_case 'echo "$(printf '\''$(gh pr ready 9)'\'')"'
+allow_case 'echo "$(printf '\''"$(gh pr ready 9)"'\'')"'
 allow_case 'grep -rn "gh pr ready" hooks/'
 allow_case $'git commit -m "$(cat <<\'EOF\'\nbb pr ready is blocked\nEOF\n)"'
 allow_case 'bash -c "echo hello"'

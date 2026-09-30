@@ -117,8 +117,7 @@ def _newlines_to_semicolons(cmd: str) -> str:
 
 
 def _substitutions(cmd: str):
-    """Bodies of $(...) and `...` outside single quotes (the shell runs them,
-    even inside double quotes)."""
+    """Executable substitution bodies and spans, including double quotes."""
     def closing_paren(start: int):
         depth, quote, i = 1, None, start
         while i < len(cmd):
@@ -156,7 +155,7 @@ def _substitutions(cmd: str):
         if ch == "$" and cmd[i:i + 2] == "$(":
             end = closing_paren(i + 2)
             if end is not None:
-                yield cmd[i + 2:end]
+                yield cmd[i + 2:end], i, end + 1
                 i = end + 1
                 continue
         if ch == "`":
@@ -164,7 +163,7 @@ def _substitutions(cmd: str):
             while end < len(cmd) and cmd[end] != "`":
                 end += 2 if cmd[end] == "\\" else 1
             if end < len(cmd):
-                yield cmd[i + 1:end]
+                yield cmd[i + 1:end], i, end + 1
                 i = end + 1
                 continue
         if ch == quote:
@@ -194,11 +193,18 @@ def _find_raw_ready(cmd: str, depth: int = 0):
     if depth > _MAX_DEPTH:
         return None
     cmd = _strip_heredocs(cmd)
-    for inner in _substitutions(cmd):
+    substitutions = list(_substitutions(cmd))
+    for inner, _, _ in substitutions:
         hit = _find_raw_ready(inner, depth + 1)
         if hit:
             return hit
-    for words in _simple_commands(cmd):
+    # The substitution bodies were checked with their own quote state above.
+    # Mask them before shlex parses the containing command: punctuation inside
+    # a quoted substitution is not a top-level command separator.
+    masked = list(cmd)
+    for _, start, end in substitutions:
+        masked[start:end] = " " * (end - start)
+    for words in _simple_commands("".join(masked)):
         i = 0
         while i < len(words):
             w = words[i]
