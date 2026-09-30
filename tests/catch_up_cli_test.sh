@@ -34,6 +34,10 @@ mkdir -p "$root/reports"
 assert_contains "$(cat "$CATCH_CLI_CALLS")" \
   "$root/main|catch-up --dry-run --report $root/reports/result.json" \
   'native command received caller-relative report as an absolute path'
+(cd "$root" && "$runner" --dry-run --report=reports/equals.json >/dev/null)
+assert_contains "$(cat "$CATCH_CLI_CALLS")" \
+  "$root/main|catch-up --dry-run --report=$root/reports/equals.json" \
+  'equals-form report path kept the caller directory'
 
 it 'older pin and mismatched installed version use shell catch-up'
 : > "$CATCH_CLI_CALLS"
@@ -49,21 +53,35 @@ assert_contains "$(cat "$root/mismatch.json")" '"dry_run": true' 'shell report r
 if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
   it 'released CLI plans catch-up through the shim without changing the fixture'
   export CATCH_TEST_REAL_CLI="$WTC_TEST_RELEASE_BINARY"
+  export CATCH_TEST_NATIVE_CALLS="$root/native-calls"
+  cat > "$mock/wtc-real" <<'REAL_WRAPPER'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CATCH_TEST_NATIVE_CALLS"
+exec "$CATCH_TEST_REAL_CLI" "$@"
+REAL_WRAPPER
+  chmod +x "$mock/wtc-real"
+  export CATCH_TEST_REAL_WRAPPER="$mock/wtc-real"
   cat > "$mock/mise" <<'REAL_MISE'
 #!/usr/bin/env bash
 [ "$1 $2 $3" = 'exec -- wtc' ] || exit 2
 shift 3
-exec "$CATCH_TEST_REAL_CLI" "$@"
+exec "$CATCH_TEST_REAL_WRAPPER" "$@"
 REAL_MISE
   chmod +x "$mock/mise"
   before="$(git -C "$root/main/harness" rev-parse HEAD)"
   "$runner" --dry-run --harness-only --json --no-skills --no-mcp --no-env --no-secrets > "$root/native.json" 2> "$root/native.err"
   native_rc=$?
   assert_eq 0 "$native_rc" "released binary dry-run succeeded: $(cat "$root/native.err")"
+  assert_contains "$(cat "$CATCH_TEST_NATIVE_CALLS")" \
+    'catch-up --dry-run --harness-only --json --no-skills --no-mcp --no-env --no-secrets' \
+    'released binary received the catch-up operation'
   assert_ok python3 - "$root/native.json" <<'PY'
 import json,sys
 p=json.load(open(sys.argv[1]))
 assert p['dry_run'] and any(r['kind']=='repo' for r in p['outcomes'])
 PY
+  (cd "$root" && "$runner" --dry-run --harness-only --report=reports/real.json \
+    --no-skills --no-mcp --no-env --no-secrets >/dev/null 2> "$root/report.err")
+  assert_file "$root/reports/real.json" 'released binary wrote the caller-relative report'
   assert_eq "$before" "$(git -C "$root/main/harness" rev-parse HEAD)" 'dry-run did not move worktree'
 fi

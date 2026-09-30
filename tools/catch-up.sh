@@ -39,7 +39,11 @@ if [ -f "$source_harness/.wtc-cli-version" ]; then
         esac
         shift 2
       else
-        cli_args+=("$1")
+        case "$1" in
+          --report=/*) cli_args+=("$1") ;;
+          --report=*) cli_args+=("--report=$caller_dir/${1#--report=}") ;;
+          *) cli_args+=("$1") ;;
+        esac
         shift
       fi
     done
