@@ -237,7 +237,7 @@ for url in (b'https://github.com/example/widget',
             b'https://github.com/example/widget/actions/runs/42',
             b'https://github.com/example/widget/actions/runs/41',
             b'https://github.com/example/widget/pull/7'):
-    assert b'\x1b]8;;' + url in output, f'missing terminal link: {url!r}'
+    assert b'\x1b]8;;' + url + b'\x07' in output, f'missing terminal link: {url!r}'
 assert b'0s  Reading worktrees 1/1' in output, 'refresh log did not show the completed worktree count'
 assert b'Writing status snapshot' in output, 'refresh did not report snapshot publication'
 assert all(b'4' not in sgr.split(b';') for sgr in re.findall(rb'\x1b\[([0-9;]+)m', output)), 'permanent underline appeared'
