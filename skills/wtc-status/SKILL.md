@@ -47,14 +47,17 @@ PR section and does not run other collections' build hooks. The CLI's `--repos`
 flag hides the enlisted PR section when a compact table is needed; the
 compatibility scripts keep their older selector behavior. The interactive
 view shows repositories and PRs by default; `--procs` selects the process view.
-It starts with the last snapshot while a fresh one loads, showing the current
-collector step. Click “refreshing” or press `l` to open the refresh log; it
-includes failed ref fetches and the local-ref fallback. `r` refreshes,
-`?` shows help, `a` toggles archived PRs, and `q` quits. It refreshes less
+It starts with the last snapshot while a fresh one loads. Refresh progress
+stays on one line so the table does not move; the count remains visible in a
+narrow pane. Click “refreshing” or press `l` to open the refresh log; repeated
+counts update one entry per stage. The log includes failed ref fetches and the
+local-ref fallback. `r` refreshes, `?` shows help, `a` toggles archived PRs,
+and `q` quits. It refreshes less
 often when unfocused. Captured output prints one pass and exits, so use a
 one-shot command to answer a question rather than leaving a watch loop open.
-Colored, underlined PR numbers and build references are terminal hyperlinks.
-Use the terminal's modifier-click gesture when mouse reporting is active;
+Colored repository names, branches, PR numbers, and build references are
+terminal hyperlinks without a permanent underline. Use the terminal's
+modifier-click gesture when mouse reporting is active;
 ordinary clicks open those targets unless `--no-click` is set. `NO_COLOR`
 suppresses styling while retaining the links.
 `WTC_STATUS_WATCH`, `WTC_STATUS_WATCH_BG`, and `WTC_STATUS_NO_CLICK` can be set
@@ -64,21 +67,25 @@ in `$WTC_CONFIG_ROOT/wtc.env`.
 
 - `⌂ main` is a worktree detached at its development tip, the normal resting
   state. A named branch has work in flight or needs catch-up after its PR lands.
-- `±N` means changed files, `↑N` means local commits ahead, and `↓N` means the
-  worktree is behind its development tip. The footer counts stale worktrees.
+- The repository table shows `±` worktree changes, `↑` ahead, `↓` behind, and
+  separate TEST and PROD build columns, even when no build has been reported.
+  The footer counts stale worktrees.
 - The PR cell combines its number with checks, merge and review facts. `✓`
   means passing or approved; `✗` means failing; `●` means pending; `↓` means
   behind the base; `⚠` means conflicts; `⊘` means blocked; `…` means waiting
   for reviewers; `∅` means no reviewers. Inspect the PR itself before taking
   a merge or review action.
-- The PR section lists `.wtc-prs` enlistments, including merged work that may
-  still need main checks or delivery. A merged PR on its old branch calls for
-  catch-up. Older merged entries can be hidden behind the `a` toggle. The
-  refresh log distinguishes recorded merges from live PR checks.
-- Optional `T` and `P` cells show tip and production builds supplied by an
-  executable `harness/hooks/wtc/status.build.sh`. Their HTTP(S) URLs are
-  terminal links; they are also ordinary mouse targets unless `--no-click` is
-  set. The `wtc customize` guide documents the read-only JSON hook contract.
+- The PR section lists `.wtc-prs` enlistments in a table, with active rows
+  before muted merged rows. `C`, `M`, and `R` mean checks, mergeability, and
+  reviews. A merged PR on its old branch calls for catch-up.
+  An `unknown` state means the forge lookup was unavailable; it does not prove
+  the PR is open. Older merged entries can be hidden behind the `a` toggle.
+  The refresh log distinguishes recorded merges from live PR checks.
+- TEST and PROD cells show builds supplied by an executable
+  `harness/hooks/wtc/status.build.sh`. Their HTTP(S) URLs are
+  direct terminal links, and the hook can supply build numbers for GitHub or
+  Bitbucket. They are also ordinary mouse targets unless `--no-click` is set.
+  The `wtc customize` guide documents the read-only JSON hook contract.
 
 ## Answer the actual question
 
