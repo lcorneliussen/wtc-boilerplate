@@ -53,6 +53,7 @@ if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
   TEST_TMPDIRS="$TEST_TMPDIRS $root_real"
   mkdir -p "$root_real/finished"
   add_fixture_worktree "$root_real" agent-harness "$root_real/finished/harness"
+  printf 'generated\n' > "$root_real/finished/.wtc-prs.lock"
   head_before="$(git --git-dir="$root_real/.bare/agent-harness.git" rev-parse refs/remotes/origin/main)"
   export RETIRE_TEST_NATIVE_MARKER="$root_real/native-retire-ran"
   mkdir -p "$root_real/main/harness/hooks/wtc"
@@ -77,6 +78,7 @@ REAL_MISE
   retire_rc=$?
   assert_eq 0 "$retire_rc" "released native retirement succeeded: $retire_out"
   assert_file "$RETIRE_TEST_NATIVE_MARKER" 'matching release used native retirement'
+  assert_no_file "$root_real/finished/.wtc-prs.lock" 'native retirement removed the PR registry lock'
   assert_no_file "$root_real/finished" 'native command removed the collection'
   assert_eq "$head_before" "$(git --git-dir="$root_real/.bare/agent-harness.git" rev-parse refs/remotes/origin/main)" 'remote ref remains'
 fi
