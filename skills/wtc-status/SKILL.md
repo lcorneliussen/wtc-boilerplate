@@ -26,8 +26,11 @@ Forge failures remain unknown; an empty or cached check is not proof of a
 current passing build.
 An interactive one-shot run logs elapsed-time collector steps on stderr.
 `--silent` suppresses them; JSON, Markdown, and captured output remain clean.
-Active PR details use a 90-second forge cache, while merged PR details can be
-reused for 24 hours. `WTC_FORGE_CACHE_AGE` overrides both ages.
+Active PR details use a 90-second forge cache. Once a merge has a real merge
+time and settled checks, status records those facts in `.wtc-prs`; later
+refreshes do not query that PR again. Merges with unsettled checks or no
+merge time continue refreshing after the live cache expires.
+`WTC_FORGE_CACHE_AGE` overrides the transient forge cache ages.
 
 ## Scope and live views
 
@@ -50,6 +53,10 @@ includes failed ref fetches and the local-ref fallback. `r` refreshes,
 `?` shows help, `a` toggles archived PRs, and `q` quits. It refreshes less
 often when unfocused. Captured output prints one pass and exits, so use a
 one-shot command to answer a question rather than leaving a watch loop open.
+Colored, underlined PR numbers and build references are terminal hyperlinks.
+Use the terminal's modifier-click gesture when mouse reporting is active;
+ordinary clicks open those targets unless `--no-click` is set. `NO_COLOR`
+suppresses styling while retaining the links.
 `WTC_STATUS_WATCH`, `WTC_STATUS_WATCH_BG`, and `WTC_STATUS_NO_CLICK` can be set
 in `$WTC_CONFIG_ROOT/wtc.env`.
 
@@ -66,11 +73,12 @@ in `$WTC_CONFIG_ROOT/wtc.env`.
   a merge or review action.
 - The PR section lists `.wtc-prs` enlistments, including merged work that may
   still need main checks or delivery. A merged PR on its old branch calls for
-  catch-up. Older merged entries can be hidden behind the `a` toggle.
+  catch-up. Older merged entries can be hidden behind the `a` toggle. The
+  refresh log distinguishes recorded merges from live PR checks.
 - Optional `T` and `P` cells show tip and production builds supplied by an
-  executable `harness/hooks/wtc/status.build.sh`. Their HTTP(S) URLs are mouse
-  targets unless `--no-click` is set. The `wtc customize` guide documents the
-  read-only JSON hook contract.
+  executable `harness/hooks/wtc/status.build.sh`. Their HTTP(S) URLs are
+  terminal links; they are also ordinary mouse targets unless `--no-click` is
+  set. The `wtc customize` guide documents the read-only JSON hook contract.
 
 ## Answer the actual question
 
