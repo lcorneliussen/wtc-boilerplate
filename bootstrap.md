@@ -53,9 +53,9 @@ whichever product repos you will add).
 
 | Tool | Used by |
 |---|---|
-| **lazygit** | `wtc-status` TREE click when nvim is not up |
+| **lazygit** | Optional terminal Git status and diff view |
 | **gh-dash** (`gh extension install dlvhdr/gh-dash`) | `pr` herdr tab next to browse |
-| **octo.nvim** | Status PR-click opens the PR inside nvim |
+| **octo.nvim** | PR editing inside browse nvim |
 | **unified.nvim** | Inline (Zed-style) overlay when browse opens a real file |
 | **diffview.nvim** | Side-by-side from browse (`<leader>gD`) |
 | **Nerd Font** | Icons in the browse tree |

@@ -12,7 +12,7 @@ fi
 
 cli="$WTC_TEST_RELEASE_BINARY"
 it 'published CLI has the release version'
-assert_eq 'wtc version 0.1.25' "$("$cli" --version)"
+assert_eq "wtc version $(cat "$HARNESS_SRC/.wtc-cli-version")" "$("$cli" --version)"
 
 collection="$(mktemp -d "${TMPDIR:-/tmp}/wtc-test-skill-overlay.XXXXXX")"
 TEST_TMPDIRS="$TEST_TMPDIRS $collection"

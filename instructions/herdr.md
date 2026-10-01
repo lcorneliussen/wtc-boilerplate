@@ -145,23 +145,12 @@ Where it opens:
 
 The browse nvim listens on
 `/tmp/wtc-browse-<workspace-basename>-<collection>.nvim`. Long names are
-shortened and checksummed to fit the platform socket-path limit. Status-pane
-clicks talk to it:
-
-| Click | Does |
-|---|---|
-| `REPO` | switch to that sibling's vim tab |
-| `TREE` | that tab, neo-tree git status (lazygit tab if nvim is down) |
-| `PR` | `:Octo pr edit` in that tab, else the PR in the browser |
+shortened and checksummed to fit the platform socket-path limit.
 
 ```bash
 tools/wtc-browse.sh              # this collection
 tools/wtc-browse.sh --here       # this terminal, even from an agent pane
 ```
-
-A status pane opened before clicking existed keeps running the old command
-(nothing here restarts a live pane). Re-run the command in that pane when you
-want it, or open a new wtc.
 
 For an interactive look at what the agents are actually running, bind a
 process monitor to a popup — full screen, closes on exit, layout untouched:

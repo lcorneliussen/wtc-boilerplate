@@ -35,8 +35,7 @@ Do not pass `--here` from an agent pane unless the user asked to take it over.
 
 nvim uses the alternate screen. Do not `herdr pane read` it to answer a
 question, and do not scrape the TUI. The human reads it; you keep working
-in your own pane. Status-pane clicks talk to this nvim over its listen
-socket. gt / gT (or the tabline) switches siblings.
+in your own pane. gt / gT (or the tabline) switches siblings.
 
 ---
 Canon: `harness/instructions/herdr.md`.

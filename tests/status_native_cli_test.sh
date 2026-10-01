@@ -97,13 +97,50 @@ p=json.load(open(sys.argv[1]))
 assert p['schema']==1 and p['collection']=='main'
 assert any(row['dir']=='harness' for row in p['repos'])
 PY
-  it 'published status supports quiet machine output'
+  it 'published status keeps JSON output clean'
   "$status" --local --silent --json > "$root/silent-native.json" 2> "$root/silent-native.err"
   assert_empty "$(cat "$root/silent-native.err")" 'released status wrote diagnostics in silent JSON mode'
   assert_contains "$("$WTC_TEST_RELEASE_BINARY" status --help)" '--silent' 'released status lacks --silent'
   assert_ok python3 - "$root/silent-native.json" <<'PY'
 import json,sys
 assert json.load(open(sys.argv[1]))['schema'] == 1
+PY
+  it 'published status logs interactive progress unless silent'
+  assert_ok python3 - "$status" <<'PY'
+import errno, os, pty, select, subprocess, sys, time
+
+def run(*flags):
+    master, slave = pty.openpty()
+    proc = subprocess.Popen([sys.argv[1], '--local', *flags],
+                            stdin=subprocess.DEVNULL, stdout=slave, stderr=slave)
+    os.close(slave)
+    chunks = []
+    deadline = time.monotonic() + 30
+    try:
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([master], [], [], remaining)[0]:
+                proc.kill()
+                proc.wait()
+                raise AssertionError('released status timed out')
+            try:
+                chunk = os.read(master, 65536)
+            except OSError as exc:
+                if exc.errno == errno.EIO:
+                    break
+                raise
+            if not chunk:
+                break
+            chunks.append(chunk)
+    finally:
+        os.close(master)
+    assert proc.wait(timeout=5) == 0
+    return b''.join(chunks)
+
+normal = run()
+silent = run('--silent')
+assert b'Reading worktrees' in normal, normal.decode(errors='replace')
+assert b'Reading worktrees' not in silent, silent.decode(errors='replace')
 PY
   cat > "$root/main/.wtc-status.json" <<'JSON'
 {"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[],"prs":[{"repo":"widget","number":"7","title":"Synthetic PR","display_title":"Synthetic PR"}],"orphans":[]}
