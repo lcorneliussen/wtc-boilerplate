@@ -111,16 +111,18 @@ wtc status --procs
 wtc status --all                   # all collections, explicitly
 ```
 
-The TUI starts with the last snapshot and shows the collector step while a
-new one loads. Click “refreshing” or press `l` for the refresh log, which
-includes failed ref fetches. `r` refreshes, `a` toggles archived PRs, `?`
-shows help, and `q` quits. A one-shot `wtc status` logs elapsed steps in an
+The TUI starts with the last snapshot and shows refresh progress on one line
+so the table does not move. The count remains visible in narrow panes. Click
+“refreshing” or press `l` for the refresh log, which updates repeated counts
+in place and includes failed ref fetches. `r` refreshes, `a` toggles archived
+PRs, `?` shows help, and `q` quits. A one-shot `wtc status` logs elapsed steps in an
 interactive terminal; `--silent` suppresses them. Active PR details use a
 90-second forge cache. Once merge time and checks are final, status records
 them in `.wtc-prs` and skips later forge checks for that PR.
 
-Underlined PR numbers and `T`/`P` build references are terminal hyperlinks;
-use the terminal's modifier-click gesture while mouse reporting is active.
+Repository names, branches, PR numbers, and TEST/PROD build references are
+colored terminal hyperlinks without a permanent underline. Use the terminal's
+modifier-click gesture while mouse reporting is active.
 Ordinary clicks also open their URLs. `--no-click` disables ordinary URL clicks,
 and `NO_COLOR` removes styling while preserving links. The pane captures the
 mouse while a clickable target is visible or a refresh is running.
