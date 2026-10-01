@@ -16,6 +16,7 @@ wtc status --json                  # canonical snapshot JSON
 wtc status --md                    # agent Markdown
 wtc status --cached                # last snapshot; no Git or forge calls
 wtc status --no-fetch              # use current local refs
+wtc status --silent                # suppress interactive progress messages
 ```
 
 Scoped runs write `.wtc-status.json`, `.wtc-status.md`, and the shell-compatible
@@ -23,6 +24,10 @@ Scoped runs write `.wtc-status.json`, `.wtc-status.md`, and the shell-compatible
 falls back to a plain listing from the YAML cache when the JSON cache is absent.
 Forge failures remain unknown; an empty or cached check is not proof of a
 current passing build.
+An interactive one-shot run logs elapsed-time collector steps on stderr.
+`--silent` suppresses them; JSON, Markdown, and captured output remain clean.
+Active PR details use a 90-second forge cache, while merged PR details can be
+reused for 24 hours. `WTC_FORGE_CACHE_AGE` overrides both ages.
 
 ## Scope and live views
 
@@ -39,7 +44,9 @@ PR section and does not run other collections' build hooks. The CLI's `--repos`
 flag hides the enlisted PR section when a compact table is needed; the
 compatibility scripts keep their older selector behavior. The interactive
 view shows repositories and PRs by default; `--procs` selects the process view.
-It starts with the last snapshot while a fresh one loads. `r` refreshes,
+It starts with the last snapshot while a fresh one loads, showing the current
+collector step. Click “refreshing” or press `l` to open the refresh log; it
+includes failed ref fetches and the local-ref fallback. `r` refreshes,
 `?` shows help, `a` toggles archived PRs, and `q` quits. It refreshes less
 often when unfocused. Captured output prints one pass and exits, so use a
 one-shot command to answer a question rather than leaving a watch loop open.

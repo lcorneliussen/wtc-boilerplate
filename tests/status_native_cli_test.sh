@@ -97,6 +97,14 @@ p=json.load(open(sys.argv[1]))
 assert p['schema']==1 and p['collection']=='main'
 assert any(row['dir']=='harness' for row in p['repos'])
 PY
+  it 'published status supports quiet machine output'
+  "$status" --local --silent --json > "$root/silent-native.json" 2> "$root/silent-native.err"
+  assert_empty "$(cat "$root/silent-native.err")" 'released status wrote diagnostics in silent JSON mode'
+  assert_contains "$("$WTC_TEST_RELEASE_BINARY" status --help)" '--silent' 'released status lacks --silent'
+  assert_ok python3 - "$root/silent-native.json" <<'PY'
+import json,sys
+assert json.load(open(sys.argv[1]))['schema'] == 1
+PY
   cat > "$root/main/.wtc-status.json" <<'JSON'
 {"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[],"prs":[{"repo":"widget","number":"7","title":"Synthetic PR","display_title":"Synthetic PR"}],"orphans":[]}
 JSON
