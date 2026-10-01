@@ -143,7 +143,7 @@ assert b'Reading worktrees' in normal, normal.decode(errors='replace')
 assert b'Reading worktrees' not in silent, silent.decode(errors='replace')
 PY
   cat > "$root/main/.wtc-status.json" <<'JSON'
-{"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[{"dir":"widget","repo":"widget","branch_display":"main","tree":"clean","ahead":2,"behind":3}],"prs":[{"repo":"widget","number":"7","state":"UNKNOWN","title":"Synthetic PR","display_title":"Synthetic PR"}],"orphans":[]}
+{"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[{"dir":"widget","repo":"widget","slug":"example/widget","forge":"github.com","branch":"main","branch_display":"main","tree":"clean","ahead":2,"behind":3,"tip":{"checks":"SUCCESS","build":"42","url":"https://github.com/example/widget/actions/runs/42"},"prod":{"checks":"SUCCESS","build":"41","url":"https://github.com/example/widget/actions/runs/41"}}],"prs":[{"repo":"widget","number":"7","state":"UNKNOWN","title":"Synthetic PR","display_title":"Synthetic PR","url":"https://github.com/example/widget/pull/7"}],"orphans":[]}
 JSON
   WTC_STATUS_REPOS=yes "$tui" --cached > "$root/cached-tui.txt"
   assert_contains "$(cat "$root/cached-tui.txt")" 'Synthetic PR' \
@@ -177,4 +177,53 @@ PY
   assert_contains "$(cat "$root/cached-table.txt")" 'TEST' 'released table kept a test column without build facts'
   assert_contains "$(cat "$root/cached-table.txt")" 'PROD' 'released table kept a production column without build facts'
   assert_contains "$(cat "$root/cached-table.txt")" 'unknown' 'released table did not claim an unavailable PR was open'
+  it 'published TUI shows linked cached facts and a refresh log'
+  assert_ok python3 - "$tui" <<'PY'
+import errno, fcntl, os, pty, re, select, struct, subprocess, sys, termios, time
+
+master, slave = pty.openpty()
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
+proc = subprocess.Popen([sys.argv[1], '--no-fetch'], stdin=slave,
+                        stdout=slave, stderr=slave, env={**os.environ, 'TERM': 'xterm-256color'})
+os.close(slave)
+chunks = []
+started = time.monotonic()
+sent_log = sent_quit = False
+try:
+    while time.monotonic() - started < 15:
+        elapsed = time.monotonic() - started
+        if not sent_log and elapsed > 0.6:
+            os.write(master, b'l')
+            sent_log = True
+        if not sent_quit and elapsed > 2:
+            os.write(master, b'q')
+            sent_quit = True
+        if select.select([master], [], [], 0.1)[0]:
+            try:
+                chunk = os.read(master, 65536)
+            except OSError as exc:
+                if exc.errno == errno.EIO:
+                    break
+                raise
+            if not chunk:
+                break
+            chunks.append(chunk)
+        if sent_quit and proc.poll() is not None:
+            break
+    assert proc.wait(timeout=3) == 0
+finally:
+    if proc.poll() is None:
+        proc.kill()
+        proc.wait()
+    os.close(master)
+output = b''.join(chunks)
+for url in (b'https://github.com/example/widget',
+            b'https://github.com/example/widget/tree/main',
+            b'https://github.com/example/widget/actions/runs/42',
+            b'https://github.com/example/widget/pull/7'):
+    assert b'\x1b]8;;' + url in output, f'missing terminal link: {url!r}'
+assert b'0s  Reading worktrees 1/1' in output, 'refresh log did not show the completed worktree count'
+assert b'Writing status snapshot' in output, 'refresh did not report snapshot publication'
+assert all(b'4' not in sgr.split(b';') for sgr in re.findall(rb'\x1b\[([0-9;]+)m', output)), 'permanent underline appeared'
+PY
 fi
