@@ -205,14 +205,20 @@ os.close(slave)
 chunks = []
 started = time.monotonic()
 sent_log = sent_quit = False
+log_start = 0
 try:
     while time.monotonic() - started < 15:
         elapsed = time.monotonic() - started
         if not sent_log and elapsed > 0.6:
+            log_start = sum(map(len, chunks))
             os.write(master, b'l')
             sent_log = True
-        observed = b''.join(chunks)
-        if sent_log and not sent_quit and b'Reading worktrees 1/1' in observed and b'Writing status snapshot' in observed:
+        log_output = b''.join(chunks)[log_start:]
+        # The terminal redraw may retain the initial R from the prior header.
+        log_heading = log_output.find(b'fresh log') if sent_log else -1
+        if log_heading >= 0 and not sent_quit and \
+                b'Reading worktrees 1/1' in log_output[log_heading:] and \
+                b'Writing status snapshot' in log_output[log_heading:]:
             os.write(master, b'q')
             sent_quit = True
         if select.select([master], [], [], 0.1)[0]:
@@ -234,14 +240,18 @@ finally:
         proc.wait()
     os.close(master)
 output = b''.join(chunks)
+log_output = output[log_start:]
+log_heading = log_output.find(b'fresh log')
+assert log_heading >= 0, 'refresh log view did not open'
+log_output = log_output[log_heading:]
 for url in (b'https://github.com/example/widget',
             b'https://github.com/example/widget/tree/main',
             b'https://github.com/example/widget/actions/runs/42',
             b'https://github.com/example/widget/actions/runs/41',
             b'https://github.com/example/widget/pull/7'):
     assert b'\x1b]8;;' + url + b'\x07' in output, f'missing terminal link: {url!r}'
-assert b'Reading worktrees 1/1' in output, 'refresh log did not show the completed worktree count'
-assert b'Writing status snapshot' in output, 'refresh did not report snapshot publication'
+assert b'Reading worktrees 1/1' in log_output, 'refresh log did not show the completed worktree count'
+assert b'Writing status snapshot' in log_output, 'refresh log did not report snapshot publication'
 for url, tone, bold in ((b'https://github.com/example/widget', b'38;5;252', True),
                         (b'https://github.com/example/widget/tree/main', b'38;5;252', False),
                         (b'https://github.com/example/widget/pull/7', b'38;5;81', False),
