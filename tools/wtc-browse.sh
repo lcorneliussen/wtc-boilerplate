@@ -24,7 +24,7 @@ Where it opens depends on who launched it:
   --here        force this terminal, even from an agent pane
   --session <n> herdr session
 
-Status-pane clicks talk to this nvim over a listen socket
+The first browse nvim for this collection uses a listen socket
 (/tmp/wtc-browse-<workspace-basename>-<collection>.nvim; long names are
 shortened and checksummed to fit the platform socket-path limit).
 EOF
@@ -114,7 +114,7 @@ run_nvim() {
     # ("address already in use"). The socket is keyed by collection, so that
     # something is this collection's own browse nvim — typically the herdr
     # browse pane, with this call coming from a terminal. A second window is
-    # still useful; it just cannot be the one the status pane talks to.
+    # still useful, but the first window owns the collection socket.
     echo "==> $name: a browse nvim already listens on $sock — opening this window without it" >&2
     exec nvim "$@"
   fi

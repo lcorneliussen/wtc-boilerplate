@@ -107,7 +107,7 @@ assert json.load(open(sys.argv[1]))['schema'] == 1
 PY
   it 'published status logs interactive progress unless silent'
   assert_ok python3 - "$status" <<'PY'
-import errno, os, pty, subprocess, sys
+import errno, os, pty, select, subprocess, sys, time
 
 def run(*flags):
     master, slave = pty.openpty()
@@ -115,8 +115,14 @@ def run(*flags):
                             stdin=subprocess.DEVNULL, stdout=slave, stderr=slave)
     os.close(slave)
     chunks = []
+    deadline = time.monotonic() + 30
     try:
         while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0 or not select.select([master], [], [], remaining)[0]:
+                proc.kill()
+                proc.wait()
+                raise AssertionError('released status timed out')
             try:
                 chunk = os.read(master, 65536)
             except OSError as exc:
@@ -128,7 +134,7 @@ def run(*flags):
             chunks.append(chunk)
     finally:
         os.close(master)
-    assert proc.wait(timeout=30) == 0
+    assert proc.wait(timeout=5) == 0
     return b''.join(chunks)
 
 normal = run()
