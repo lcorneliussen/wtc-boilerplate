@@ -25,7 +25,7 @@ make_collection() { # <name> -> path
   # with no worktree in it safe to use as a fixture.
   for f in HANDOFF.md .env.collection .env.collection.local mise.toml \
            AGENTS.md WTC-SCOPE.md .mcp.json .envrc .env.toolchain \
-           .wtc-prs .last-wtc-status.yml; do
+           .wtc-prs .wtc-prs.lock .last-wtc-status.yml; do
     printf 'generated\n' > "$_c/$f"
   done
   printf 'generated\n' > "$_c/.claude/settings.json"
@@ -43,7 +43,7 @@ out="$("$retire" tidy 2>&1)"
 rc=$?
 for p in .claude .agents .cursor .codex .grok .wtc .envrc .env.toolchain \
          .env.collection .env.collection.local mise.toml AGENTS.md \
-         WTC-SCOPE.md HANDOFF.md .mcp.json .wtc-prs .last-wtc-status.yml; do
+         WTC-SCOPE.md HANDOFF.md .mcp.json .wtc-prs .wtc-prs.lock .last-wtc-status.yml; do
   assert_no_file "$c/$p" "removed: $p"
 done
 
