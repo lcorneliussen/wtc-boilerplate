@@ -143,7 +143,7 @@ assert b'Reading worktrees' in normal, normal.decode(errors='replace')
 assert b'Reading worktrees' not in silent, silent.decode(errors='replace')
 PY
   cat > "$root/main/.wtc-status.json" <<'JSON'
-{"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[],"prs":[{"repo":"widget","number":"7","title":"Synthetic PR","display_title":"Synthetic PR"}],"orphans":[]}
+{"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[{"dir":"widget","repo":"widget","branch_display":"main","tree":"clean","ahead":2,"behind":3}],"prs":[{"repo":"widget","number":"7","state":"UNKNOWN","title":"Synthetic PR","display_title":"Synthetic PR"}],"orphans":[]}
 JSON
   WTC_STATUS_REPOS=yes "$tui" --cached > "$root/cached-tui.txt"
   assert_contains "$(cat "$root/cached-tui.txt")" 'Synthetic PR' \
@@ -151,4 +151,30 @@ JSON
   WTC_STATUS_REPOS=yes "$status" --cached > "$root/cached-status.txt"
   assert_contains "$(cat "$root/cached-status.txt")" 'Synthetic PR' \
     'released one-shot shim kept the enlisted PR section despite repos default'
+  assert_ok python3 - "$status" "$root/cached-table.txt" <<'PY'
+import errno, fcntl, os, pty, struct, subprocess, sys, termios
+
+master, slave = pty.openpty()
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
+proc = subprocess.Popen([sys.argv[1], '--cached'], stdin=subprocess.DEVNULL,
+                        stdout=slave, stderr=slave, env={**os.environ, 'TERM': 'xterm-256color'})
+os.close(slave)
+chunks = []
+while True:
+    try:
+        chunk = os.read(master, 65536)
+    except OSError as exc:
+        if exc.errno == errno.EIO:
+            break
+        raise
+    if not chunk:
+        break
+    chunks.append(chunk)
+os.close(master)
+assert proc.wait(timeout=5) == 0
+open(sys.argv[2], 'wb').write(b''.join(chunks))
+PY
+  assert_contains "$(cat "$root/cached-table.txt")" 'TEST' 'released table kept a test column without build facts'
+  assert_contains "$(cat "$root/cached-table.txt")" 'PROD' 'released table kept a production column without build facts'
+  assert_contains "$(cat "$root/cached-table.txt")" 'unknown' 'released table did not claim an unavailable PR was open'
 fi
