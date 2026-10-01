@@ -116,11 +116,14 @@ new one loads. Click “refreshing” or press `l` for the refresh log, which
 includes failed ref fetches. `r` refreshes, `a` toggles archived PRs, `?`
 shows help, and `q` quits. A one-shot `wtc status` logs elapsed steps in an
 interactive terminal; `--silent` suppresses them. Active PR details use a
-90-second forge cache, and merged PR details can be reused for 24 hours.
+90-second forge cache. Once merge time and checks are final, status records
+them in `.wtc-prs` and skips later forge checks for that PR.
 
-When a build provider supplies `T` or `P` cells, clicking one opens its build
-URL. `--no-click` disables build URL clicks. The status pane captures the mouse
-while it runs, so herdr's selection and scrolling give way to the TUI.
+Underlined PR numbers and `T`/`P` build references are terminal hyperlinks;
+use the terminal's modifier-click gesture while mouse reporting is active.
+Ordinary clicks also open their URLs. `--no-click` disables ordinary URL clicks,
+and `NO_COLOR` removes styling while preserving links. The pane captures the
+mouse while a clickable target is visible or a refresh is running.
 
 ## Browse
 

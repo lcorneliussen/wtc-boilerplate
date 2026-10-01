@@ -158,7 +158,7 @@ rm -f "$dest_root/HANDOFF.md" "$dest_root/.env.collection" \
   "$dest_root/.env.collection.local" "$dest_root/mise.toml" "$dest_root/.DS_Store" \
   "$dest_root/AGENTS.md" "$dest_root/WTC-SCOPE.md" "$dest_root/.mcp.json" \
   "$dest_root/.envrc" "$dest_root/.env.toolchain" \
-  "$dest_root/.wtc-prs" "$dest_root/.last-wtc-status.yml" \
+  "$dest_root/.wtc-prs" "$dest_root/.wtc-prs.lock" "$dest_root/.last-wtc-status.yml" \
   "$dest_root/.wtc-status.json" "$dest_root/.wtc-status.md"
 # Generated agent-config dirs — skill symlinks into harness/skills and the
 # toolchain hook into harness/hooks (link-skills.sh), and the rendered MCP
