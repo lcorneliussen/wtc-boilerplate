@@ -76,7 +76,8 @@ in `$WTC_CONFIG_ROOT/wtc.env`.
   for reviewers; `∅` means no reviewers. Inspect the PR itself before taking
   a merge or review action.
 - The PR section lists `.wtc-prs` enlistments in a table, with active rows
-  before muted merged rows. A merged PR on its old branch calls for catch-up.
+  before muted merged rows. `C`, `M`, and `R` mean checks, mergeability, and
+  reviews. A merged PR on its old branch calls for catch-up.
   An `unknown` state means the forge lookup was unavailable; it does not prove
   the PR is open. Older merged entries can be hidden behind the `a` toggle.
   The refresh log distinguishes recorded merges from live PR checks.

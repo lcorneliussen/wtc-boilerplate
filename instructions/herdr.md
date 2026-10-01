@@ -121,8 +121,10 @@ interactive terminal; `--silent` suppresses them. Active PR details use a
 them in `.wtc-prs` and skips later forge checks for that PR.
 
 Repository names, branches, PR numbers, and TEST/PROD build references are
-colored terminal hyperlinks without a permanent underline. Use the terminal's
-modifier-click gesture while mouse reporting is active.
+terminal hyperlinks without a permanent underline. Repository and branch links
+use ordinary row tones; PR links stand out, and linked builds reflect their
+check state in green, amber, or red. Use the terminal's modifier-click gesture
+while mouse reporting is active.
 Ordinary clicks also open their URLs. `--no-click` disables ordinary URL clicks,
 and `NO_COLOR` removes styling while preserving links. The pane captures the
 mouse while a clickable target is visible or a refresh is running.

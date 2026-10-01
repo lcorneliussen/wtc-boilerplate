@@ -142,6 +142,13 @@ silent = run('--silent')
 assert b'Reading worktrees' in normal, normal.decode(errors='replace')
 assert b'Reading worktrees' not in silent, silent.decode(errors='replace')
 PY
+  it 'published table keeps build columns without build facts'
+  cat > "$root/main/.wtc-status.json" <<'JSON'
+{"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[{"dir":"widget","repo":"widget","branch_display":"main","tree":"clean"}],"prs":[],"orphans":[]}
+JSON
+  "$status" --cached --ansi > "$root/no-build-table.txt"
+  assert_contains "$(cat "$root/no-build-table.txt")" 'TEST' 'released table kept a test column without build facts'
+  assert_contains "$(cat "$root/no-build-table.txt")" 'PROD' 'released table kept a production column without build facts'
   cat > "$root/main/.wtc-status.json" <<'JSON'
 {"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[{"dir":"widget","repo":"widget","slug":"example/widget","forge":"github.com","branch":"main","branch_display":"main","tree":"clean","ahead":2,"behind":3,"tip":{"checks":"SUCCESS","build":"42","url":"https://github.com/example/widget/actions/runs/42"},"prod":{"checks":"SUCCESS","build":"41","url":"https://github.com/example/widget/actions/runs/41"}}],"prs":[{"repo":"widget","number":"7","state":"UNKNOWN","title":"Synthetic PR","display_title":"Synthetic PR","url":"https://github.com/example/widget/pull/7"}],"orphans":[]}
 JSON
@@ -174,8 +181,6 @@ os.close(master)
 assert proc.wait(timeout=5) == 0
 open(sys.argv[2], 'wb').write(b''.join(chunks))
 PY
-  assert_contains "$(cat "$root/cached-table.txt")" 'TEST' 'released table kept a test column without build facts'
-  assert_contains "$(cat "$root/cached-table.txt")" 'PROD' 'released table kept a production column without build facts'
   assert_contains "$(cat "$root/cached-table.txt")" 'unknown' 'released table did not claim an unavailable PR was open'
   it 'published TUI shows linked cached facts and a refresh log'
   assert_ok python3 - "$tui" <<'PY'
