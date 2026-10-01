@@ -159,7 +159,7 @@ JSON
   assert_contains "$(cat "$root/cached-status.txt")" 'Synthetic PR' \
     'released one-shot shim kept the enlisted PR section despite repos default'
   assert_ok python3 - "$status" "$root/cached-table.txt" <<'PY'
-import errno, fcntl, os, pty, struct, subprocess, sys, termios
+import errno, fcntl, os, pty, select, struct, subprocess, sys, termios, time
 
 master, slave = pty.openpty()
 fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
@@ -167,18 +167,28 @@ proc = subprocess.Popen([sys.argv[1], '--cached'], stdin=subprocess.DEVNULL,
                         stdout=slave, stderr=slave, env={**os.environ, 'TERM': 'xterm-256color'})
 os.close(slave)
 chunks = []
-while True:
-    try:
-        chunk = os.read(master, 65536)
-    except OSError as exc:
-        if exc.errno == errno.EIO:
+deadline = time.monotonic() + 5
+try:
+    while time.monotonic() < deadline:
+        if not select.select([master], [], [], 0.1)[0]:
+            continue
+        try:
+            chunk = os.read(master, 65536)
+        except OSError as exc:
+            if exc.errno == errno.EIO:
+                break
+            raise
+        if not chunk:
             break
-        raise
-    if not chunk:
-        break
-    chunks.append(chunk)
-os.close(master)
-assert proc.wait(timeout=5) == 0
+        chunks.append(chunk)
+    else:
+        raise AssertionError('released cached status timed out')
+    assert proc.wait(timeout=1) == 0
+finally:
+    if proc.poll() is None:
+        proc.kill()
+        proc.wait()
+    os.close(master)
 open(sys.argv[2], 'wb').write(b''.join(chunks))
 PY
   assert_contains "$(cat "$root/cached-table.txt")" 'unknown' 'released table did not claim an unavailable PR was open'
@@ -225,6 +235,7 @@ output = b''.join(chunks)
 for url in (b'https://github.com/example/widget',
             b'https://github.com/example/widget/tree/main',
             b'https://github.com/example/widget/actions/runs/42',
+            b'https://github.com/example/widget/actions/runs/41',
             b'https://github.com/example/widget/pull/7'):
     assert b'\x1b]8;;' + url in output, f'missing terminal link: {url!r}'
 assert b'0s  Reading worktrees 1/1' in output, 'refresh log did not show the completed worktree count'
