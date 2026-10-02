@@ -71,6 +71,10 @@ Use `wtc env list` to see variable names from machine defaults, generated
 collection environment, and the collection-local override file. It does not
 print values. Bare `wtc env` shows help; `wtc env setup` regenerates the
 collection environment when you want to apply configuration changes.
+Both list commands open a scrollable view in an interactive terminal. Rows
+stay within the pane width, and the selected row shows more detail below the
+list. Use arrow keys or `j`/`k` to move and `q` to exit. Pass `--no-tui` for
+a compact one-shot table or `--json` for full metadata.
 
 `wtc secrets link` does it, for every checked-out repo in a collection. The
 `tools/link-secrets.sh` entry point dispatches to the pinned CLI when available
