@@ -43,7 +43,7 @@ assert available['state'] == 'available'
 local = next(row for row in secrets if row['path'] == '.env.collection.local')
 assert local['scope'] == 'this collection (local secret variables)'
 keys = json.loads(env_text)['data']['variables']
-assert any(row['name'] == 'MACHINE_KEY' and 'all collections' in row['scope'] for row in keys)
+assert any(row['name'] == 'MACHINE_KEY' and 'workspace defaults' in row['scope'] for row in keys)
 assert any(row['name'] == 'OVERRIDE_KEY' and row.get('overrides') and
            'local override' in row['scope'] for row in keys)
 PY
@@ -157,4 +157,15 @@ for group in ('secrets', 'env'):
                       b'synthetic_machine_value'):
             assert value not in output, (group, flags)
 PY
+  it 'published binary defaults new collections to the workspace control root'
+  default_root="$(make_workspace)"
+  TEST_TMPDIRS="$TEST_TMPDIRS $default_root"
+  env -u WTC_CONFIG_ROOT "$WTC_TEST_RELEASE_BINARY" env setup \
+    --collection "$default_root/main" --skip-hooks >/dev/null
+  assert_contains "$(cat "$default_root/main/.env.collection")" \
+    "WTC_CONFIG_ROOT='$default_root/.config'" 'workspace default generated'
+  WTC_CONFIG_ROOT="$default_root/explicit-control" "$WTC_TEST_RELEASE_BINARY" env setup \
+    --collection "$default_root/main" --skip-hooks >/dev/null
+  assert_contains "$(cat "$default_root/main/.env.collection")" \
+    "WTC_CONFIG_ROOT='$default_root/explicit-control'" 'explicit control root wins'
 fi
