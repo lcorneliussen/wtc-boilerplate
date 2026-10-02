@@ -19,17 +19,19 @@ retire="$ws/main/harness/tools/retire.sh"
 make_collection() { # <name> -> path
   _c="$ws/$1"
   mkdir -p "$_c/harness" "$_c/.claude/skills" "$_c/.agents/skills" \
-           "$_c/.cursor" "$_c/.codex" "$_c/.grok/hooks"
+           "$_c/.cursor" "$_c/.codex" "$_c/.grok/hooks" \
+           "$_c/.wtc/skills/wtc-customize"
   # retire skips directories with no .git, which is what makes a harness dir
   # with no worktree in it safe to use as a fixture.
   for f in HANDOFF.md .env.collection .env.collection.local mise.toml \
            AGENTS.md WTC-SCOPE.md .mcp.json .envrc .env.toolchain \
-           .wtc-prs .last-wtc-status.yml; do
+           .wtc-prs .wtc-prs.lock .last-wtc-status.yml; do
     printf 'generated\n' > "$_c/$f"
   done
   printf 'generated\n' > "$_c/.claude/settings.json"
   printf 'generated\n' > "$_c/.cursor/hooks.json"
   printf 'generated\n' > "$_c/.grok/hooks/wtc-agent-env.json"
+  printf 'generated\n' > "$_c/.wtc/skills/wtc-customize/SKILL.md"
   printf '%s\n' "$_c"
 }
 
@@ -39,9 +41,9 @@ it "retire removes every generated collection-root path"
 c="$(make_collection tidy)"
 out="$("$retire" tidy 2>&1)"
 rc=$?
-for p in .claude .agents .cursor .codex .grok .envrc .env.toolchain \
+for p in .claude .agents .cursor .codex .grok .wtc .envrc .env.toolchain \
          .env.collection .env.collection.local mise.toml AGENTS.md \
-         WTC-SCOPE.md HANDOFF.md .mcp.json .wtc-prs .last-wtc-status.yml; do
+         WTC-SCOPE.md HANDOFF.md .mcp.json .wtc-prs .wtc-prs.lock .last-wtc-status.yml; do
   assert_no_file "$c/$p" "removed: $p"
 done
 
@@ -59,10 +61,13 @@ c="$(make_collection precious)"
 mkdir -p "$c/docs"
 printf 'my own notes\n' > "$c/docs/architecture.md"
 printf 'a screenshot someone dropped\n' > "$c/screenshot.png"
+printf 'other local state\n' > "$c/.wtc/keep"
 out="$("$retire" precious 2>&1)"
 assert_file "$c/docs/architecture.md" "authored file kept"
 assert_eq "my own notes" "$(cat "$c/docs/architecture.md")"
 assert_file "$c/screenshot.png" "stray file kept"
+assert_file "$c/.wtc/keep" "unrelated .wtc file kept"
+assert_no_file "$c/.wtc/skills" "generated skills removed"
 assert_contains "$out" "left in place"
 
 it "the generated files around it still go"

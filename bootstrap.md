@@ -53,9 +53,9 @@ whichever product repos you will add).
 
 | Tool | Used by |
 |---|---|
-| **lazygit** | `wtc-status` TREE click when nvim is not up |
+| **lazygit** | Optional terminal Git status and diff view |
 | **gh-dash** (`gh extension install dlvhdr/gh-dash`) | `pr` herdr tab next to browse |
-| **octo.nvim** | Status PR-click opens the PR inside nvim |
+| **octo.nvim** | PR editing inside browse nvim |
 | **unified.nvim** | Inline (Zed-style) overlay when browse opens a real file |
 | **diffview.nvim** | Side-by-side from browse (`<leader>gD`) |
 | **Nerd Font** | Icons in the browse tree |
@@ -135,6 +135,14 @@ Now finish wiring the collection:
 ./tools/link-skills.sh --seed-scope   # AGENTS.md entry point, skills, WTC-SCOPE.md
 ```
 
+To use a released `wtc` CLI, commit its exact version (without the `v` tag
+prefix) in `harness/.wtc-cli-version`, then run `./tools/refresh-env.sh` and
+`mise install` from the collection root. The refresh generates the CLI tool
+entry in the collection-root `mise.toml`, inherited by every sibling. Upgrade
+the checked-in version file to change the pin; edits to generated `mise.toml`
+are replaced on the next refresh. Existing shell commands remain available
+while their CLI equivalents are migrated.
+
 `branch-off.sh` does both for every collection it creates; this first one is
 by hand because the tools only exist once their own worktree does. Without
 them the collection has no ports, no `WTC_CONFIG_ROOT`, and no `AGENTS.md`
@@ -147,8 +155,8 @@ commit (`git switch -c <issue-id>-<slug>`), not now.
 
 ```bash
 # still from main/harness — collection name is the folder next to harness/
-./tools/add-repo.sh main api
-./tools/add-repo.sh main api console
+./tools/add-repo.sh --collection main api
+./tools/add-repo.sh --collection main api console
 ```
 
 Missing bares are cloned from the forge on demand. A repo added only for

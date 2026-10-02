@@ -91,6 +91,11 @@ action is to consume the note and delete it. A dead agent must cost nothing.
 one; `--no-open` skips. Otherwise open the **collection root** — not just one
 sibling — in the editor or agent CLI, so cross-repo context is visible.
 
+The workspace agent needs no prompt from you: while `HANDOFF.md` is still
+there, `wtc-open.sh` hands it `/wtc-start` as soon as it is ready and waits to
+see it working on it (`--no-first-prompt` to skip). That is why the note has
+to be right *before* the collection is opened.
+
 To launch a separate agent on it, point the prompt at the durable record:
 
 ```bash

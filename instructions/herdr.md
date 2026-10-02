@@ -13,16 +13,29 @@ exist; closing it must cost nothing (`AGENTS.md` → "State lives in git").
 ```text
 session "<project>"                one server + socket per workspace root
 └─ workspace "<collection>"   one per wtc; cwd = collection root, .env.collection loaded
-   ├─ pane "agent"            coding agent (full-height left)
-   ├─ pane "browse"           LazyVim / lazygit — empty = a shell
-   ├─ pane "shell"            working prompt, under browse
-   └─ pane "status"           wtc-status.sh, beside the shell
 ```
 
+**Wide** (default when the attached client is wide enough):
+
 ```text
-[ agent | browse        ]
-[       | shell | status]
+[ agent | browse ]     ← two stacked columns
+[ shell | status ]     shell 20% height, status 35%
 ```
+
+**Narrow** (`--narrow`, `WTC_LAYOUT=narrow`, or auto when session width <
+`WTC_LAYOUT_NARROW_AT`, default 140):
+
+```text
+tab main:   agent / status     (stacked; status 35%)
+tab tools:  browse / shell     (stacked; shell 20%)
+```
+
+Layout is applied on create. Explicit `--narrow` / `--wide` **switches** an
+existing workspace. Native `wtc open` moves live panes; the shell fallback
+recreates the status pane. A partial
+workspace — common when you start the agent first, then open — is built out
+toward the resolved layout. `auto` never flips a complete wide ↔ narrow.
+`--wide` / `--narrow` override `WTC_LAYOUT` (and auto).
 
 `browse` is the slot for something a human should look at. An agent that
 wants to open neovim sends it there and keeps talking in `agent`. A command
@@ -31,7 +44,7 @@ it does not bounce into `browse`.
 
 ## Reaching a collection's agent from your phone
 
-`wtc-open.sh` starts claude with **Remote Control** by default, so every
+The opener starts claude with **Remote Control** by default, so every
 collection's agent shows up in the Claude mobile app and on claude.ai under
 `<session>--<collection>`. A wtc agent is meant to keep working while you are
 elsewhere; one you can only reach by walking back to this machine gives up
@@ -50,7 +63,7 @@ claude --remote-control "$WTC_AGENT_NAME" --dangerously-skip-permissions --conti
 `--no-remote-control` opts out for one open; passing `--agent-args` replaces the
 default arguments entirely and so drops it too.
 
-Re-running `wtc-open.sh` inspects every pane and only (re)starts what is
+Re-running the opener inspects every pane and only (re)starts what is
 sitting at a bare prompt — that is how a session restored after a reboot gets
 its commands back. A workspace that already grew extra panes (a second agent,
 a one-off split) is left alone, and browse tools fall back to `shell` rather
@@ -63,12 +76,19 @@ folder minus a trailing `-wtc` or `-harness` — so `<project>-wtc/` → session
 
 ```bash
 tools/wtc-open.sh [<collection> …]    # this collection, or the named ones
-tools/wtc-open.sh --all --list        # open everything / show agent states
+tools/wtc-open.sh --narrow            # switch to (or create) stacked tabs
+tools/wtc-open.sh --wide              # switch to (or create) stacked columns
+tools/wtc-open.sh --all --list        # report every collection's agent state
 herdr --session <project>                  # attach
 ```
 
+The script selects native `wtc open` when every selected collection has a
+matching installed CLI at v0.1.21 or newer. Otherwise it uses the shell
+opener, including during bootstrap or a mixed-version upgrade. Run `wtc open`
+directly once the target's CLI installation and pin match.
+
 Opening is idempotent and repairs a wtc whose agent exited. The session starts
-headless on demand, so opening never steals a terminal. `branch-off.sh` joins
+headless on demand, so opening never steals a terminal. `wtc new` joins
 a **running** session automatically (`--open` starts one, `--no-open` skips),
 and `retire.sh` closes the workspace with the collection.
 
@@ -78,32 +98,36 @@ overrides, `--no-agent` skips the agent.
 
 ## Status
 
-`tools/wtc-status.sh` prints each collection's branch, open PR with its check
-rollup (`✓ ✗ ● —`), and working-tree state, then the processes running under
-the session with CPU and memory.
+The status pane runs `tools/wtc-status-tui.sh`, which dispatches to the pinned
+`wtc status --tui`. It shows worktree branches, PR checks and reviews, and
+working-tree state. The process view is available through `wtc status --procs`.
 
-`wtc-open.sh` puts a `status` pane in every wtc, scoped to that collection —
+The opener puts a `status` pane in every wtc, scoped to that collection —
 including wtcs opened before the pane existed, so re-running adds it without
-disturbing the agent. For the process view, run it wherever you want it:
+disturbing the agent. For a separate view, run:
 
 ```bash
-tools/wtc-status.sh --procs --watch 5
-tools/wtc-status.sh --repos --watch 120   # all collections at once
+wtc status --procs
+wtc status --all                   # all collections, explicitly
 ```
 
-The collection table is **clickable** wherever it has a terminal on both
-ends (`--no-click` turns that off, `--click` forces it on):
+The TUI starts with the last snapshot and shows refresh progress on one line
+so the table does not move. The count remains visible in narrow panes. Click
+“refreshing” or press `l` for the refresh log, which updates repeated counts
+in place and includes failed ref fetches. `r` refreshes, `a` toggles archived
+PRs, `?` shows help, and `q` quits. A one-shot `wtc status` logs elapsed steps in an
+interactive terminal; `--silent` suppresses them. Active PR details use a
+90-second forge cache. Once merge time and checks are final, status records
+them in `.wtc-prs` and skips later forge checks for that PR.
 
-| Click | Does |
-|---|---|
-| the `REPO` cell | focuses that sibling in the browse nvim (vim tab + neo-tree) |
-| the `PR` cell | `:Octo pr edit` in that tab, or the pull request in the browser |
-| the `TREE` cell | neo-tree git status in that tab; `lazygit` in a `diff:<repo>` herdr tab if nvim is not up |
-
-`r` redraws, `q` quits. Clickable cells are underlined. The pane captures
-the mouse while it runs, so herdr's own selection and wheel scrolling in that
-pane give way to the table — close the diff tabs yourself when done; the
-status pane never closes anything.
+Repository names, branches, PR numbers, and TEST/PROD build references are
+terminal hyperlinks without a permanent underline. Repository and branch links
+use ordinary row tones; PR links stand out, and linked builds reflect their
+check state in green, amber, or red. Use the terminal's modifier-click gesture
+while mouse reporting is active.
+Ordinary clicks also open their URLs. `--no-click` disables ordinary URL clicks,
+and `NO_COLOR` removes styling while preserving links. The pane captures the
+mouse while a clickable target is visible or a refresh is running.
 
 ## Browse
 
@@ -128,23 +152,12 @@ Where it opens:
 
 The browse nvim listens on
 `/tmp/wtc-browse-<workspace-basename>-<collection>.nvim`. Long names are
-shortened and checksummed to fit the platform socket-path limit. Status-pane
-clicks talk to it:
-
-| Click | Does |
-|---|---|
-| `REPO` | switch to that sibling's vim tab |
-| `TREE` | that tab, neo-tree git status (lazygit tab if nvim is down) |
-| `PR` | `:Octo pr edit` in that tab, else the PR in the browser |
+shortened and checksummed to fit the platform socket-path limit.
 
 ```bash
 tools/wtc-browse.sh              # this collection
 tools/wtc-browse.sh --here       # this terminal, even from an agent pane
 ```
-
-A status pane opened before clicking existed keeps running the old command
-(nothing here restarts a live pane). Re-run the command in that pane when you
-want it, or open a new wtc.
 
 For an interactive look at what the agents are actually running, bind a
 process monitor to a popup — full screen, closes on exit, layout untouched:
@@ -182,7 +195,7 @@ record of one machine's directory layout.
 
 An agent is named **`<session>--<collection>`** — `wtc--billing-api`. That
 string is emitted as `WTC_AGENT_NAME` in `.env.collection` (and injected into
-every pane); `wtc-open` starts with `herdr agent start "$WTC_AGENT_NAME" …`,
+every pane); `wtc open` starts with `herdr agent start "$WTC_AGENT_NAME" …`,
 so the command shape is the same across collections and only the env differs.
 herdr caps names at 32 characters (`[a-z][a-z0-9_-]{0,31}`, unique among live
 agents); past that the collection half is trimmed and the session prefix
@@ -207,6 +220,14 @@ one only when the work is genuinely separate. **The prompt is ignition, not
 the record:** put the assignment in an issue, branch, or `HANDOFF.md` first and
 let the prompt point at it, so a dead agent costs nothing.
 
+The collection's own agent gets its ignition from the opener: on a
+collection whose `HANDOFF.md` is still present it submits `/wtc-start` the
+moment the agent is ready, and does not take the send on trust — a slash
+command typed into Claude opens its command palette, where the first Enter
+completes the command instead of sending it, so the text can sit in the chat
+entry looking submitted. The opener waits for the agent to be seen working and
+supplies the missing Enter when herdr reports the submission stalled.
+
 ```bash
 tools/branch-off.sh --issue api-1234 paging-clamp --open
 herdr --session <project> agent prompt api-1234-paging-clamp \
@@ -218,7 +239,7 @@ herdr --session <project> agent prompt api-1234-paging-clamp \
 Panes hold live work — an agent mid-task, a server, a test run — and an agent
 conversation that dies is not recoverable from git. So: **no closing panes or
 workspaces, no `session stop`, no restarting an agent, to apply a change.**
-Add non-destructively and let re-running `wtc-open.sh` heal the workspace; it
+Add non-destructively and let re-running the opener heal the workspace; it
 is written to repair in place for exactly this reason. If something genuinely
 cannot be fixed without killing a running pane, **ask the person first** —
 it is their session, and "it was only idle" is not yours to judge.

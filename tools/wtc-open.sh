@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # wtc-open.sh — open collections as herdr workspaces (terminal ergonomics).
 set -euo pipefail
+original_args=("$@")
 
 usage() {
   cat <<'EOF'
@@ -10,8 +11,8 @@ Usage:
   tools/wtc-open.sh --list
 
 Opens each collection as one workspace in the workspace root's herdr session:
-a single tab at the collection root, default panes agent / browse / shell /
-status, all carrying the collection env (.env.collection, then
+panes agent / browse / shell / status (wide: two stacked columns; narrow: two
+stacked tabs), all carrying the collection env (.env.collection, then
 .env.collection.local) and the sibling toolchain prefix (.env.toolchain) —
 so no mise or shell activation is needed for ports, collection-scoped
 secrets, or repo-pinned tools to resolve.
@@ -48,6 +49,11 @@ removes it along with the collection.
                     on claude.ai, named for the collection. Start-time only —
                     a session started without it cannot be attached later
   --no-agent        create the panes but start no agent
+  --no-first-prompt start the agent but do not hand it its first prompt.
+                    On a fresh collection (HANDOFF.md still present) the
+                    agent is otherwise told to run /wtc-start as soon as it
+                    is ready, and the submission is checked — the agent has
+                    to be seen working on it, not just holding the text
   --no-status       leave the status pane at a shell prompt (it is otherwise
                     (re)started whenever that pane is idle)
   --no-browse       leave the browse pane at a shell prompt. By default it
@@ -56,6 +62,11 @@ removes it along with the collection.
                     workspace whose human pane is an empty prompt asks you to
                     type the one command it already knows. Without nvim the
                     pane is left alone either way
+  --narrow          two stacked tabs: main (agent/status) and tools
+                    (browse/shell). Creates that layout, or switches an
+                    existing workspace to it (keeps a live agent)
+  --wide            two stacked columns: agent|browse over shell|status.
+                    Creates or switches, same as --narrow
   --focus           focus the last opened workspace (default: no focus)
 EOF
   exit "${1:-1}"
@@ -63,18 +74,26 @@ EOF
 
 all=no list=no dry_run=no session="" agent_kind="" agent_kind_set=no start_agent=yes focus=no
 agent_args="" agent_args_set=no remote_control=yes start_browse=yes start_status=yes
+first_prompt=yes
+layout="" layout_set=no
 while [ $# -gt 0 ]; do
   case "$1" in
     --all) all=yes; shift ;;
     --list) list=yes; shift ;;
     --session) session="${2:?--session needs a name}"; shift 2 ;;
     --agent) agent_kind="${2:?--agent needs a kind}"; agent_kind_set=yes; shift 2 ;;
-    --agent-args) agent_args="${2-}"; agent_args_set=yes; shift 2 ;;
+    # Present but possibly empty, and it legitimately starts with a dash, so
+    # this is ${2?} rather than ${2:?} or a leading-dash check.
+    --agent-args) agent_args="${2?--agent-args needs a value (empty string for none)}"
+                  agent_args_set=yes; shift 2 ;;
     --no-remote-control) remote_control=no; shift ;;
     --dry-run) dry_run=yes; shift ;;
     --no-agent) start_agent=no; shift ;;
+    --no-first-prompt) first_prompt=no; shift ;;
     --no-browse) start_browse=no; shift ;;
     --no-status) start_status=no; shift ;;
+    --narrow) layout=narrow; layout_set=yes; shift ;;
+    --wide) layout=wide; layout_set=yes; shift ;;
     --focus) focus=yes; shift ;;
     -h|--help) usage 0 ;;
     -*) echo "unknown option: $1" >&2; usage ;;
@@ -86,6 +105,62 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 HARNESS_DIR="$(dirname "$script_dir")"
 . "$script_dir/lib.sh"
 harness_lib_init
+
+# A released native opener owns the workspace when every selected collection
+# has that exact pin. Bootstrap and mixed-version collections keep the shell
+# path until they can use one CLI contract together.
+native_open_supported() { # v0.1.21 first shipped wtc open
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 21))
+  }'
+}
+
+open_targets=()
+if [ "$all" = yes ]; then
+  for candidate in "$ROOT"/*/; do
+    [ -d "$candidate/harness" ] || continue
+    open_targets+=("${candidate%/}")
+  done
+elif [ $# -gt 0 ]; then
+  for candidate in "$@"; do open_targets+=("$ROOT/$candidate"); done
+else
+  open_targets+=("$(dirname "$HARNESS_DIR")")
+fi
+native_open=yes native_pin="" native_cwd="" native_cli=()
+for candidate in "${open_targets[@]}"; do
+  pin_file="$candidate/harness/.wtc-cli-version"
+  if [ ! -f "$pin_file" ]; then native_open=no; break; fi
+  pin="$(tr -d '[:space:]' < "$pin_file")"
+  if ! native_open_supported "$pin" || { [ -n "$native_pin" ] && [ "$pin" != "$native_pin" ]; }; then
+    native_open=no; break
+  fi
+  cli_cmd=()
+  if command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$candidate" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    if [ "$cli_version" = "wtc version $pin" ] &&
+        (cd "$candidate" && mise exec -- wtc open --help >/dev/null 2>&1); then
+      cli_cmd=(mise exec -- wtc)
+    fi
+  fi
+  if [ "${#cli_cmd[@]}" -eq 0 ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$candidate" && wtc --version 2>/dev/null)" || cli_version=""
+    if [ "$cli_version" = "wtc version $pin" ] &&
+        (cd "$candidate" && wtc open --help >/dev/null 2>&1); then
+      cli_cmd=(wtc)
+    fi
+  fi
+  if [ "${#cli_cmd[@]}" -eq 0 ]; then
+    native_open=no; break
+  fi
+  [ -n "$native_pin" ] || { native_pin="$pin"; native_cwd="$candidate"; native_cli=("${cli_cmd[@]}"); }
+done
+if [ "$native_open" = yes ] && [ -n "$native_pin" ]; then
+  cd "$native_cwd"
+  exec "${native_cli[@]}" open "${original_args[@]+"${original_args[@]}"}"
+fi
 
 herdr_present || { echo "error: herdr is not installed (see instructions/herdr.md)" >&2; exit 1; }
 [ -n "$session" ] || session="$(herdr_session_name)"
@@ -104,6 +179,9 @@ if [ "$agent_args_set" = no ] && [ -n "${WTC_AGENT_ARGS:-}" ]; then
 fi
 if [ "$agent_args_set" = no ] && [ "$agent_kind" = claude ]; then
   agent_args="--dangerously-skip-permissions"
+fi
+if [ "$layout_set" = no ]; then
+  layout="${WTC_LAYOUT:-auto}"
 fi
 
 # Which collections? Explicit args, --all, or the one holding this harness.
@@ -205,19 +283,45 @@ if [ "$list" = yes ]; then
 fi
 
 herdr_ensure_session "$session"
+# Prefer an attached client's width for auto; headless falls back to wide when
+# width is unknown. Flags and WTC_LAYOUT=wide|narrow skip the probe.
+layout="$(herdr_resolve_layout "$session" "$layout")"
 
-# The status pane, like browse: beside the shell (under browse), or under the
-# shell on a pre-browse workspace where the right column is already stacked.
+# Status pane heal: narrow → under agent on main; new wide (shell under agent)
+# → under browse; legacy (shell under browse) → beside shell.
 ensure_status_pane() { # <workspace> <cwd> -> pane id
-  _base="$(herdr_pane_id_by_label "$session" "$1" shell)"
-  _dir=right
-  if [ -z "$_base" ]; then
-    _base="$(herdr_pane_id_by_label "$session" "$1" browse)"
+  if herdr_layout_is_narrow "$session" "$1"; then
+    _base="$(herdr_pane_id_by_label "$session" "$1" agent)"
     _dir=down
+    _ratio=0.65
+  else
+    _browse="$(herdr_pane_id_by_label "$session" "$1" browse)"
+    _shell="$(herdr_pane_id_by_label "$session" "$1" shell)"
+    _agent="$(herdr_pane_id_by_label "$session" "$1" agent)"
+    if [ -n "$_browse" ] && [ -n "$_shell" ] && [ -n "$_agent" ] \
+       && herdr_panes_same_column "$session" "$_shell" "$_agent"; then
+      _base="$_browse"
+      _dir=down
+      _ratio=0.65
+    else
+      _base="$_shell"
+      _dir=right
+      _ratio=""
+      if [ -z "$_base" ]; then
+        _base="$_browse"
+        _dir=down
+        _ratio=0.65
+      fi
+    fi
   fi
   [ -n "$_base" ] || return 1
-  _pane="$(herdr --session "$session" pane split "$_base" \
-    --direction "$_dir" --cwd "$2" --no-focus | herdr_first_pane_id)"
+  if [ -n "${_ratio:-}" ]; then
+    _pane="$(herdr --session "$session" pane split "$_base" \
+      --direction "$_dir" --ratio "$_ratio" --cwd "$2" --no-focus | herdr_first_pane_id)"
+  else
+    _pane="$(herdr --session "$session" pane split "$_base" \
+      --direction "$_dir" --cwd "$2" --no-focus | herdr_first_pane_id)"
+  fi
   [ -n "$_pane" ] || return 1
   herdr --session "$session" pane rename "$_pane" status >/dev/null
   printf '%s\n' "$_pane"
@@ -234,7 +338,7 @@ open_collection() { # <collection>
   ws_id="$(herdr_ws_id "$session" "$name")"
   if [ -z "$ws_id" ]; then
     if [ "$dry_run" = yes ]; then
-      echo "==> $name: no workspace — would create one: agent, browse, shell, status"
+      echo "==> $name: no workspace — would create one ($layout): agent, browse, shell, status"
       return 0
     fi
     # Collection env into the workspace, so ports, collection-scoped secrets,
@@ -278,26 +382,39 @@ open_collection() { # <collection>
     agent_pane="$(printf '%s' "$ws_out" | herdr_first_pane_id)"
     [ -n "$agent_pane" ] || { echo "error: $name: could not read the new pane id" >&2; return 1; }
 
-    # Default layout: agent is the full-height left column; browse (nvim)
-    # is the human pane on the right; terminal and status split under it.
-    #   [ agent | browse        ]
-    #   [       | shell | status]
-    browse_pane="$(herdr --session "$session" pane split "$agent_pane" \
-      --direction right --ratio 0.40 --cwd "$dir" --no-focus | herdr_first_pane_id)"
-    herdr --session "$session" pane rename "$agent_pane" agent >/dev/null
-    if [ -n "$browse_pane" ]; then
-      herdr --session "$session" pane rename "$browse_pane" browse >/dev/null
-      shell_pane="$(herdr --session "$session" pane split "$browse_pane" \
-        --direction down --ratio 0.70 --cwd "$dir" --no-focus | herdr_first_pane_id)"
+    if [ "$layout" = narrow ]; then
+      herdr_layout_apply_narrow "$session" "$ws_id" "$agent_pane" "$dir"
     else
-      shell_pane="$(herdr --session "$session" pane split "$agent_pane" \
-        --direction right --cwd "$dir" --no-focus | herdr_first_pane_id)"
-    fi
-    if [ -n "$shell_pane" ]; then
-      herdr --session "$session" pane rename "$shell_pane" shell >/dev/null
+      herdr_layout_apply_wide "$session" "$agent_pane" "$dir"
     fi
     settle=$PANE_SETTLE   # its panes have not reached their prompts yet
-    note "workspace created"
+    note "workspace created ($layout)"
+  else
+    # Existing workspace: explicit --narrow/--wide switches; a partial
+    # (agent-first) workspace is always built out toward the resolved layout.
+    # Auto never flips a complete wide ↔ narrow.
+    _cur="$(herdr_layout_detect "$session" "$ws_id")"
+    _do_layout=no
+    if [ "$_cur" = partial ]; then
+      _do_layout=yes
+    elif [ "$layout_set" = yes ] && [ "$_cur" != "$layout" ]; then
+      _do_layout=yes
+    fi
+    if [ "$_do_layout" = yes ]; then
+      if [ "$dry_run" = yes ]; then
+        note "would layout $_cur → $layout"
+      else
+        _act="$(herdr_layout_ensure "$session" "$ws_id" "$dir" "$layout" || true)"
+        case "$_act" in
+          built|switched)
+            note "layout $_act ($layout)"
+            settle=$PANE_SETTLE
+            ;;
+          unchanged) ;;
+          *) note "layout ensure failed" ;;
+        esac
+      fi
+    fi
   fi
 
   # browse / status — added to workspaces opened before they existed. Panes
@@ -345,10 +462,23 @@ open_collection() { # <collection>
       agent)   note "agent live ($(state_label $st))" ;;
       running) note "agent busy (${st#running }) — left alone" ;;
       *)
+        # A collection that still has its launch note has not been started:
+        # the agent's first move is /wtc-start, and nobody should have to
+        # type it into the pane. Only on this path — an agent that is
+        # already live keeps whatever it is doing.
+        want_first=no
+        [ "$first_prompt" = yes ] && [ -f "$dir/HANDOFF.md" ] && want_first=yes
         if [ "$dry_run" = yes ]; then
           note "agent empty → would start $agent_kind"
+          [ "$want_first" = no ] || note "would submit $(first_prompt_text)"
         elif start_agent_in_pane; then
-          note "agent started ($agent_kind)"
+          if [ "$want_first" = no ]; then
+            note "agent started ($agent_kind)"
+          elif first_prompt_in_pane; then
+            note "agent started ($agent_kind), $(first_prompt_text) running"
+          else
+            note "agent started ($agent_kind) — first prompt not taken, type it"
+          fi
         else
           note "agent start failed"
         fi
@@ -449,7 +579,7 @@ start_agent_in_pane() {
 
   # Agent names: [a-z][a-z0-9_-]{0,31}, unique among live agents.
   # Name comes from WTC_AGENT_NAME (collection env); kind/args from wtc.env.
-  # Intentional word-splitting: $agent_args is a flag string, not a path.
+  # Intentional word-splitting: $this_agent_args is a flag string, not a path.
   # shellcheck disable=SC2086
   set -- start "$WTC_AGENT_NAME" --kind "$agent_kind" --pane "$agent_pane"
   if [ -n "$this_agent_args" ]; then
@@ -466,6 +596,41 @@ start_agent_in_pane() {
     sleep 1
   done
   return 0
+}
+
+# What a fresh collection's agent is told first. Claude runs the skill by its
+# slash name; other kinds get the same thing in words, since their skill
+# surfaces differ and the words are enough to make the right one fire.
+first_prompt_text() {
+  case "$agent_kind" in
+    claude) printf '%s' "/wtc-start" ;;
+    *) printf '%s' "Run the wtc-start skill (harness/skills/wtc-start/SKILL.md): read HANDOFF.md at the collection root, then start." ;;
+  esac
+}
+
+# Hand the agent its first prompt and do not trust the send. Typing a slash
+# command into Claude opens its command palette, and there the first Enter
+# completes the command rather than sending it — so the text can sit in the
+# chat entry looking submitted while the agent stays idle. herdr's prompt
+# surface does add an Enter, but the only proof is the agent going to work:
+# wait for exactly that, and when herdr reports the submission stalled, the
+# palette has eaten the Enter and one more is what is owed.
+#
+# Addressed by pane id, not agent name: a name only refers to the pane's
+# occupant while the agent herdr started is still there, and the pane is
+# what this call just started it in (instructions/herdr.md).
+first_prompt_in_pane() { # -> 0 once the agent is working on it
+  _fp="$(first_prompt_text)"
+  _out="$(herdr --session "$session" agent prompt "$agent_pane" "$_fp" \
+            --wait --until working --timeout 20000 2>&1)" && return 0
+  case "$_out" in
+    *agent_prompt_stalled*)
+      herdr --session "$session" agent send-keys "$agent_pane" enter >/dev/null 2>&1 || return 1
+      herdr --session "$session" agent wait "$agent_pane" \
+        --until working --timeout 10000 >/dev/null 2>&1 || return 1
+      ;;
+    *) return 1 ;;
+  esac
 }
 
 for c in $collections; do

@@ -40,6 +40,7 @@ collection="$(dirname "$HARNESS_DIR")"
 harness_dirname="$(basename "$HARNESS_DIR")"
 dry_run=no
 all=no
+skip_hooks=no
 
 usage() {
   cat <<'EOF'
@@ -53,7 +54,8 @@ generator, preserving the collection's port base. Leaves
                       harness worktree).
   --all               Every collection under the workspace root. Use after
                       landing a generator change.
-  --dry-run           Show the diff; write nothing.
+  --dry-run           Preview generated env and mise config; write nothing.
+  --skip-hooks        Do not run target hooks or trust mise (used by --all).
   -h, --help          Show this help.
 
 Already-open herdr panes keep the environment they were created with —
@@ -67,6 +69,7 @@ while [ $# -gt 0 ]; do
     --collection) collection="${2:?--collection needs a directory}"; shift 2;;
     --all)        all=yes; shift;;
     --dry-run)    dry_run=yes; shift;;
+    --skip-hooks) skip_hooks=yes; shift;;
     -h|--help)    usage; exit 0;;
     *) echo "error: unknown option: $1 (use --help)" >&2; exit 1;;
   esac
@@ -82,9 +85,9 @@ if [ "$all" = yes ]; then
     swept=$((swept + 1))
     echo "=== $(basename "$dir")"
     if [ "$dry_run" = yes ]; then
-      "$0" --collection "$dir" --dry-run || failed=$((failed + 1))
+      "$0" --collection "$dir" --dry-run --skip-hooks || failed=$((failed + 1))
     else
-      "$0" --collection "$dir" || failed=$((failed + 1))
+      "$0" --collection "$dir" --skip-hooks || failed=$((failed + 1))
     fi
   done
   echo "swept $swept collection(s), $failed failed"
@@ -96,6 +99,46 @@ fi
 collection="$(cd "$collection" && pwd)"
 [ -d "$collection/$harness_dirname" ] || {
   echo "error: $collection has no $harness_dirname/ — not a collection" >&2; exit 1; }
+
+# The target collection's mise.toml chooses its CLI version. Keep the shell
+# implementation for bootstrap and older pins; --all re-enters here per target.
+native_env_supported() { # 0.1.9 first trusted generated mise.toml
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 9))
+  }'
+}
+native_env_skip_supported() { # v0.1.14 added safe hook controls for sweeps
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 14))
+  }'
+}
+if [ -f "$collection/$harness_dirname/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$collection/$harness_dirname/.wtc-cli-version")"
+  cli_version=""
+  cli_cmd=()
+  if native_env_supported "$cli_pin" && { [ "$skip_hooks" = no ] || native_env_skip_supported "$cli_pin"; } && command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+  fi
+  if native_env_supported "$cli_pin" && { [ "$skip_hooks" = no ] || native_env_skip_supported "$cli_pin"; } && [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$collection" && wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(wtc)
+  fi
+  if [ "$cli_version" = "wtc version $cli_pin" ] &&
+      (cd "$collection" && "${cli_cmd[@]}" env --help >/dev/null 2>&1); then
+    cli_args=(--collection "$collection")
+    [ "$dry_run" = no ] || cli_args+=(--dry-run)
+    [ "$skip_hooks" = no ] || cli_args+=(--skip-hooks)
+    cd "$collection"
+    exec "${cli_cmd[@]}" env "${cli_args[@]}"
+  fi
+fi
 
 name="$(basename "$collection")"
 target="$collection/.env.collection"
@@ -116,18 +159,25 @@ if [ -f "$target" ]; then
 else
   : > "$work/before"
 fi
+if [ -f "$collection/mise.toml" ]; then
+  cp "$collection/mise.toml" "$work/mise-before"
+else
+  : > "$work/mise-before"
+fi
 
 if [ "$dry_run" = yes ]; then
   [ -f "$target" ] && cp "$target" "$work/.env.collection"
   # Preview generation must not register a temporary path in mise trust.
-  (trust_mise() { :; }; write_collection_env "$work" "$name") >/dev/null
+  write_collection_env "$work" "$name" "$collection/$harness_dirname" yes >/dev/null
   cp "$work/.env.collection" "$work/after"
+  cp "$work/mise.toml" "$work/mise-after"
 else
-  write_collection_env "$collection" "$name" >/dev/null
+  write_collection_env "$collection" "$name" "$collection/$harness_dirname" "$skip_hooks" >/dev/null
   cp "$target" "$work/after"
+  cp "$collection/mise.toml" "$work/mise-after"
 fi
 
-if cmp -s "$work/before" "$work/after"; then
+if cmp -s "$work/before" "$work/after" && cmp -s "$work/mise-before" "$work/mise-after"; then
   echo "$name: already current"
   exit 0
 fi
@@ -141,3 +191,4 @@ fi
 # diff exits 1 when files differ, which is the expected path here; `|| :` keeps
 # that from tripping set -e. Head trimmed: the ---/+++ lines name temp paths.
 diff -u "$work/before" "$work/after" 2>/dev/null | sed -n '4,$p' | sed 's/^/  /' || :
+diff -u "$work/mise-before" "$work/mise-after" 2>/dev/null | sed -n '4,$p' | sed 's/^/  /' || :

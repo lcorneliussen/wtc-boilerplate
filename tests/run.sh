@@ -14,6 +14,12 @@
 # something else to a shell, and 128+ is a signal).
 set -u
 
+# Tests construct their own collection and control root. Agent shell hooks and
+# machine-local settings must not change child test processes. Keep deliberate
+# BASH_ENV instrumentation from coverage.sh.
+case "${BASH_ENV:-}" in */agent-env.sh) unset BASH_ENV ;; esac
+unset CLAUDE_PROJECT_DIR WTC_CONFIG_ROOT WTC_HARNESS_REPO
+
 tests_dir="$(cd "$(dirname "$0")" && pwd)"
 cd "$tests_dir"
 

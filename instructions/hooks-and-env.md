@@ -70,7 +70,9 @@ uncommitted files at the collection root:
   shared dev instance or start them on demand. It also carries the optional
   tool-identity variables (`GH_CONFIG_DIR` and friends) when the workspace has
   opted into them — `secrets.md` → Tool identity.
-- `mise.toml` — loads `.env.collection` via `[env] _.file`. mise treats the
+- `mise.toml` — loads `.env.collection` via `[env] _.file` and, when the
+  harness commits `.wtc-cli-version`, pins that exact `wtc` GitHub release
+  through `[tools]`. mise treats the
   collection root as a parent config, so **every sibling repo worktree
   inherits these variables automatically** in any mise-activated shell or
   `mise run` task. The harness tools run `mise trust` on generated
@@ -98,8 +100,8 @@ agent shell command sees repo-pinned tools on PATH, independent of cwd:
 
 | Surface | What it does |
 |---|---|
-| `tools/agent-env.sh` | trusts sibling `mise.toml` files, caches bins as `.env.toolchain`, prints `export PATH=…` |
-| `hooks/agent-env.json` | SessionStart refreshes the cache; PreToolUse wraps `Bash` / `run_terminal_command` with `eval "$(agent-env.sh)"` |
+| `tools/agent-env.sh` | dispatches to `wtc agent-env` when installed; its bootstrap fallback trusts sibling `mise.toml` files, caches bins as `.env.toolchain`, and prints shell exports |
+| `hooks/agent-env.json` | SessionStart refreshes the cache; PreToolUse wraps `Bash` / `run_terminal_command` with `eval "$(agent-env.sh)"` and refuses a raw `gh pr ready` / `bb pr ready` (`hooks/guard-pr-ready.py`) |
 | collection-root `.envrc` | Grok `load_envrc` (and direnv) prepend PATH without needing project hook trust |
 | `wtc-open.sh` | new herdr workspaces get `WTC_TOOLCHAIN_PATH` and `BASH_ENV` at create time |
 
@@ -158,5 +160,5 @@ system interpreters once PATH is injected.
 |---|---|---|
 | Collection created | `tools/branch-off.sh` | `init` for every included repo (after env is written and skills are linked) |
 | Repo added later | `tools/add-repo.sh` | `init` for the new repos only |
-| Collection retired | `tools/retire.sh` | `teardown` for every repo, then worktrees removed (pre-flight refuses on dirty/unpushed work unless `--force`; branches are never deleted) |
+| Collection retired | `wtc retire` (`tools/retire.sh` compatibility entry) | `teardown` for every repo, then worktrees removed (pre-flight refuses on dirty/unpushed work unless `--force`; branches are never deleted) |
 | Generator or registry changed | `tools/refresh-env.sh` | none — regenerates `.env.collection`, preserving the port base |

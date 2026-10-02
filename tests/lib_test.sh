@@ -50,6 +50,16 @@ assert_empty "$(registry_field widget nosuchfield)"
 it "registry_all_names lists every block, in file order"
 assert_eq "agent-harness widget gadget sprocket cog" "$(registry_all_names | tr '\n' ' ' | sed 's/ $//')"
 
+it "harness_repo uses the Git owner before an origin name that collides with a sibling"
+saved_override="$WTC_HARNESS_REPO"
+saved_remote="$(git -C "$HARNESS_DIR" remote get-url origin)"
+unset WTC_HARNESS_REPO
+git -C "$HARNESS_DIR" remote set-url origin git@github.com:example/widget.git
+assert_eq "agent-harness" "$(harness_repo)"
+git -C "$HARNESS_DIR" remote set-url origin "$saved_remote"
+WTC_HARNESS_REPO="$saved_override"
+export WTC_HARNESS_REPO
+
 it "registry lookups soft-fail when the registry is gone"
 # A wtc-status --watch outlives the harness worktree it was started from
 # (retire removes the worktree under a running pane). Losing the file must
@@ -211,7 +221,7 @@ enrich_field() { # <n> <repo> <number> — one field of the enrich TSV
 }
 
 it "an unknown forge yields the unknown row, not a guess"
-assert_eq ""        "$(enrich_field 2 gadget 5)" "state is empty, not MERGED"
+assert_eq "-"       "$(enrich_field 2 gadget 5)" "state is unverified (-), not MERGED"
 assert_eq "NONE"    "$(enrich_field 3 gadget 5)"
 assert_eq "UNKNOWN" "$(enrich_field 4 gadget 5)"
 assert_eq "a title" "$(enrich_field 6 gadget 5)" "the fallback title survives"
@@ -225,7 +235,7 @@ it "a forge whose CLI is absent yields the unknown row too"
 # Simulated by emptying PATH: neither gh nor bb can be found, so a GitHub repo
 # takes the same "cannot tell" path a Bitbucket one would without bb.
 out="$(PATH=/nonexistent-for-this-test wtc_pr_enrich widget 5 'a title' 2>/dev/null | cut -f2)"
-assert_empty "$out" "state stays empty when no client is installed"
+assert_eq "-" "$out" "state is unverified (-) when no client is installed"
 
 # --- last-refresh snapshot --------------------------------------------------
 # A cache, so every reader must work without it — and a shared one, so the

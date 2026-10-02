@@ -19,6 +19,7 @@ EOF
   exit "${1:-1}"
 }
 
+original_args=("$@")
 force=no
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,6 +37,36 @@ HARNESS_DIR="$(dirname "$script_dir")"
 . "$script_dir/lib.sh"
 harness_lib_init
 
+# Keep the shell path available for older pins and before mise has installed
+# the requested binary. A matching pin can use the native retirement checks.
+native_retire_supported() { # v0.1.12 first shipped wtc retire
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 12))
+  }'
+}
+source_collection="$(dirname "$HARNESS_DIR")"
+if [ -f "$HARNESS_DIR/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$HARNESS_DIR/.wtc-cli-version")"
+  cli_version=""
+  cli_cmd=()
+  if native_retire_supported "$cli_pin" && command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$source_collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+  fi
+  if native_retire_supported "$cli_pin" && [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$source_collection" && wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(wtc)
+  fi
+  if [ "$cli_version" = "wtc version $cli_pin" ] &&
+      (cd "$source_collection" && "${cli_cmd[@]}" retire --help >/dev/null 2>&1); then
+    cd "$source_collection"
+    exec "${cli_cmd[@]}" retire "${original_args[@]}"
+  fi
+fi
+
 dest_root="$ROOT/$collection"
 [ -d "$dest_root/harness" ] || { echo "error: $dest_root is not a collection (no harness/)" >&2; exit 1; }
 case "$(cd "$HARNESS_DIR" && pwd)" in
@@ -47,6 +78,11 @@ blocked=no
 for wt in "$dest_root"/*/; do
   wt="${wt%/}"
   [ -e "$wt/.git" ] || continue
+  bare="$(owner_of "$wt")"
+  if [ -z "$bare" ] || [ ! -d "$bare" ]; then
+    echo "blocked: cannot find Git owner for $wt" >&2
+    exit 1
+  fi
   if [ -n "$(git -C "$wt" status --porcelain)" ]; then
     echo "blocked: $wt has uncommitted changes" >&2
     blocked=yes
@@ -122,7 +158,7 @@ rm -f "$dest_root/HANDOFF.md" "$dest_root/.env.collection" \
   "$dest_root/.env.collection.local" "$dest_root/mise.toml" "$dest_root/.DS_Store" \
   "$dest_root/AGENTS.md" "$dest_root/WTC-SCOPE.md" "$dest_root/.mcp.json" \
   "$dest_root/.envrc" "$dest_root/.env.toolchain" \
-  "$dest_root/.wtc-prs" "$dest_root/.last-wtc-status.yml" \
+  "$dest_root/.wtc-prs" "$dest_root/.wtc-prs.lock" "$dest_root/.last-wtc-status.yml" \
   "$dest_root/.wtc-status.json" "$dest_root/.wtc-status.md"
 # Generated agent-config dirs — skill symlinks into harness/skills and the
 # toolchain hook into harness/hooks (link-skills.sh), and the rendered MCP
@@ -134,6 +170,12 @@ rm -f "$dest_root/HANDOFF.md" "$dest_root/.env.collection" \
 # comment exists to prevent, and it has happened twice.
 rm -rf "$dest_root/.claude" "$dest_root/.agents" "$dest_root/.cursor" "$dest_root/.codex" \
   "$dest_root/.grok"
+# Native skill rendering materializes embedded defaults here. Remove only its
+# generated subtree; leave any other .wtc content visible for inspection.
+if [ -d "$dest_root/.wtc" ] && [ ! -L "$dest_root/.wtc" ]; then
+  rm -rf "$dest_root/.wtc/skills"
+  rmdir "$dest_root/.wtc" 2>/dev/null || :
+fi
 if rmdir "$dest_root" 2>/dev/null; then
   echo "done: retired $dest_root"
 else

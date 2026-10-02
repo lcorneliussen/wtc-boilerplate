@@ -49,7 +49,11 @@ cat > "$mock/gh" <<'MOCK'
 # No PRs in this fixture. Never reach the developer's signed-in forge.
 if [ "${CATCH_TEST_GH_FAIL:-}" = yes ]; then exit 1; fi
 if [ "$1 $2" = 'pr view' ]; then
-  echo '{"number":777,"state":"MERGED","title":"finished","isDraft":false}'
+  if [ "${CATCH_TEST_GH_OPEN:-}" = yes ]; then
+    echo '{"number":777,"state":"OPEN","title":"in progress","isDraft":false}'
+  else
+    echo '{"number":777,"state":"MERGED","title":"finished","isDraft":false}'
+  fi
 elif [ "$1 $2" = 'pr list' ]; then
   echo '[]'
 fi
@@ -113,6 +117,19 @@ assert_eq "$base" "$(git -C "$root/clean/harness" rev-parse HEAD)"
 unset CATCH_TEST_GH_FAIL
 git -C "$root/clean/harness" checkout -q --detach "$tip"
 git -C "$root/clean/harness" branch -d lookup-failed >/dev/null
+
+it 'shell fallback leaves open PR branches for the pinned CLI'
+git -C "$root/clean/harness" switch -qc open-topic "$base"
+printf 'agent-harness 777 open-topic - in-progress\n' > "$root/clean/.wtc-prs"
+export CATCH_TEST_GH_OPEN=yes
+"$runner" --harness-only --json "${no_hooks[@]}" clean > "$root/open-fallback.json" 2> "$root/stderr"
+assert_eq 1 "$?"
+assert_eq "$base" "$(git -C "$root/clean/harness" rev-parse HEAD)"
+assert_contains "$(cat "$root/open-fallback.json")" 'requires the matching installed CLI'
+unset CATCH_TEST_GH_OPEN
+rm "$root/clean/.wtc-prs"
+git -C "$root/clean/harness" checkout -q --detach "$tip"
+git -C "$root/clean/harness" branch -d open-topic >/dev/null
 
 it 'dry-run is read-only and accepts registry names'
 : > "$CATCH_TEST_LOG"

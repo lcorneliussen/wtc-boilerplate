@@ -46,6 +46,7 @@ EOF
   exit "${1:-1}"
 }
 
+original_args=("$@")
 branch="" issue="" tracker="" pr="" open_wtc=auto
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -66,6 +67,36 @@ script_dir="$(cd "$(dirname "$0")" && pwd)"
 HARNESS_DIR="$(dirname "$script_dir")"
 . "$script_dir/lib.sh"
 harness_lib_init
+
+# The creating collection's mise.toml selects the CLI. A newly bumped harness
+# can still use this shell implementation until its generated pin catches up.
+native_new_supported() { # v0.1.10 first shipped wtc new
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 10))
+  }'
+}
+source_collection="$(dirname "$HARNESS_DIR")"
+if [ -f "$HARNESS_DIR/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$HARNESS_DIR/.wtc-cli-version")"
+  cli_version=""
+  cli_cmd=()
+  if native_new_supported "$cli_pin" && command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$source_collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+  fi
+  if native_new_supported "$cli_pin" && [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$source_collection" && wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(wtc)
+  fi
+  if [ "$cli_version" = "wtc version $cli_pin" ] &&
+      (cd "$source_collection" && "${cli_cmd[@]}" new --help >/dev/null 2>&1); then
+    cd "$source_collection"
+    exec "${cli_cmd[@]}" new "${original_args[@]}"
+  fi
+fi
 
 # Resolve the wtc source into: collection, the branch name the work is
 # EXPECTED to get (recorded in the launch note, created at the first commit),
@@ -169,7 +200,8 @@ commits / PRs, then **delete this file as your very first action**
 (harness/AGENTS.md → "State lives in git").
 
 $branch_note Collection env: \`.env.collection\` (inherited via \`mise.toml\`).
-Retire with \`harness/tools/retire.sh\`.
+From this collection's Herdr workspace, retire with \`wtc retire .\`.
+From elsewhere, use \`wtc retire $collection\`.
 EOF
 
 echo "done: $dest_root"

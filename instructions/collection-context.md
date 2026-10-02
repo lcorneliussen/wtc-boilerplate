@@ -36,9 +36,10 @@ the useful one.
 | `add-repo.sh` | this collection | `--collection <name>` |
 | `link-skills.sh`, `link-secrets.sh`, `refresh-configs.sh` | this collection | `--collection <name>`, `--all` (link-skills) |
 
-Two tools are outside the rule by nature, and say so: `branch-off.sh` creates a
-new collection, and `retire.sh` needs the name of the collection to destroy —
-it refuses to run from inside its own target.
+Two tools are outside the rule by nature: `branch-off.sh` creates a new
+collection, and `retire.sh` needs a target to destroy. With a matching CLI pin,
+`retire.sh .` delegates self-retirement to a separate Herdr cleanup workspace.
+The older-pin shell fallback still requires an external collection.
 
 A default you want changed on this machine belongs in `$WTC_CONFIG_ROOT/wtc.env`
 ([secrets.md](secrets.md)), not in flags you have to remember every time.

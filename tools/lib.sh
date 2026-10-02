@@ -19,11 +19,31 @@ harness_lib_init() {
   [ -f "$REGISTRY" ] || { echo "error: $REGISTRY missing" >&2; exit 1; }
 }
 
-# The collection folder is always `harness/`; the repo behind it is whatever
-# you named your fork of this one. Set WTC_HARNESS_REPO to that name — it has
-# to match the bare in `.bare/` and the `name:` in the registry.
+# The collection folder is always `harness/`. Infer its repository from Git,
+# with an explicit override for unusual owner names or offline fixtures.
 harness_repo() {
-  printf '%s\n' "${WTC_HARNESS_REPO:-agent-harness}"
+  if [ -n "${WTC_HARNESS_REPO:-}" ]; then
+    printf '%s\n' "$WTC_HARNESS_REPO"
+    return 0
+  fi
+  _harness_owner="$(git -C "$HARNESS_DIR" rev-parse --git-common-dir 2>/dev/null || true)"
+  _harness_name="${_harness_owner##*/}"
+  _harness_name="${_harness_name%.git}"
+  if [ -n "$_harness_name" ] && [ -n "$(registry_field "$_harness_name" remote)" ]; then
+    printf '%s\n' "$_harness_name"
+    return 0
+  fi
+  _harness_remote="$(git -C "$HARNESS_DIR" remote get-url origin 2>/dev/null || true)"
+  if [ -n "$_harness_remote" ]; then
+    for _harness_name in $(registry_all_names); do
+      if [ "$(registry_field "$_harness_name" remote)" = "$_harness_remote" ]; then
+        printf '%s\n' "$_harness_name"
+        return 0
+      fi
+    done
+  fi
+  echo "error: cannot infer harness repo; set WTC_HARNESS_REPO" >&2
+  return 1
 }
 
 registry_field() { # <repo-name> <field> — one scalar field from the repo's block
@@ -361,6 +381,26 @@ forge_cli_present() { # <forge> — 0 when the CLI for it is installed
   command -v "$_c" >/dev/null 2>&1
 }
 
+forge_cli_usable() { # <forge> — 0 when a quick probe succeeds (not a broken shim)
+  _c="$(forge_cli "${1:-}")"
+  [ -n "$_c" ] || return 1
+  command -v "$_c" >/dev/null 2>&1 || return 1
+  case "$_c" in
+    bb)
+      _probe="$("$_c" --version 2>&1)" || return 1
+      case "$_probe" in
+        *mise\ ERROR*|*Bun\ runtime*|*requires\ the\ Bun*) return 1 ;;
+      esac
+      case "$_probe" in [0-9]*) return 0 ;; esac
+      return 1
+      ;;
+    gh)
+      "$_c" --version >/dev/null 2>&1
+      ;;
+    *) return 1 ;;
+  esac
+}
+
 # Slug and forge for a repo that may not be in the registry — an `ext.`
 # sibling has no registry entry, but its worktree knows its own remote.
 # Without this, an unregistered repo's PR lookups (wtc-pr enlist's default
@@ -524,6 +564,18 @@ load_wtc_config() {
   : "${WTC_STATUS_REPOS:=no}"
   : "${WTC_STATUS_WATCH:=${HARNESS_STATUS_WATCH:-30}}"
   : "${WTC_STATUS_NO_CLICK:=no}"
+  # wide | narrow | auto — wtc-open.sh; flags still win. auto uses session width.
+  : "${WTC_LAYOUT:=auto}"
+  : "${WTC_LAYOUT_NARROW_AT:=140}"
+  # Local PR review (review/README.md). Each tier is an agent:model spec;
+  # an empty model means the agent's own default. review-run.sh flags still win.
+  : "${HARNESS_REVIEW_STRONG:=claude:opus}"
+  : "${HARNESS_REVIEW_STANDARD:=claude:sonnet}"
+  : "${HARNESS_REVIEW_FAST:=claude:haiku}"
+  : "${HARNESS_REVIEW_LEAD:=$HARNESS_REVIEW_STRONG}"
+  : "${HARNESS_REVIEW_PARALLEL:=4}"
+  : "${HARNESS_REVIEW_TIMEOUT:=900}"
+  : "${HARNESS_REVIEW_GROK_EFFORT:=low}"
 }
 
 herdr_present() { command -v herdr >/dev/null 2>&1; }
@@ -810,19 +862,289 @@ herdr_row_col() { # <rows> <label> <column>
   printf '%s\n' "$1" | awk -F'\t' -v l="$2" -v c="$3" '$1 == l { print $c; exit }'
 }
 
-# Default layout (new workspaces), see instructions/herdr.md:
+# herdr pane split --ratio is the ORIGINAL pane's share (verified):
+# shell at 20% → split down --ratio 0.80; status at 35% → --ratio 0.65.
 #
-#   [ agent | browse        ]
-#   [       | shell | status]
+# Wide (default), see instructions/herdr.md:
+#   [ agent | browse ]
+#   [ shell | status ]
+# Narrow (--narrow / WTC_LAYOUT=narrow / auto when session width is small):
+#   tab main:  agent / status   (stacked)
+#   tab tools: browse / shell   (stacked)
 #
-# Agent is the full-height conversation. Browse is the human TUI slot
-# (LazyVim / lazygit); empty, it is just a shell. Terminal and status
-# sit under browse, not under the agent.
-#
+# Create applies the layout. Explicit --narrow/--wide switches an existing
+# workspace (agent pane is preserved). A partial workspace (agent-first) is
+# built out toward the resolved layout. Auto never flips wide ↔ narrow on a
+# complete workspace.
+
+herdr_session_width() { # <session> -> columns (0 if unknown)
+  herdr --session "$1" api snapshot 2>/dev/null | python3 -c '
+import json, sys
+raw = sys.stdin.read()
+i = raw.find("{")
+if i < 0:
+    print(0); raise SystemExit
+snap = json.loads(raw[i:]).get("result", {}).get("snapshot") or {}
+w = 0
+for layout in snap.get("layouts") or []:
+    cw = int((layout.get("area") or {}).get("width") or 0)
+    if cw > w:
+        w = cw
+print(w)
+' 2>/dev/null || printf '0\n'
+}
+
+# <session> <preference: wide|narrow|auto|""> -> wide|narrow
+herdr_resolve_layout() {
+  _pref="${2:-auto}"
+  case "$_pref" in
+    wide|narrow) printf '%s\n' "$_pref"; return 0 ;;
+  esac
+  _w="$(herdr_session_width "$1")"
+  _at="${WTC_LAYOUT_NARROW_AT:-${HARNESS_LAYOUT_NARROW_AT:-140}}"
+  if [ "$_w" -gt 0 ] 2>/dev/null && [ "$_w" -lt "$_at" ]; then
+    printf 'narrow\n'
+  else
+    printf 'wide\n'
+  fi
+}
+
+herdr_layout_is_narrow() { # <session> <workspace> — 0 if tools tab exists
+  [ -n "$(herdr_tab_id_by_label "$1" "$2" tools)" ]
+}
+
+# 0 when both panes share a column (same rect.x in the session snapshot).
+herdr_panes_same_column() { # <session> <pane_a> <pane_b>
+  herdr --session "$1" api snapshot 2>/dev/null | python3 -c '
+import json, sys
+raw = sys.stdin.read()
+i = raw.find("{")
+if i < 0:
+    raise SystemExit(1)
+snap = json.loads(raw[i:]).get("result", {}).get("snapshot") or {}
+want = {sys.argv[1], sys.argv[2]}
+xs = {}
+for layout in snap.get("layouts") or []:
+    for pane in layout.get("panes") or []:
+        pid = pane.get("pane_id")
+        if pid in want and "rect" in pane:
+            xs[pid] = pane["rect"].get("x")
+if len(xs) < 2:
+    raise SystemExit(1)
+raise SystemExit(0 if xs[sys.argv[1]] == xs[sys.argv[2]] else 1)
+' "$2" "$3" 2>/dev/null
+}
+
+# Prefer labelled agent, else a pane herdr already ties to an agent, else first.
+herdr_agent_home_pane() { # <session> <workspace> -> pane id
+  _id="$(herdr_pane_id_by_label "$1" "$2" agent)"
+  if [ -n "$_id" ]; then printf '%s\n' "$_id"; return 0; fi
+  _id="$(herdr --session "$1" pane list --workspace "$2" 2>/dev/null | python3 -c '
+import json, sys
+raw = sys.stdin.read()
+i = raw.find("{")
+if i < 0:
+    raise SystemExit
+panes = json.loads(raw[i:]).get("result", {}).get("panes") or []
+for pane in panes:
+    if pane.get("agent"):
+        print(pane.get("pane_id") or "")
+        raise SystemExit
+if panes:
+    print(panes[0].get("pane_id") or "")
+' 2>/dev/null || true)"
+  printf '%s\n' "$_id"
+}
+
+# wide | narrow | partial
+herdr_layout_detect() { # <session> <workspace>
+  _s="$1" _ws="$2"
+  _agent="$(herdr_pane_id_by_label "$_s" "$_ws" agent)"
+  _browse="$(herdr_pane_id_by_label "$_s" "$_ws" browse)"
+  _shell="$(herdr_pane_id_by_label "$_s" "$_ws" shell)"
+  _status="$(herdr_pane_id_by_label "$_s" "$_ws" status)"
+  if herdr_layout_is_narrow "$_s" "$_ws"; then
+    if [ -n "$_agent" ] && [ -n "$_browse" ] && [ -n "$_shell" ] && [ -n "$_status" ]; then
+      printf 'narrow\n'
+      return 0
+    fi
+    printf 'partial\n'
+    return 0
+  fi
+  if [ -n "$_agent" ] && [ -n "$_browse" ] && [ -n "$_shell" ] && [ -n "$_status" ] \
+     && herdr_panes_same_column "$_s" "$_shell" "$_agent"; then
+    printf 'wide\n'
+    return 0
+  fi
+  printf 'partial\n'
+}
+
+# Fresh / single-pane → wide four-pane layout. Prints nothing.
+herdr_layout_apply_wide() { # <session> <agent_pane> <cwd>
+  _s="$1" _agent="$2" _cwd="$3"
+  _browse="$(herdr --session "$_s" pane split "$_agent" \
+    --direction right --ratio 0.40 --cwd "$_cwd" --no-focus | herdr_first_pane_id)"
+  herdr --session "$_s" pane rename "$_agent" agent >/dev/null
+  if [ -n "$_browse" ]; then
+    herdr --session "$_s" pane rename "$_browse" browse >/dev/null
+  fi
+  _shell="$(herdr --session "$_s" pane split "$_agent" \
+    --direction down --ratio 0.80 --cwd "$_cwd" --no-focus | herdr_first_pane_id)"
+  [ -n "$_shell" ] && herdr --session "$_s" pane rename "$_shell" shell >/dev/null
+  if [ -n "$_browse" ]; then
+    _status="$(herdr --session "$_s" pane split "$_browse" \
+      --direction down --ratio 0.65 --cwd "$_cwd" --no-focus | herdr_first_pane_id)"
+    [ -n "$_status" ] && herdr --session "$_s" pane rename "$_status" status >/dev/null
+  fi
+}
+
+# Fresh / single-pane → narrow two-tab layout. Prints nothing.
+herdr_layout_apply_narrow() { # <session> <workspace> <agent_pane> <cwd>
+  _s="$1" _ws="$2" _agent="$3" _cwd="$4"
+  _tab="$(herdr_pane_tab_id "$_s" "$_agent")"
+  [ -n "$_tab" ] && herdr --session "$_s" tab rename "$_tab" main >/dev/null || true
+  herdr --session "$_s" pane rename "$_agent" agent >/dev/null
+  _status="$(herdr --session "$_s" pane split "$_agent" \
+    --direction down --ratio 0.65 --cwd "$_cwd" --no-focus | herdr_first_pane_id)"
+  [ -n "$_status" ] && herdr --session "$_s" pane rename "$_status" status >/dev/null
+  _created="$(herdr --session "$_s" tab create --workspace "$_ws" \
+    --cwd "$_cwd" --label tools --no-focus 2>/dev/null || true)"
+  _browse="$(printf '%s' "$_created" | herdr_first_pane_id || true)"
+  if [ -n "$_browse" ]; then
+    herdr --session "$_s" pane rename "$_browse" browse >/dev/null
+    _shell="$(herdr --session "$_s" pane split "$_browse" \
+      --direction down --ratio 0.80 --cwd "$_cwd" --no-focus | herdr_first_pane_id)"
+    [ -n "$_shell" ] && herdr --session "$_s" pane rename "$_shell" shell >/dev/null
+  fi
+}
+
+# Wide → narrow without killing the agent pane. Status is recreated (cheap).
+herdr_layout_switch_to_narrow() { # <session> <workspace> <cwd>
+  _s="$1" _ws="$2" _cwd="$3"
+  _agent="$(herdr_agent_home_pane "$_s" "$_ws")"
+  [ -n "$_agent" ] || return 1
+  herdr --session "$_s" pane rename "$_agent" agent >/dev/null || true
+  _main="$(herdr_pane_tab_id "$_s" "$_agent")"
+  [ -n "$_main" ] && herdr --session "$_s" tab rename "$_main" main >/dev/null || true
+
+  _browse="$(herdr_pane_id_by_label "$_s" "$_ws" browse)"
+  _shell="$(herdr_pane_id_by_label "$_s" "$_ws" shell)"
+  _status="$(herdr_pane_id_by_label "$_s" "$_ws" status)"
+
+  if [ -n "$_browse" ]; then
+    herdr --session "$_s" pane move "$_browse" --new-tab --workspace "$_ws" \
+      --label tools --no-focus >/dev/null || true
+    _browse="$(herdr_pane_id_by_label "$_s" "$_ws" browse)"
+  else
+    _created="$(herdr --session "$_s" tab create --workspace "$_ws" \
+      --cwd "$_cwd" --label tools --no-focus 2>/dev/null || true)"
+    _browse="$(printf '%s' "$_created" | herdr_first_pane_id || true)"
+    [ -n "$_browse" ] && herdr --session "$_s" pane rename "$_browse" browse >/dev/null
+  fi
+  _tools="$(herdr_tab_id_by_label "$_s" "$_ws" tools)"
+  [ -z "$_tools" ] && [ -n "$_browse" ] && _tools="$(herdr_pane_tab_id "$_s" "$_browse")"
+
+  if [ -n "$_shell" ] && [ -n "$_browse" ] && [ -n "$_tools" ]; then
+    herdr --session "$_s" pane move "$_shell" --tab "$_tools" --split down \
+      --target-pane "$_browse" --ratio 0.80 --no-focus >/dev/null || true
+  elif [ -n "$_browse" ] && [ -z "$(herdr_pane_id_by_label "$_s" "$_ws" shell)" ]; then
+    _shell="$(herdr --session "$_s" pane split "$_browse" \
+      --direction down --ratio 0.80 --cwd "$_cwd" --no-focus | herdr_first_pane_id)"
+    [ -n "$_shell" ] && herdr --session "$_s" pane rename "$_shell" shell >/dev/null
+  fi
+
+  _status="$(herdr_pane_id_by_label "$_s" "$_ws" status)"
+  if [ -n "$_status" ]; then
+    herdr --session "$_s" pane close "$_status" >/dev/null 2>&1 || true
+  fi
+  _status="$(herdr --session "$_s" pane split "$_agent" \
+    --direction down --ratio 0.65 --cwd "$_cwd" --no-focus | herdr_first_pane_id)"
+  [ -n "$_status" ] && herdr --session "$_s" pane rename "$_status" status >/dev/null
+}
+
+# Narrow → wide without killing the agent pane. Status is recreated (cheap).
+herdr_layout_switch_to_wide() { # <session> <workspace> <cwd>
+  _s="$1" _ws="$2" _cwd="$3"
+  _agent="$(herdr_agent_home_pane "$_s" "$_ws")"
+  [ -n "$_agent" ] || return 1
+  herdr --session "$_s" pane rename "$_agent" agent >/dev/null || true
+  _main="$(herdr_pane_tab_id "$_s" "$_agent")"
+  [ -n "$_main" ] || return 1
+
+  _browse="$(herdr_pane_id_by_label "$_s" "$_ws" browse)"
+  _shell="$(herdr_pane_id_by_label "$_s" "$_ws" shell)"
+  _status="$(herdr_pane_id_by_label "$_s" "$_ws" status)"
+
+  if [ -n "$_browse" ]; then
+    herdr --session "$_s" pane move "$_browse" --tab "$_main" --split right \
+      --target-pane "$_agent" --ratio 0.40 --no-focus >/dev/null || true
+    _browse="$(herdr_pane_id_by_label "$_s" "$_ws" browse)"
+  else
+    _browse="$(herdr --session "$_s" pane split "$_agent" \
+      --direction right --ratio 0.40 --cwd "$_cwd" --no-focus | herdr_first_pane_id)"
+    [ -n "$_browse" ] && herdr --session "$_s" pane rename "$_browse" browse >/dev/null
+  fi
+
+  if [ -n "$_shell" ]; then
+    herdr --session "$_s" pane move "$_shell" --tab "$_main" --split down \
+      --target-pane "$_agent" --ratio 0.80 --no-focus >/dev/null || true
+  else
+    _shell="$(herdr --session "$_s" pane split "$_agent" \
+      --direction down --ratio 0.80 --cwd "$_cwd" --no-focus | herdr_first_pane_id)"
+    [ -n "$_shell" ] && herdr --session "$_s" pane rename "$_shell" shell >/dev/null
+  fi
+
+  _status="$(herdr_pane_id_by_label "$_s" "$_ws" status)"
+  if [ -n "$_status" ]; then
+    herdr --session "$_s" pane close "$_status" >/dev/null 2>&1 || true
+  fi
+  _browse="$(herdr_pane_id_by_label "$_s" "$_ws" browse)"
+  if [ -n "$_browse" ]; then
+    _status="$(herdr --session "$_s" pane split "$_browse" \
+      --direction down --ratio 0.65 --cwd "$_cwd" --no-focus | herdr_first_pane_id)"
+    [ -n "$_status" ] && herdr --session "$_s" pane rename "$_status" status >/dev/null
+  fi
+}
+
+# Bring workspace to target layout. Prints: unchanged | built | switched
+herdr_layout_ensure() { # <session> <workspace> <cwd> <wide|narrow>
+  _s="$1" _ws="$2" _cwd="$3" _want="$4"
+  _cur="$(herdr_layout_detect "$_s" "$_ws")"
+  if [ "$_cur" = "$_want" ]; then
+    printf 'unchanged\n'
+    return 0
+  fi
+  _agent="$(herdr_agent_home_pane "$_s" "$_ws")"
+  [ -n "$_agent" ] || return 1
+  herdr --session "$_s" pane rename "$_agent" agent >/dev/null || true
+
+  if [ "$_cur" = partial ]; then
+    _n="$(herdr --session "$_s" pane list --workspace "$_ws" 2>/dev/null \
+      | python3 -c 'import json,sys; r=sys.stdin.read(); i=r.find("{");
+print(len(json.loads(r[i:]).get("result",{}).get("panes") or []) if i>=0 else 0)' 2>/dev/null || printf '0')"
+    if [ "$_n" = 1 ]; then
+      if [ "$_want" = narrow ]; then
+        herdr_layout_apply_narrow "$_s" "$_ws" "$_agent" "$_cwd"
+      else
+        herdr_layout_apply_wide "$_s" "$_agent" "$_cwd"
+      fi
+      printf 'built\n'
+      return 0
+    fi
+  fi
+
+  if [ "$_want" = narrow ]; then
+    herdr_layout_switch_to_narrow "$_s" "$_ws" "$_cwd" || return 1
+  else
+    herdr_layout_switch_to_wide "$_s" "$_ws" "$_cwd" || return 1
+  fi
+  printf 'switched\n'
+}
+
 # Heal is non-destructive. A leftover `tui` label is renamed to `browse`.
-# A standard 3-pane workspace (agent / shell / status) gets `browse` by
-# splitting agent to the right. A workspace that already grew extra panes
-# is left alone — callers fall back to `shell`.
+# A standard wide workspace missing browse gets it by splitting agent right.
+# Narrow (tools tab) and workspaces that already grew extra panes are left
+# alone — callers fall back to `shell`.
 herdr_ensure_browse_pane() { # <session> <workspace> <cwd> -> pane id
   session="$1" ws="$2" cwd="$3"
   id="$(herdr_pane_id_by_label "$session" "$ws" browse)"
@@ -834,6 +1156,12 @@ herdr_ensure_browse_pane() { # <session> <workspace> <cwd> -> pane id
   fi
   if [ -n "$id" ]; then
     printf '%s\n' "$id"
+    return 0
+  fi
+
+  # Narrow layout keeps browse on the tools tab — do not insert a column on main.
+  if herdr_layout_is_narrow "$session" "$ws"; then
+    herdr_pane_id_by_label "$session" "$ws" shell
     return 0
   fi
 
@@ -943,8 +1271,11 @@ herdr_first_pane_id() { # reads a herdr JSON response on stdin -> first pane id
     | head -n1
 }
 
-write_collection_env() { # <collection-dir> <collection-name>
+write_collection_env() { # <collection-dir> <collection-name> [harness-dir] [skip-trust]
+  local cli_harness cli_version skip_trust
   dir="$1" name="$2"
+  cli_harness="${3:-$dir/harness}"
+  skip_trust="${4:-no}"
   # Regeneration keeps the collection's existing port base (idempotent).
   base=""
   if [ -f "$dir/.env.collection" ]; then
@@ -1045,6 +1376,16 @@ EOF
   fi
   chmod 600 "$dir/.env.collection.local"
 
+  # The committed harness pin is the source of truth. Never put a tool pin
+  # directly in the generated collection file: refresh-env rewrites it.
+  cli_version=""
+  if [ -f "$cli_harness/.wtc-cli-version" ]; then
+    cli_version="$(cat "$cli_harness/.wtc-cli-version")"
+    if [[ ! "$cli_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+      echo "error: invalid CLI version in $cli_harness/.wtc-cli-version" >&2
+      return 1
+    fi
+  fi
   cat > "$dir/mise.toml" <<'EOF'
 # Generated by harness tools. Collection-scoped env: mise finds this file as a
 # parent config of every sibling repo worktree, so all of them inherit the
@@ -1053,10 +1394,15 @@ EOF
 # .env.collection.local is the collection-scoped secrets tier — hand-authored,
 # 600, never regenerated. Listed second so it wins on conflict.
 # Without mise: `set -a; . ./.env.collection; . ./.env.collection.local; set +a`.
+EOF
+  if [ -n "$cli_version" ]; then
+    printf '[tools]\n"github:lcorneliussen/wtc-cli" = "%s"\n\n' "$cli_version" >> "$dir/mise.toml"
+  fi
+  cat >> "$dir/mise.toml" <<'EOF'
 [env]
 _.file = [".env.collection", ".env.collection.local"]
 EOF
-  trust_mise "$dir"
+  [ "$skip_trust" = yes ] || trust_mise "$dir"
   echo "wrote $dir/.env.collection (port base $base) + $dir/mise.toml + $dir/.env.collection.local"
 }
 
@@ -1292,7 +1638,7 @@ wtc_pr_facts_py() {
 # whether a branch is finished, so "cannot tell" must never be spelled the
 # same as "merged".
 _wtc_pr_unknown_row() { # <number> <title>
-  printf '%s\t\tNONE\tUNKNOWN\tnone\t%s\t\t\n' "$1" "${2:-}"
+  printf '%s\t-\tNONE\tUNKNOWN\tnone\t%s\t-\t-\n' "$1" "${2:-}"
 }
 
 _wtc_pr_enrich_github() { # <slug> <number> <title> -> TSV line, or empty
@@ -1421,6 +1767,7 @@ EOF
   # is the unknown row, not a silent reclassification: catch-up must not read
   # "cannot verify" as "merged".
   forge_cli_present "$forge" || { _wtc_pr_unknown_row "$num" "$title"; return 0; }
+  forge_cli_usable "$forge" || { _wtc_pr_unknown_row "$num" "$title"; return 0; }
 
   # Keyed by slug#number, not by repo name: two collections can hold the same
   # repo under different sibling names, and they are asking about the same PR.
@@ -1492,7 +1839,7 @@ wtc_pr_label_add() { # <slug> <pr-number> <label> — tag an existing PR
 
 # PRS section rows, driven by local enlistment (.wtc-prs) — not a forge label
 # search. TSV: repo \t number \t checks \t merge \t review \t title \t
-# archived \t merged_on \t draft
+# archived \t merged_on \t draft \t state
 #
 # merged_on is "-" rather than empty when there is none: `read -r … <<< "…"`
 # with IFS=$'\t' still treats a lone tab as IFS whitespace and collapses
@@ -1534,9 +1881,10 @@ wtc_pr_list() { # <collection> -> TSV rows, one per enlisted PR (open/draft/merg
         ;;
     esac
     [ -n "$etitle" ] && title="$etitle"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
+    _st="${state:-}"; [ -z "$_st" ] && _st=-
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' \
       "$repo" "$num" "${checks:-NONE}" "${merge:-UNKNOWN}" "${review:-none}" \
-      "${title:--}" "$archived" "${merged_on:--}" "$draft"
+      "${title:--}" "$archived" "${merged_on:--}" "$draft" "$_st"
   done
 }
 

@@ -2,6 +2,60 @@
 # catch-up.sh — selected worktrees, with one report anchored to the initiator.
 set -euo pipefail
 
+# Use the pinned native command when this harness has installed its release.
+# The shell implementation remains available during bootstrap and for older pins.
+native_catch_up_supported() { # v0.1.15 first shipped wtc catch-up
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 15))
+  }'
+}
+source_harness="$(cd "$(dirname "$0")/.." && pwd)"
+source_collection="$(dirname "$source_harness")"
+if [ -f "$source_harness/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$source_harness/.wtc-cli-version")"
+  cli_version=""
+  cli_cmd=()
+  if native_catch_up_supported "$cli_pin" && command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$source_collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+  fi
+  if native_catch_up_supported "$cli_pin" && [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$source_collection" && wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(wtc)
+  fi
+  if [ "$cli_version" = "wtc version $cli_pin" ] &&
+      (cd "$source_collection" && "${cli_cmd[@]}" catch-up --help >/dev/null 2>&1); then
+    caller_dir="$(pwd -P)"
+    cli_args=()
+    while [ "$#" -gt 0 ]; do
+      if [ "$1" = --report ]; then
+        case "${2:-}" in
+          ''|-*) echo '--report requires a value' >&2; exit 2 ;;
+        esac
+        cli_args+=(--report)
+        case "$2" in
+          /*) cli_args+=("$2") ;;
+          *) cli_args+=("$caller_dir/$2") ;;
+        esac
+        shift 2
+      else
+        case "$1" in
+          --report=) echo '--report requires a value' >&2; exit 2 ;;
+          --report=/*) cli_args+=("$1") ;;
+          --report=*) cli_args+=("--report=$caller_dir/${1#--report=}") ;;
+          *) cli_args+=("$1") ;;
+        esac
+        shift
+      fi
+    done
+    cd "$source_collection"
+    exec "${cli_cmd[@]}" catch-up "${cli_args[@]}"
+  fi
+fi
+
 # A selected initiating harness may replace these files during the sweep.
 # Execute a private copy; target hooks still come from each updated harness.
 rollout_location="$(cd "$(dirname "$0")" && pwd)"
@@ -325,6 +379,10 @@ reconcile() {
   case "$pr_state" in
     UNKNOWN) outcome=needs-owner; reason='PR state unavailable; branch left untouched'; return ;;
     CLOSED|closed) outcome=needs-owner; reason='closed PR branch; owner must decide continuation'; return ;;
+    OPEN|open|DRAFT|draft)
+      outcome=needs-owner
+      reason='open PR catch-up requires the matching installed CLI to verify its merge target; branch left untouched'
+      return ;;
     MERGED|merged)
       tsv_from_cmd mcommit pr_head -- pr_merge_facts_for_branch "$collection" "$repo" "$branch"
       [ "$mcommit" != - ] || mcommit=''
@@ -471,9 +529,11 @@ while IFS=$'\t' read -r collection wt repo owner; do
       # Run only repo-scoped secrets, never a whole-collection secrets sweep.
       [ "$do_secrets" = no ] || run_hook link-secrets.sh "secrets:$repo" "$(basename "$wt")"
       if [ "$(basename "$wt")" = harness ]; then
+        # Skill rendering selects the target's CLI pin from generated mise.toml.
+        # Refresh it first when this catch-up just advanced the harness pin.
+        [ "$do_env" = no ] || run_hook refresh-env.sh env
         [ "$do_skills" = no ] || run_hook link-skills.sh skills
         [ "$do_mcp" = no ] || run_hook link-mcp.sh mcp
-        [ "$do_env" = no ] || run_hook refresh-env.sh env
         [ "$reload_status" = no ] || reload_pane
       fi ;;
     *)

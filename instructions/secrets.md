@@ -21,10 +21,22 @@ CLI flags still win.
 |---|---|---|
 | `WTC_AGENT_KIND` | `claude` | agent kind `wtc-open.sh` starts |
 | `WTC_AGENT_ARGS` | — | args passed to the agent, replacing the built-in defaults |
+| `WTC_LAYOUT` | `auto` | `wide` / `narrow` / `auto` — herdr workspace layout at create time |
+| `WTC_LAYOUT_NARROW_AT` | `140` | session width (cols) below which `auto` picks narrow |
 | `WTC_STATUS_REPOS` | `no` | `yes` → status shows only the collection table |
-| `WTC_STATUS_WATCH` | `30` | redraw interval in seconds; `0` prints once |
-| `WTC_STATUS_NO_CLICK` | `no` | `yes` → no mouse capture, no constant redraw |
+| `WTC_STATUS_WATCH` | `30` | redraw interval while the pane is focused; `0` prints once |
+| `WTC_STATUS_WATCH_BG` | `300` | redraw interval while it is not; `0` uses the focused one always |
+| `WTC_FORGE_CACHE_AGE` | `90` | seconds a PR's forge answer is reused across every status pane |
+| `WTC_STATUS_FOCUS_EVERY` | `10` | ticks (≈seconds) between focus checks while waiting; the check spawns herdr |
+| `WTC_STATUS_NO_CLICK` | `no` | `yes` → no ordinary URL clicks; native status may capture mouse input during refresh for its log |
 | `WTC_TWG_SITE` | — | Atlassian site emitted as `TWG_SITE` into `.env.collection` (→ Tool identity) |
+| `HARNESS_REVIEW_STRONG` | `claude:opus` | agent:model list for strong-tier review concerns |
+| `HARNESS_REVIEW_STANDARD` | `claude:sonnet` | agent:model list for standard-tier concerns |
+| `HARNESS_REVIEW_FAST` | `claude:haiku` | agent:model list for fast-tier concerns |
+| `HARNESS_REVIEW_LEAD` | same as strong | agent:model list for the final review pass |
+| `HARNESS_REVIEW_PARALLEL` | `4` | concurrent concern runs |
+| `HARNESS_REVIEW_TIMEOUT` | `900` | seconds allowed per agent run |
+| `HARNESS_REVIEW_GROK_EFFORT` | `low` | `grok --reasoning-effort` when grok runs a concern |
 
 It holds defaults, not credentials — but it lives in the control root because
 that is the workspace-scoped, never-committed place that already exists.
@@ -60,12 +72,15 @@ must reload the environment. Existing credentials are not moved or copied.
 
 ## Wiring a worktree
 
-`tools/link-secrets.sh` does it, for every checked-out repo in a collection:
+`wtc secrets link` does it, for every checked-out repo in a collection. The
+`tools/link-secrets.sh` entry point dispatches to the pinned CLI when available
+and retains a shell fallback for a collection that has not installed it yet:
 
 ```sh
 tools/link-secrets.sh                 # this harness worktree's collection
 tools/link-secrets.sh --collection ../billing --dry-run
 tools/link-secrets.sh --repo api     # what init hooks pass
+wtc secrets link --repo api         # native command
 ```
 
 Because files are stored at their repo-relative path, the tool needs no
@@ -153,7 +168,7 @@ different lever:
 ```sh
 GH_CONFIG_DIR=$WTC_CONFIG_ROOT/gh
 JIRA_CONFIG_FILE=$WTC_CONFIG_ROOT/jira/.config.yml
-TWG_SITE=<your-site>.atlassian.net
+TWG_SITE=<your-site-prefix>
 ```
 
 | Tool | Lever | Credential at rest |
@@ -208,7 +223,7 @@ survives) followed by `refresh-env.sh`.
 location, so setting it once in the control root is the opt-in:
 
 ```sh
-echo 'WTC_TWG_SITE=<your-site>.atlassian.net' >> "$WTC_CONFIG_ROOT"/wtc.env
+echo 'WTC_TWG_SITE=<your-site-prefix>' >> "$WTC_CONFIG_ROOT"/wtc.env
 harness/tools/refresh-env.sh --all     # TWG_SITE now appears in every collection
 ```
 

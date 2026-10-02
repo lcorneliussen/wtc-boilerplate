@@ -107,6 +107,20 @@ tools/branch-off.sh --pr api#41               # review wtc on the PR's head bran
 tools/add-repo.sh  <collection> <repo> […]             # bring repos in later
 ```
 
+`wtc new` accepts the same collection-creation options. With a matching
+v0.1.10 or newer pin installed, `branch-off.sh` selects that native command
+from the creating collection; the shell path remains available for bootstrap.
+For a PR review collection, the native command verifies the exact head and
+records the appropriate push command in `HANDOFF.md`, including when another
+worktree already has the PR branch checked out.
+
+`wtc add-repo <repo> [repo ...]` extends the current collection. With a
+matching v0.1.11 or newer pin installed, `add-repo.sh` selects the native
+command from the target collection; the shell path handles bootstrap and
+older pins. Use `--collection <name>` only when deliberately targeting another
+collection. The native command refreshes the env, links gitignored secrets,
+updates skills and MCP configuration, then runs each new repo's init hook.
+
 Naming follows the source: `<slug>`, `<issue-id>-<slug>`, `<tracker-key>-<slug>`,
 or `<repo>-pr<n>`. That name is the branch the work is *expected* to get — it
 goes into the launch note, and a tracker wtc's linking issue is created while
@@ -155,12 +169,16 @@ files).
 ## Retiring a collection
 
 ```bash
-tools/retire.sh <collection>        # from a different collection's harness
+wtc retire <collection>             # from a different collection
+wtc retire .                        # from this collection's Herdr workspace
 ```
 
 Runs teardown hooks, refuses if any sibling has uncommitted or unpushed work
 (`--force` overrides), removes the worktrees, closes the collection's herdr
-workspace if one is open, and deletes the folder.
+workspace if one is open, and deletes the folder. A self-retire hands the final
+work to a `--cleanup--` workspace in the same Herdr session; its pane keeps the
+result visible after the target workspace closes. The worker closes the source
+workspace before teardown, so no new agent work starts while files are removed.
 Remote branches are never deleted (per-issue record); local refs go with the
 worktrees, which is why the pre-flight refuses on anything unpushed. Merged
 work lives on GitHub

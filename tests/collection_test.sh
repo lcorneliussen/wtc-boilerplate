@@ -58,10 +58,24 @@ it "mise.toml points at the collection env"
 assert_file "$c/mise.toml"
 assert_contains "$(cat "$c/mise.toml")" ".env.collection"
 
+it "refresh-env retains a harness-pinned CLI release"
+original_cli_version="$(cat "$c/harness/.wtc-cli-version")"
+assert_contains "$(cat "$c/mise.toml")" "\"github:lcorneliussen/wtc-cli\" = \"$original_cli_version\""
+printf '0.1.99\n' > "$c/harness/.wtc-cli-version"
+dry_out="$("$c/harness/tools/refresh-env.sh" --collection "$c" --dry-run)"
+assert_contains "$dry_out" '"github:lcorneliussen/wtc-cli" = "0.1.99"'
+assert_not_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.99"'
+"$c/harness/tools/refresh-env.sh" --collection "$c" >/dev/null
+assert_contains "$(cat "$c/mise.toml")" '"github:lcorneliussen/wtc-cli" = "0.1.99"'
+printf '%s\n' "$original_cli_version" > "$c/harness/.wtc-cli-version"
+"$c/harness/tools/refresh-env.sh" --collection "$c" >/dev/null
+assert_contains "$(cat "$c/mise.toml")" "\"github:lcorneliussen/wtc-cli\" = \"$original_cli_version\""
+
 it "the agent entry point and the scope note are seeded"
 assert_file "$c/AGENTS.md" "collection AGENTS.md"
 assert_file "$c/WTC-SCOPE.md" "seeded scope"
 assert_file "$c/HANDOFF.md" "launch note"
+assert_contains "$(cat "$c/HANDOFF.md")" 'wtc retire .' 'launch note explains self-retirement'
 
 it "every agent CLI gets its skills directory"
 for d in .claude/skills .agents/skills; do

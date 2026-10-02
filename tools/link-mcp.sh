@@ -42,6 +42,7 @@ collection="$(dirname "$HARNESS_DIR")"
 harness_dirname="$(basename "$HARNESS_DIR")"
 dry_run=no
 all=no
+skip_hooks=no
 
 usage() {
   cat <<'EOF'
@@ -56,6 +57,7 @@ Code, Cursor and Codex all see the same servers. Idempotent.
   --all               Every collection under the workspace root. Use after
                       landing a registry change, to roll it out in one pass.
   --dry-run           Report what would change; touch nothing.
+  --skip-hooks        Do not run target lifecycle hooks (used by --all).
   -h, --help          Show this help.
 
 Each collection is rendered from ITS OWN harness worktree, so a collection
@@ -77,6 +79,7 @@ while [ $# -gt 0 ]; do
     --collection) collection="${2:?--collection needs a directory}"; shift 2;;
     --all)        all=yes; shift;;
     --dry-run)    dry_run=yes; shift;;
+    --skip-hooks) skip_hooks=yes; shift;;
     -h|--help)    usage; exit 0;;
     *) echo "error: unknown option: $1 (use --help)" >&2; exit 1;;
   esac
@@ -93,9 +96,9 @@ if [ "$all" = yes ]; then
     swept=$((swept + 1))
     echo "=== $(basename "$dir")"
     if [ "$dry_run" = yes ]; then
-      "$0" --collection "$dir" --dry-run || failed=$((failed + 1))
+      "$0" --collection "$dir" --dry-run --skip-hooks || failed=$((failed + 1))
     else
-      "$0" --collection "$dir" || failed=$((failed + 1))
+      "$0" --collection "$dir" --skip-hooks || failed=$((failed + 1))
     fi
     echo
   done
@@ -108,6 +111,38 @@ fi
 collection="$(cd "$collection" && pwd)"
 [ -d "$collection/$harness_dirname" ] || {
   echo "error: $collection has no $harness_dirname/ — not a collection" >&2; exit 1; }
+
+# Use the target collection's CLI pin. The --all sweep above re-enters this
+# script per target so mixed-version workspaces remain safe during upgrades.
+native_mcp_supported() { # v0.1.14 added safe hook controls for sweeps
+  awk -v version="$1" 'BEGIN {
+    if (version !~ /^[0-9]+\.[0-9]+\.[0-9]+$/) exit 1
+    split(version, part, ".")
+    exit !((part[1] + 0) > 0 || (part[2] + 0) > 1 ||
+           ((part[2] + 0) == 1 && (part[3] + 0) >= 14))
+  }'
+}
+if [ -f "$collection/$harness_dirname/.wtc-cli-version" ]; then
+  cli_pin="$(tr -d '[:space:]' < "$collection/$harness_dirname/.wtc-cli-version")"
+  cli_version=""
+  cli_cmd=()
+  if native_mcp_supported "$cli_pin" && command -v mise >/dev/null 2>&1; then
+    cli_version="$(cd "$collection" && mise exec -- wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(mise exec -- wtc)
+  fi
+  if native_mcp_supported "$cli_pin" && [ -z "$cli_version" ] && command -v wtc >/dev/null 2>&1; then
+    cli_version="$(cd "$collection" && wtc --version 2>/dev/null)" || cli_version=""
+    [ -z "$cli_version" ] || cli_cmd=(wtc)
+  fi
+  if [ "$cli_version" = "wtc version $cli_pin" ] &&
+      (cd "$collection" && "${cli_cmd[@]}" mcp render --help >/dev/null 2>&1); then
+    cli_args=(render --collection "$collection")
+    [ "$dry_run" = no ] || cli_args+=(--dry-run)
+    [ "$skip_hooks" = no ] || cli_args+=(--skip-hooks)
+    cd "$collection"
+    exec "${cli_cmd[@]}" mcp "${cli_args[@]}"
+  fi
+fi
 
 # Read the registry from the TARGET collection's harness worktree, not the one
 # running this script — same reasoning as link-skills.sh reading its skills

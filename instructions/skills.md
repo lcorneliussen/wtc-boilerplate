@@ -32,8 +32,9 @@ and the skill is the bug.
 | Cursor | `.agents/skills/`, `.cursor/skills/`, plus `.claude/skills/` and `.codex/skills/` for back-compat | each skills root recursively, plus nested project subdirs |
 
 So **two directory names cover all three**: `.claude/skills` and
-`.agents/skills`. `tools/link-skills.sh` creates both at the collection root,
-one symlink per skill:
+`.agents/skills`. `tools/link-skills.sh` selects the collection's pinned
+`wtc skills render` when available and retains a shell bootstrap path. Both
+create one symlink per skill at the collection root:
 
 ```text
 <collection>/AGENTS.md              -> harness/collection-AGENTS.md
@@ -47,6 +48,20 @@ one symlink per skill:
 The hook JSON prepends sibling toolchain bins on PATH for agent shells that
 never activated mise (`instructions/hooks-and-env.md` → Agent shells and PATH).
 `.envrc` and `.env.toolchain` at the collection root are generated, not linked.
+The CLI includes default `wtc-*` skills under generated `.wtc/skills/`. A
+complete skill in `harness/skills/<name>/SKILL.md` replaces an embedded default;
+`harness/overlays/skills/<name>/SKILL.md` takes precedence over both. Local
+real directories in the destination skill roots are preserved. See
+`wtc customize` for the override and lifecycle hook contract.
+
+For a targeted change, put a complete H2 section in
+`harness/overlays/skills/<name>/sections/<short-name>.md`. It replaces the
+matching section of the embedded or harness skill. Run
+`wtc skills diff --changes` to inspect overrides and upstream drift, then
+`wtc skills render --dry-run` to validate the assembled skill. Record the
+reviewed base digest in the overlay's `.wtc-base.sha256` so a later base
+change stops rendering until the patch is reviewed again. `wtc customize`
+documents the format.
 
 The same tool installs the collection's **entry point**, `AGENTS.md`: the file
 every one of those CLIs reads on its own when it opens the collection, which
@@ -87,8 +102,9 @@ tools/link-skills.sh --all --dry-run        # what every collection would get
 tools/link-skills.sh --all                  # roll a landed skill out everywhere
 ```
 
-`--all` re-execs per collection, so one collection mid-rebase cannot take the
-sweep down with it; a nonzero exit means at least one collection failed.
+`--all` re-execs per collection, so each target selects its own CLI pin and
+one collection mid-rebase cannot take the sweep down with it; a nonzero exit
+means at least one collection failed.
 
 ### The one gap
 
