@@ -259,7 +259,9 @@ it is their session, and "it was only idle" is not yours to judge.
 ### Forge access warnings in status
 
 Each fresh status snapshot checks access to one displayed repository per forge,
-independently of the PR cache. GitHub uses `gh api`; Bitbucket uses `bb repo view`.
+independently of the PR cache. GitHub queries PR and check fields with
+`gh api graphql`; Bitbucket uses `bb pr list` and probes `bb pr checks` when a
+sampled open PR exists.
 Missing CLIs, rejected authentication, denied access, timeouts and invalid
 responses produce a visible warning that PR/check data may be stale or
 unavailable. Raw CLI output is never included in that warning.
