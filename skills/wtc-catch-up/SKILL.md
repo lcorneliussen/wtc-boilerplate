@@ -284,8 +284,8 @@ prevent, so do not be hesitant here — push it:
 git -C <wt> push
 ```
 
-Yes, this reruns the PR's checks. That is the point: a green build against a
-base two weeks old is not information. Re-running against current code is what
+Yes, this reruns the PR's checks. That is the point: a green build against
+an outdated base is not information. Re-running against current code is what
 makes the check mean something.
 
 Two things this is not licence for. **Never force-push** — it detaches existing
