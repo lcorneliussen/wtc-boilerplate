@@ -11,7 +11,8 @@ that exact released version when installed and retain their shell path for
 bootstrap or older pins. Status does not change worktree branches or files.
 
 ```bash
-wtc status                         # this collection; one pass when captured
+wtc status                         # live TUI in a terminal; one pass when captured
+wtc status --no-watch              # one status pass in a terminal
 wtc status --json                  # canonical snapshot JSON
 wtc status --md                    # agent Markdown
 wtc status --cached                # last snapshot; no Git or forge calls
@@ -42,8 +43,10 @@ wtc status --tui                   # interactive repositories and PRs
 wtc status --watch 120             # interactive view, 120-second refresh
 ```
 
-`--all` is explicit because it reads every collection; it omits the enlisted
-PR section and does not run other collections' build hooks. The CLI's `--repos`
+Bare `wtc status` opens the live view when both input and output are terminals.
+Use `--no-watch` for an interactive one-shot table; captured output is already
+one-shot. `--all` is explicit because it reads every collection; it omits the
+enlisted PR section and does not run other collections' build hooks. The CLI's `--repos`
 flag hides the enlisted PR section when a compact table is needed; the
 compatibility scripts keep their older selector behavior. The interactive
 view shows repositories and PRs by default; `--procs` selects the process view.

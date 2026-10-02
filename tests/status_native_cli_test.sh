@@ -142,6 +142,44 @@ silent = run('--silent')
 assert b'Reading worktrees' in normal, normal.decode(errors='replace')
 assert b'Reading worktrees' not in silent, silent.decode(errors='replace')
 PY
+  it 'published binary opens the live view for bare interactive status'
+  assert_ok python3 - "$WTC_TEST_RELEASE_BINARY" "$root/main" <<'PY'
+import errno, fcntl, os, pty, select, struct, subprocess, sys, termios, time
+
+master, slave = pty.openpty()
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
+proc = subprocess.Popen([sys.argv[1], 'status', '--no-fetch'], cwd=sys.argv[2],
+                        stdin=slave, stdout=slave, stderr=slave,
+                        env={**os.environ, 'TERM': 'xterm-256color', 'WTC_STATUS_WATCH': '30'})
+os.close(slave)
+chunks = []
+deadline = time.monotonic() + 15
+try:
+    while time.monotonic() < deadline:
+        if not select.select([master], [], [], 0.1)[0]:
+            continue
+        try:
+            chunk = os.read(master, 65536)
+        except OSError as exc:
+            if exc.errno == errno.EIO:
+                break
+            raise
+        if not chunk:
+            break
+        chunks.append(chunk)
+        if b'\x1b[?1049h' in b''.join(chunks):
+            os.write(master, b'q')
+            break
+    else:
+        raise AssertionError('bare status did not open the live view')
+    assert proc.wait(timeout=5) == 0
+finally:
+    if proc.poll() is None:
+        proc.kill()
+        proc.wait()
+    os.close(master)
+assert b'\x1b[?1049h' in b''.join(chunks), 'bare status did not enter the live view'
+PY
   it 'published table keeps build columns without build facts'
   cat > "$root/main/.wtc-status.json" <<'JSON'
 {"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[{"dir":"widget","repo":"widget","branch_display":"main","tree":"clean"}],"prs":[],"orphans":[]}
