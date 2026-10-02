@@ -48,20 +48,25 @@ assert_contains "$(cat "$other_ws/coll/.env.collection")" 'REMOTE_WIDGET_PORT=42
 assert_not_contains "$(cat "$other_ws/coll/.env.collection")" $'\nWIDGET_PORT='
 
 it 'refresh and preview preserve a recorded control root without an override'
-recorded="$other_ws/recorded store"
+recorded="$other_ws/recorded \$(touch marker)"
 mkdir -p "$recorded/gh"
 printf 'COLLECTION_PORT_BASE=42800\nWTC_CONFIG_ROOT="%s"\n' "$recorded" > "$other_ws/coll/.env.collection"
 preview="$(unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" --dry-run)"
 assert_not_contains "$preview" "WTC_CONFIG_ROOT=$other_ws/.config"
-assert_contains "$preview" "WTC_CONFIG_ROOT=$recorded"
+assert_contains "$preview" "WTC_CONFIG_ROOT='$recorded'"
 (unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" >/dev/null)
-assert_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT=$recorded"
-assert_contains "$(cat "$other_ws/coll/.env.collection")" "GH_CONFIG_DIR=$recorded/gh"
+assert_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT='$recorded'"
+assert_contains "$(cat "$other_ws/coll/.env.collection")" "GH_CONFIG_DIR='$recorded/gh'"
+literal="$(cd "$other_ws" && set -a && . "$other_ws/coll/.env.collection" && \
+  printf '%s\n%s' "$WTC_CONFIG_ROOT" "$GH_CONFIG_DIR")"
+assert_contains "$literal" "$recorded"
+assert_not_contains "$literal" "'$recorded'"
+assert_fails test -e "$other_ws/marker"
 printf "COLLECTION_PORT_BASE=42800\nWTC_CONFIG_ROOT='%s'\n" "$recorded" > "$other_ws/coll/.env.collection"
 preview="$(unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" --dry-run)"
-assert_contains "$preview" "WTC_CONFIG_ROOT=$recorded"
+assert_contains "$preview" "WTC_CONFIG_ROOT='$recorded'"
 (unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" >/dev/null)
-assert_contains "$(cat "$other_ws/coll/.env.collection")" "GH_CONFIG_DIR=$recorded/gh"
+assert_contains "$(cat "$other_ws/coll/.env.collection")" "GH_CONFIG_DIR='$recorded/gh'"
 printf 'COLLECTION_PORT_BASE=42800\nWTC_CONFIG_ROOT=%s\n' "$recorded" > "$other_ws/coll/.env.collection"
 (unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" >/dev/null)
-assert_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT=$recorded"
+assert_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT='$recorded'"

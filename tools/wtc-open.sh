@@ -349,6 +349,12 @@ open_collection() { # <collection>
       [ -f "$envf" ] || continue
       while IFS= read -r kv; do
         case "$kv" in ''|\#*) continue ;; esac
+        if [ "$envf" = "$dir/.env.collection" ]; then
+          key="${kv%%=*}"
+          [ "$key" != "$kv" ] || continue
+          value="$(collection_env_value "$envf" "$key")" || return 1
+          kv="$key=$value"
+        fi
         set -- "$@" --env "$kv"
       done < "$envf"
     done

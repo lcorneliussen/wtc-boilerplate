@@ -59,6 +59,9 @@ class HealthTests(unittest.TestCase):
                 self.result(out='{"pullRequests":[{"id":7}]}'),
                 self.result(out='{}')]):
             self.assertIsNone(health.check('bitbucket', 'example/widget'))
+        for payload in ['{"pullRequests":[{}]}', '{"pullRequests":[{"id":null}]}']:
+            with patch.object(health.subprocess, 'run', return_value=self.result(out=payload)):
+                self.assertIn('invalid API response', health.check('bitbucket', 'example/widget'))
     def test_forge_probes_run_together_and_keep_warning_order(self):
         barrier = threading.Barrier(2, timeout=1)
         def probe(forge, slug):

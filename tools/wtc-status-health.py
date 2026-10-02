@@ -48,21 +48,22 @@ def check(forge, slug):
                 if not isinstance(first_pr, dict):
                     return f'{label}: invalid API response; PR/check data may be stale or unavailable'
                 pr_id = first_pr.get('id')
-                if pr_id is not None:
-                    try:
-                        checks = subprocess.run(
-                            ['bb', '--json', 'pr', 'checks', str(pr_id), '-w', owner, '-r', repo],
-                            capture_output=True, text=True, timeout=10)
-                    except (OSError, subprocess.TimeoutExpired):
-                        return f'{label}: check access unavailable; PR/check data may be stale or unavailable'
-                    try:
-                        checks_data = json.loads(checks.stdout)
-                    except ValueError:
-                        checks_data = None
-                    if (checks.returncode or not isinstance(checks_data, (dict, list))
-                            or (isinstance(checks_data, dict) and
-                                (checks_data.get('error') or checks_data.get('errors')))):
-                        return f'{label}: check access unavailable; PR/check data may be stale or unavailable'
+                if not isinstance(pr_id, (int, str)) or not str(pr_id).strip():
+                    return f'{label}: invalid API response; PR/check data may be stale or unavailable'
+                try:
+                    checks = subprocess.run(
+                        ['bb', '--json', 'pr', 'checks', str(pr_id), '-w', owner, '-r', repo],
+                        capture_output=True, text=True, timeout=10)
+                except (OSError, subprocess.TimeoutExpired):
+                    return f'{label}: check access unavailable; PR/check data may be stale or unavailable'
+                try:
+                    checks_data = json.loads(checks.stdout)
+                except ValueError:
+                    checks_data = None
+                if (checks.returncode or not isinstance(checks_data, (dict, list))
+                        or (isinstance(checks_data, dict) and
+                            (checks_data.get('error') or checks_data.get('errors')))):
+                    return f'{label}: check access unavailable; PR/check data may be stale or unavailable'
             return None
         # Only inspect failed responses: repository descriptions may discuss
         # authentication without indicating a failed request.
