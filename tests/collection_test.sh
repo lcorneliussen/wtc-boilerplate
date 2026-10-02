@@ -75,6 +75,7 @@ it "the agent entry point and the scope note are seeded"
 assert_file "$c/AGENTS.md" "collection AGENTS.md"
 assert_file "$c/WTC-SCOPE.md" "seeded scope"
 assert_file "$c/HANDOFF.md" "launch note"
+assert_contains "$(cat "$c/HANDOFF.md")" 'wtc retire .' 'launch note explains self-retirement'
 
 it "every agent CLI gets its skills directory"
 for d in .claude/skills .agents/skills; do
