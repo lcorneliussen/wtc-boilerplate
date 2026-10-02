@@ -447,4 +447,8 @@ assert_eq 0 "$?" "scoped environment generated correctly"
 
 
 it "secret linking defaults to the workspace control root without generated env"
-assert_contains "$(unset WTC_CONFIG_ROOT; bash "$HARNESS_DIR/tools/link-secrets.sh" --collection "$ws" --dry-run)" "control root: $ws/.config"
+# A fake CLI that refuses `secrets link --help` keeps this on the shell path
+# even on a machine with a real wtc installed.
+no_cli="$(mktemp_dir no-cli)"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$no_cli/wtc"; chmod +x "$no_cli/wtc"
+assert_contains "$(unset WTC_CONFIG_ROOT; PATH="$no_cli:$PATH" bash "$HARNESS_DIR/tools/link-secrets.sh" --collection "$ws" --dry-run)" "control root: $ws/.config"

@@ -11,6 +11,9 @@ export MISE_CALL_LOG="$ws/mise-calls" WTC_CONFIG_ROOT="$ws/config"
 export PATH="$ws/bin:$PATH"
 printf 'COLLECTION_PORT_BASE=42700\n' > "$ws/main/.env.collection"
 printf '# existing mise configuration\n' > "$ws/main/mise.toml"
+# Pin an older CLI so the entry point stays on the shell reference path
+# instead of probing mise for a native binary.
+printf '0.1.8\n' > "$ws/main/harness/.wtc-cli-version"
 printf '# local overrides\n' > "$ws/main/.env.collection.local"
 it 'environment preview neither changes target files nor invokes mise'
 assert_ok "$ws/main/harness/tools/refresh-env.sh" --dry-run
