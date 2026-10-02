@@ -54,7 +54,48 @@ PY
   assert_no_file "$root/main/mise.toml" 'bare env did not regenerate files'
   it 'published binary fits interactive inventories and honors one-shot flags'
   assert_ok python3 - "$WTC_TEST_RELEASE_BINARY" "$root/main" "$root/control" <<'PY'
-import fcntl, os, pty, select, struct, subprocess, sys, termios, time
+import fcntl, os, pty, select, struct, subprocess, sys, termios, time, unicodedata
+
+def assert_fits(output, width):
+    text = output.decode('utf-8', errors='replace')
+    column = 0
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == '\x1b' and index + 1 < len(text):
+            marker = text[index + 1]
+            if marker == '[':
+                end = index + 2
+                while end < len(text) and not ('@' <= text[end] <= '~'):
+                    end += 1
+                assert end < len(text), 'incomplete CSI sequence'
+                params = text[index + 2:end]
+                command = text[end]
+                values = [int(p) if p.isdigit() else 0 for p in params.split(';')]
+                if command in ('H', 'f'):
+                    column = max(0, (values[1] if len(values) > 1 else 1) - 1)
+                elif command == 'G':
+                    column = max(0, (values[0] if values else 1) - 1)
+                elif command == 'C':
+                    column += max(1, values[0])
+                elif command == 'D':
+                    column = max(0, column - max(1, values[0]))
+                index = end + 1
+                continue
+            if marker == ']':
+                end = text.find('\x07', index + 2)
+                assert end >= 0, 'incomplete OSC sequence'
+                index = end + 1
+                continue
+            index += 2
+            continue
+        if char in '\r\n':
+            column = 0
+        elif char >= ' ' and char != '\x7f':
+            cells = 0 if unicodedata.combining(char) else 2 if unicodedata.east_asian_width(char) in 'WF' else 1
+            column += cells
+            assert column <= width, f'rendered past column {width}: {column}'
+        index += 1
 
 binary, collection, control = sys.argv[1:]
 for group in ('secrets', 'env'):
@@ -92,8 +133,11 @@ for group in ('secrets', 'env'):
             os.close(master)
         output = b''.join(chunks)
         assert (b'\x1b[?1049h' in output) == interactive, (group, flags)
+        if interactive:
+            assert_fits(output, 42)
         for value in (b'synthetic_shared_value', b'synthetic_local_value',
-                      b'synthetic_available_value', b'synthetic_generated_value'):
+                      b'synthetic_available_value', b'synthetic_generated_value',
+                      b'synthetic_machine_value'):
             assert value not in output, (group, flags)
 PY
 fi
