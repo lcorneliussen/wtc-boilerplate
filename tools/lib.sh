@@ -578,9 +578,10 @@ shell_quote_value() { # <literal> — one safe assignment value
 # $WTC_CONFIG_ROOT/wtc.env. The one place a changed default belongs, so a bare
 # `tools/wtc-xyz.sh` keeps doing what this workspace wants without flags in every
 # command line. CLI flags still win. See instructions/secrets.md.
-load_wtc_config() { # [selected-collection-dir]
-  if [ -z "${WTC_CONFIG_ROOT:-}" ] && [ -n "${1:-}" ] && [ -f "$1/.env.collection" ]; then
-    WTC_CONFIG_ROOT="$(collection_env_value "$1/.env.collection" WTC_CONFIG_ROOT)" || return 1
+load_wtc_config() { # [selected-collection-dir] (defaults to invoking collection)
+  local selected_collection="${1:-$(this_collection_dir)}"
+  if [ -z "${WTC_CONFIG_ROOT:-}" ] && [ -f "$selected_collection/.env.collection" ]; then
+    WTC_CONFIG_ROOT="$(collection_env_value "$selected_collection/.env.collection" WTC_CONFIG_ROOT)" || return 1
   fi
   : "${WTC_CONFIG_ROOT:=$ROOT/.config}"
   if [ -f "$WTC_CONFIG_ROOT/wtc.env" ]; then

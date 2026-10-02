@@ -436,6 +436,7 @@ mkdir -p "$recorded_root" "$ws/new"
 printf 'WTC_LAYOUT=narrow\n' > "$recorded_root/wtc.env"
 printf "WTC_CONFIG_ROOT='%s'\n" "$recorded_root" > "$ws/main/.env.collection"
 assert_eq "$recorded_root:narrow" "$(unset WTC_CONFIG_ROOT WTC_LAYOUT; load_wtc_config "$ws/main"; printf '%s:%s' "$WTC_CONFIG_ROOT" "$WTC_LAYOUT")"
+assert_eq "$recorded_root:narrow" "$(unset WTC_CONFIG_ROOT WTC_LAYOUT; load_wtc_config; printf '%s:%s' "$WTC_CONFIG_ROOT" "$WTC_LAYOUT")"
 assert_eq "$ws/.config" "$(unset WTC_CONFIG_ROOT WTC_LAYOUT; load_wtc_config "$ws/new"; printf '%s' "$WTC_CONFIG_ROOT")"
 rm -f "$ws/main/.env.collection"
 
