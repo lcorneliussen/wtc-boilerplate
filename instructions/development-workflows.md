@@ -58,9 +58,11 @@ Treat "catch up" as: reconcile this collection with development outside it.
 2. Worktrees detached at tip → fast-forward to current `default_ref`. If
    dirty, stash (including untracked), move HEAD, then stash pop. Already at
    the tip is left alone regardless of dirty state — there is nothing to move.
-3. Active unmerged branches → merge the tip in; same stash-around-the-move;
-   push the merge when the branch has a PR (open or draft); abort and report
-   on conflicts rather than resolving them.
+3. Active unmerged branches → merge the configured development tip, or the
+   actual merge target of an open or draft PR, into the branch; use the same
+   stash-around-the-move. Push the merge when the branch has a PR. An
+   unavailable PR target needs an owner handoff; never substitute the
+   development tip. Abort and report conflicts for the owning agent.
 4. Merged PRs → stash if dirty; detach at tip; prune the local branch when
    `git branch -d` allows it; `tools/wtc-pr.sh unlist <repo> <n>` for an
    enlisted row that landed.

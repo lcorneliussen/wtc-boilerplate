@@ -142,6 +142,44 @@ silent = run('--silent')
 assert b'Reading worktrees' in normal, normal.decode(errors='replace')
 assert b'Reading worktrees' not in silent, silent.decode(errors='replace')
 PY
+  it 'published binary opens the live view for bare interactive status'
+  assert_ok python3 - "$WTC_TEST_RELEASE_BINARY" "$root/main" <<'PY'
+import errno, fcntl, os, pty, select, struct, subprocess, sys, termios, time
+
+master, slave = pty.openpty()
+fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 30, 100, 0, 0))
+proc = subprocess.Popen([sys.argv[1], 'status', '--no-fetch'], cwd=sys.argv[2],
+                        stdin=slave, stdout=slave, stderr=slave,
+                        env={**os.environ, 'TERM': 'xterm-256color', 'WTC_STATUS_WATCH': '30'})
+os.close(slave)
+chunks = []
+deadline = time.monotonic() + 15
+try:
+    while time.monotonic() < deadline:
+        if not select.select([master], [], [], 0.1)[0]:
+            continue
+        try:
+            chunk = os.read(master, 65536)
+        except OSError as exc:
+            if exc.errno == errno.EIO:
+                break
+            raise
+        if not chunk:
+            break
+        chunks.append(chunk)
+        if b'\x1b[?1049h' in b''.join(chunks):
+            os.write(master, b'q')
+            break
+    else:
+        raise AssertionError('bare status did not open the live view')
+    assert proc.wait(timeout=5) == 0
+finally:
+    if proc.poll() is None:
+        proc.kill()
+        proc.wait()
+    os.close(master)
+assert b'\x1b[?1049h' in b''.join(chunks), 'bare status did not enter the live view'
+PY
   it 'published table keeps build columns without build facts'
   cat > "$root/main/.wtc-status.json" <<'JSON'
 {"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[{"dir":"widget","repo":"widget","branch_display":"main","tree":"clean"}],"prs":[],"orphans":[]}
@@ -149,6 +187,11 @@ JSON
   "$status" --cached --ansi > "$root/no-build-table.txt"
   assert_contains "$(cat "$root/no-build-table.txt")" 'TEST' 'released table kept a test column without build facts'
   assert_contains "$(cat "$root/no-build-table.txt")" 'PROD' 'released table kept a production column without build facts'
+  cat > "$root/main/.wtc-status.json" <<'JSON'
+{"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[{"dir":"widget","repo":"widget","branch_display":"topic","tree":"±1","conflict":true,"operation":"MERGE_HEAD","behind":2}],"prs":[],"orphans":[]}
+JSON
+  "$status" --cached --ansi > "$root/conflict-table.txt"
+  assert_contains "$(cat "$root/conflict-table.txt")" '✗' 'released table showed a conflict symbol'
   cat > "$root/main/.wtc-status.json" <<'JSON'
 {"schema":1,"collection":"main","generated_at":"2026-09-30T00:00:00Z","repos":[{"dir":"widget","repo":"widget","slug":"example/widget","forge":"github.com","branch":"main","branch_display":"main","tree":"clean","ahead":2,"behind":3,"tip":{"checks":"SUCCESS","build":"42","url":"https://github.com/example/widget/actions/runs/42"},"prod":{"checks":"SUCCESS","build":"41","url":"https://github.com/example/widget/actions/runs/41"}}],"prs":[{"repo":"widget","number":"7","state":"UNKNOWN","title":"Synthetic PR","display_title":"Synthetic PR","url":"https://github.com/example/widget/pull/7"}],"orphans":[]}
 JSON
@@ -252,16 +295,22 @@ for url in (b'https://github.com/example/widget',
     assert b'\x1b]8;;' + url + b'\x07' in output, f'missing terminal link: {url!r}'
 assert b'Reading worktrees 1/1' in log_output, 'refresh log did not show the completed worktree count'
 assert b'Writing status snapshot' in log_output, 'refresh log did not report snapshot publication'
-for url, tone, bold in ((b'https://github.com/example/widget', b'38;5;252', True),
-                        (b'https://github.com/example/widget/tree/main', b'38;5;252', False),
-                        (b'https://github.com/example/widget/pull/7', b'38;5;81', False),
-                        (b'https://github.com/example/widget/actions/runs/42', b'38;5;114', False),
-                        (b'https://github.com/example/widget/actions/runs/41', b'38;5;114', False)):
+for url, tone in ((b'https://github.com/example/widget', b'1'),
+                  (b'https://github.com/example/widget/tree/main', b'0'),
+                  (b'https://github.com/example/widget/pull/7', b'36'),
+                  (b'https://github.com/example/widget/actions/runs/42', b'32'),
+                  (b'https://github.com/example/widget/actions/runs/41', b'32')):
     marker = b'\x1b]8;;' + url + b'\x07'
     at = output.find(marker)
-    style = re.search(rb'\x1b\[([0-9;]+)m$', output[max(0, at-40):at])
-    assert at >= 0 and style and tone in style.group(1) and (b'1' in style.group(1).split(b';')) == bold, \
-        f'wrong link tone: {url!r}'
+    if tone == b'0':
+        prefix = output[:at]
+        resets = list(re.finditer(rb'\x1b\[(?:0)?m', prefix))
+        tail = prefix[resets[-1].end():] if resets else prefix
+        assert not re.search(rb'\x1b\[[0-9;]*m', tail), f'neutral link has an active style: {url!r}'
+        continue  # neutral links may be emitted without an SGR reset
+    style = re.search(rb'\x1b\[([0-9;]+)m$', output[max(0, at-40):at]) if at >= 0 else None
+    assert style and style.group(1) == tone, \
+        f'wrong link tone: {url!r}; got {style.group(1) if style else output[max(0, at-40):at]!r}'
 assert all(b'4' not in sgr.split(b';') for sgr in re.findall(rb'\x1b\[([0-9;]+)m', output)), 'permanent underline appeared'
 PY
 fi
