@@ -551,7 +551,7 @@ wtc_repo_worktree() { # <collection> <repo> -> path (may not exist)
 
 # Workspace-wide tool defaults, in the control root next to the secrets:
 # $WTC_CONFIG_ROOT/wtc.env. The one place a changed default belongs, so a bare
-# `tools/wtc-xyz.sh` keeps doing what this machine wants without flags in every
+# `tools/wtc-xyz.sh` keeps doing what this workspace wants without flags in every
 # command line. CLI flags still win. See instructions/secrets.md.
 load_wtc_config() {
   : "${WTC_CONFIG_ROOT:=$ROOT/.config}"
@@ -1367,7 +1367,7 @@ write_collection_env() { # <collection-dir> <collection-name> [harness-dir] [ski
 #
 # Use this for credentials scoped to this collection's work — a throwaway
 # sandbox key for one investigation, say. Anything that should rotate once for
-# the whole machine belongs in the control root instead
+# the whole workspace belongs in the control root instead
 # ($WTC_CONFIG_ROOT/<repo>/<path>, linked by tools/link-secrets.sh).
 #
 # Inherited by every repo in this collection, not just one.

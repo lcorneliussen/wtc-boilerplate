@@ -115,7 +115,7 @@ fi
 # elsewhere, and one workspace's secrets must not land in another.
 [ -n "$config_root" ] || config_root="$(dirname "$collection")/.config"
 
-# An absent control root means "this machine has no local secrets to link",
+# An absent control root means "this workspace has no local secrets to link",
 # which is a legitimate state. Treating it as an error made every catch-up
 # and every init hook report a failure for work that was correctly a no-op,
 # which is how real failures stop being read.
@@ -146,7 +146,7 @@ for repo_cfg in "$config_root"/*; do
 
   worktree="$collection/$repo"
   # A control-root dir with no matching worktree is normal: the control root is
-  # machine-wide, collections are scoped.
+  # workspace-shared, collections are scoped.
   [ -d "$worktree" ] || continue
   if ! git -C "$worktree" rev-parse --git-dir >/dev/null 2>&1; then
     echo "==> $repo: not a git worktree — skipped"

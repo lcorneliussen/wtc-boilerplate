@@ -79,7 +79,7 @@ It also identifies `.env.collection.local`, whose variables belong only to this
 collection. `wtc secrets list --repo api` narrows the file list; `--json` is
 available for tools. The command does not print file contents.
 
-Use `wtc env list` to see variable names from machine defaults, generated
+Use `wtc env list` to see variable names from workspace defaults, generated
 collection environment, and the collection-local override file. It does not
 print values. Bare `wtc env` shows help; `wtc env setup` regenerates the
 collection environment when you want to apply configuration changes.
