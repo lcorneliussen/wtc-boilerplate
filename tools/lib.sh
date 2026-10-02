@@ -1285,7 +1285,18 @@ write_collection_env() { # <collection-dir> <collection-name> [harness-dir] [ski
   # Keep the collection's recorded store unless the caller explicitly chose
   # another. Refreshing an older collection must not move its credentials.
   if [ -z "${WTC_CONFIG_ROOT:-}" ] && [ -f "$dir/.env.collection" ]; then
-    WTC_CONFIG_ROOT="$(sed -n 's/^WTC_CONFIG_ROOT=//p' "$dir/.env.collection" | head -n1)"
+    WTC_CONFIG_ROOT="$(python3 - "$dir/.env.collection" <<'PY'
+import json, sys
+with open(sys.argv[1]) as env:
+    for line in env:
+        if line.startswith('WTC_CONFIG_ROOT='):
+            value = line.split('=', 1)[1].rstrip('\n')
+            # The native generator uses JSON-style quoting; the shell
+            # generator writes plain paths. Never evaluate the env file.
+            print(json.loads(value) if value.startswith('"') else value)
+            break
+PY
+)" || return 1
   fi
   # Workspace-wide defaults from $WTC_CONFIG_ROOT/wtc.env, so a lever set there
   # once (WTC_TWG_SITE) reaches every path that generates this file —
