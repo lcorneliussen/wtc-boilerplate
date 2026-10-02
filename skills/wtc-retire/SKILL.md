@@ -10,8 +10,11 @@ GitHub and in the bare owners, the record lives in issues and branches. So
 retiring is meant to be boring. The whole job is confirming that "by design"
 actually held for this one.
 
-Run from a **different** collection's harness worktree. You cannot retire the
-collection you are standing in.
+You can retire a different collection directly. From inside the collection
+being retired, run `wtc retire .` in its Herdr workspace. The CLI checks the
+worktrees first, then delegates deletion to a `--cleanup--` workspace in the
+same Herdr session. That workspace stays open with the result after the target
+workspace closes. Outside Herdr, run from another collection.
 
 ## 1. Confirm it is finished
 
@@ -50,13 +53,19 @@ it there first.
 
 ```bash
 wtc retire <collection>
+# Or, from the target collection's Herdr workspace:
+wtc retire .
 ```
 
 It runs teardown hooks for every repo, refuses on dirty or unpushed work,
 removes the worktrees, closes the collection's herdr workspace if one is open,
 and deletes the folder when it contains no other files. It leaves unexpected
-files visible for inspection. `harness/tools/retire.sh` is the compatibility
-entry point for an older CLI pin or before the pinned binary is installed.
+files visible for inspection. A self-retire waits for the initiating agent to
+finish its turn. After a final pane check, it closes the source workspace
+before running hooks or removing worktrees; another live agent pane blocks
+the handoff. Inspect the `--cleanup--` pane for the final result. Its post hook
+runs after product teardown and before the harness worktree is removed.
+`harness/tools/retire.sh` is the compatibility entry point in older harnesses.
 
 `--force` overrides the pre-flight refusal. Use it only when you have
 established the work is genuinely disposable — and say in your report that you

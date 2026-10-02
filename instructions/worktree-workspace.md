@@ -170,11 +170,15 @@ files).
 
 ```bash
 wtc retire <collection>             # from a different collection
+wtc retire .                        # from this collection's Herdr workspace
 ```
 
 Runs teardown hooks, refuses if any sibling has uncommitted or unpushed work
 (`--force` overrides), removes the worktrees, closes the collection's herdr
-workspace if one is open, and deletes the folder.
+workspace if one is open, and deletes the folder. A self-retire hands the final
+work to a `--cleanup--` workspace in the same Herdr session; its pane keeps the
+result visible after the target workspace closes. The worker closes the source
+workspace before teardown, so no new agent work starts while files are removed.
 Remote branches are never deleted (per-issue record); local refs go with the
 worktrees, which is why the pre-flight refuses on anything unpushed. Merged
 work lives on GitHub
