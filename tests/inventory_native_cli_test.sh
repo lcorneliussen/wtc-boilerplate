@@ -53,8 +53,9 @@ PY
   assert_contains "$help" 'setup' 'bare env lists explicit setup'
   assert_no_file "$root/main/mise.toml" 'bare env did not regenerate files'
   it 'published binary fits interactive inventories and honors one-shot flags'
-  assert_ok python3 - "$WTC_TEST_RELEASE_BINARY" "$root/main" "$root/control" <<'PY'
-import fcntl, os, pty, select, struct, subprocess, sys, termios, time, unicodedata
+  assert_ok python3 - "$WTC_TEST_RELEASE_BINARY" "$root/main" "$root/control" \
+    "$root/secrets.json" "$root/env.json" <<'PY'
+import fcntl, json, os, pty, select, struct, subprocess, sys, termios, time, unicodedata
 
 def assert_fits(output, width):
     text = output.decode('utf-8', errors='replace')
@@ -97,7 +98,11 @@ def assert_fits(output, width):
             assert column <= width, f'rendered past column {width}: {column}'
         index += 1
 
-binary, collection, control = sys.argv[1:]
+binary, collection, control = sys.argv[1:4]
+row_count = {
+    'secrets': len(json.load(open(sys.argv[4]))['data']['files']),
+    'env': len(json.load(open(sys.argv[5]))['data']['variables']),
+}
 for group in ('secrets', 'env'):
     for flags, interactive in (([], True), (['--tui=false'], False),
                                (['--no-tui'], False), (['--json'], False)):
@@ -110,6 +115,7 @@ for group in ('secrets', 'env'):
         os.close(slave)
         chunks = []
         deadline = time.monotonic() + 10
+        quit_sent = False
         try:
             while time.monotonic() < deadline:
                 if not select.select([master], [], [], 0.1)[0]:
@@ -123,9 +129,17 @@ for group in ('secrets', 'env'):
                 if not part:
                     break
                 chunks.append(part)
-                if interactive and b'q quit' in b''.join(chunks):
+                if interactive and not quit_sent and b'q quit' in b''.join(chunks):
+                    for selected in range(2, row_count[group] + 1):
+                        os.write(master, b'j')
+                        frame = bytearray()
+                        marker = f'{selected}/'.encode()
+                        while marker not in frame:
+                            assert select.select([master], [], [], 1)[0], (group, selected, row_count[group], repr(frame[-200:]))
+                            frame.extend(os.read(master, 65536))
+                        chunks.append(bytes(frame))
                     os.write(master, b'q')
-                    break
+                    quit_sent = True
             assert proc.wait(timeout=5) == 0, (group, flags)
         finally:
             if proc.poll() is None:
@@ -133,6 +147,8 @@ for group in ('secrets', 'env'):
                 proc.wait()
             os.close(master)
         output = b''.join(chunks)
+        label = b'widget/.env' if group == 'secrets' else b'MACHINE_KEY'
+        assert label in output, (group, flags, 'missing fixture label')
         assert (b'\x1b[?1049h' in output) == interactive, (group, flags)
         if interactive:
             assert_fits(output, 42)
