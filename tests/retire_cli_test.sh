@@ -30,6 +30,12 @@ it 'matching source pin dispatches with collection and flags intact'
 assert_eq "$root/main|retire --force finished" "$(cat "$RETIRE_TEST_CALLS")"
 assert_file "$root/finished/harness/.git" 'mock dispatch did not run shell teardown'
 
+it 'matching source pin dispatches self-retirement from its own harness'
+"$runner" . >/dev/null
+retire_self_rc=$?
+assert_eq 0 "$retire_self_rc" 'self-retire reached the native dispatch'
+assert_eq "$root/main|retire ." "$(tail -n1 "$RETIRE_TEST_CALLS")"
+
 it 'older source pin retains shell retirement'
 printf '0.1.11\n' > "$root/main/harness/.wtc-cli-version"
 calls_before="$(wc -l < "$RETIRE_TEST_CALLS" | tr -d ' ')"

@@ -200,7 +200,8 @@ commits / PRs, then **delete this file as your very first action**
 (harness/AGENTS.md → "State lives in git").
 
 $branch_note Collection env: \`.env.collection\` (inherited via \`mise.toml\`).
-Retire with \`harness/tools/retire.sh\`.
+From this collection's Herdr workspace, retire with \`wtc retire .\`.
+From elsewhere, use \`wtc retire $collection\`.
 EOF
 
 echo "done: $dest_root"
