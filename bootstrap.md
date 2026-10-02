@@ -30,11 +30,13 @@ Day-to-day geometry after this: `instructions/worktree-workspace.md`.
 |---|---|
 | **git** | Bares, worktrees, everything |
 | **bash** 3.2+ | The tools (macOS `/bin/bash` is fine) |
+| **Python 3** (`python3`) | Read and safely quote generated collection environment values |
 | **Forge SSH** | Clone from `git@github.com:<org>/…` |
 | **`gh`** | Auth check, PR review wtcs (`--pr`), `wtc-status` PR cells, `wtc-pr` |
 
 ```bash
 git --version
+python3 --version
 gh auth status --hostname github.com
 ```
 

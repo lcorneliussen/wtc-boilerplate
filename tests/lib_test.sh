@@ -423,6 +423,13 @@ assert_eq "0" "$(python3 -c 'import os,sys; print(len(os.listdir(sys.argv[1])))'
 assert_eq "0" "$(python3 -c 'import os,sys; print(len(os.listdir(sys.argv[1])))' "$cache_parent/target")"
 
 
+it "missing Python fails environment generation before writing a file"
+without_python="$(mktemp_dir without-python)"
+out="$(PATH="$without_python" write_collection_env "$without_python" test 2>&1)"; rc=$?
+assert_neq 0 "$rc"
+assert_contains "$out" 'Python 3 is required to read and generate collection environments'
+assert_fails test -e "$without_python/.env.collection"
+
 it "control root defaults to the workspace and preserves explicit overrides"
 assert_eq "$ws/.config" "$(unset WTC_CONFIG_ROOT; load_wtc_config; printf '%s' "$WTC_CONFIG_ROOT")"
 assert_eq "$ws/custom-store" "$(WTC_CONFIG_ROOT="$ws/custom-store"; load_wtc_config; printf '%s' "$WTC_CONFIG_ROOT")"

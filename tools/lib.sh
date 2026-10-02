@@ -549,7 +549,15 @@ wtc_repo_worktree() { # <collection> <repo> -> path (may not exist)
   fi
 }
 
+require_python3_for_env() {
+  if ! command -v python3 >/dev/null 2>&1; then
+    echo "error: Python 3 is required to read and generate collection environments; install python3 and retry" >&2
+    return 1
+  fi
+}
+
 collection_env_value() { # <generated-env-file> <key> — data only, never source it
+  require_python3_for_env || return 1
   python3 - "$1" "$2" <<'PY'
 import json, shlex, sys
 key = sys.argv[2] + '='
@@ -571,6 +579,7 @@ PY
 }
 
 shell_quote_value() { # <literal> — one safe assignment value
+  require_python3_for_env || return 1
   python3 -c 'import shlex,sys; print(shlex.quote(sys.argv[1]))' "$1"
 }
 
@@ -1302,6 +1311,7 @@ herdr_first_pane_id() { # reads a herdr JSON response on stdin -> first pane id
 
 write_collection_env() { # <collection-dir> <collection-name> [harness-dir] [skip-trust]
   local cli_harness cli_version skip_trust
+  require_python3_for_env || return 1
   dir="$1" name="$2"
   cli_harness="${3:-$dir/harness}"
   skip_trust="${4:-no}"
