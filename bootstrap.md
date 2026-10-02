@@ -195,10 +195,11 @@ belong to the other one, and vice versa. The harness can give this
 workspace its own store instead, keyed off the control root:
 
 ```bash
+cd ..                                     # the collection root; mise loads .env.collection here
+                                          # (no mise? set -a; . ./.env.collection; set +a)
 mkdir -p "${WTC_CONFIG_ROOT:?load the collection environment first}"/gh
-./tools/refresh-env.sh                    # emits GH_CONFIG_DIR now that it exists
-cd ..                                     # into the collection, so mise exports it
-                                          # (no mise? set -a; . .env.collection; set +a)
+harness/tools/refresh-env.sh              # emits GH_CONFIG_DIR now that it exists
+set -a; . ./.env.collection; set +a       # reload so GH_CONFIG_DIR reaches this shell
 gh auth login                             # writes into the scoped store
 gh auth status                            # confirm the identity is this workspace's
 ```

@@ -12,7 +12,7 @@ root** inside the workspace, outside every repo and collection:
 ```
 
 `wtc.env` is the one place a **changed default** belongs, so that a bare
-`tools/wtc-xyz.sh` keeps doing what this machine wants without flags repeated
+`tools/wtc-xyz.sh` keeps doing what this workspace wants without flags repeated
 in every command line. It is read by `wtc-open.sh` and `wtc-status.sh` on
 every run, and by every tool that generates a collection's `.env.collection`;
 CLI flags still win.
@@ -282,7 +282,7 @@ identity is per collection too.
 1. **Nothing from the control root is ever committed** — to any repo,
    including this one. The control root itself is not a git repo.
 2. Secrets originate in a password manager (or the issuing service); the control
-   root is the machine-local materialization. When rotating: update
+   root is the workspace-local materialization. When rotating: update
    the password manager, then the control-root file.
 3. Prod-capable material (e.g. deploy env files, signing certificates)
    stays out of worktrees entirely unless the task explicitly needs it —
