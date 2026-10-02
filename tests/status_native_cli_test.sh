@@ -265,6 +265,10 @@ for url, tone in ((b'https://github.com/example/widget', b'1'),
     marker = b'\x1b]8;;' + url + b'\x07'
     at = output.find(marker)
     if tone == b'0':
+        prefix = output[:at]
+        resets = list(re.finditer(rb'\x1b\[(?:0)?m', prefix))
+        tail = prefix[resets[-1].end():] if resets else prefix
+        assert not re.search(rb'\x1b\[[0-9;]*m', tail), f'neutral link has an active style: {url!r}'
         continue  # neutral links may be emitted without an SGR reset
     style = re.search(rb'\x1b\[([0-9;]+)m$', output[max(0, at-40):at]) if at >= 0 else None
     assert style and style.group(1) == tone, \

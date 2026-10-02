@@ -178,14 +178,14 @@ For every worktree:
 ```bash
 git -C <worktree> status --short                       # clean?
 git -C <worktree> symbolic-ref -q HEAD || echo detached
-git -C <worktree> rev-list --count HEAD..<default_ref>  # how stale
+git -C <worktree> rev-list --count HEAD..<base_ref>     # how stale
 ```
 
-`<default_ref>` per repo is in `harness/.harness-repos.yml` (`origin/main` or
-another working branch, if the registry names one). For an open or draft PR,
-the tool reads that PR's actual merge target and uses its fetched `origin/`
-ref instead. A missing, invalid or inconsistent PR target needs its owner;
-the tool must not silently substitute `default_ref`.
+`<base_ref>` is the fetched `origin/` ref for an open or draft PR's actual merge
+target. Otherwise it is the repo's `<default_ref>` in
+`harness/.harness-repos.yml` (`origin/main` or another configured working
+branch). A missing, invalid or inconsistent PR target needs its owner; the
+tool must not silently substitute `default_ref`.
 
 | The worktree is | Do |
 |---|---|
