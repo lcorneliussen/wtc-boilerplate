@@ -254,3 +254,17 @@ it is their session, and "it was only idle" is not yours to judge.
   (restore reuses each pane's original environment).
 - **Agent state accuracy** needs `herdr integration install claude` once per
   machine; without it, `blocked`/`done` are guesses.
+
+
+### Forge access warnings in status
+
+Each fresh status snapshot checks access to one displayed repository per forge,
+independently of the PR cache. GitHub uses `gh api`; Bitbucket uses `bb repo view`.
+Missing CLIs, rejected authentication, denied access, timeouts and invalid
+responses produce a visible warning that PR/check data may be stale or
+unavailable. Raw CLI output is never included in that warning.
+
+Warnings travel with the JSON (`forge_warnings`), Markdown and cached terminal
+snapshot. A successful probe on the next refresh clears the warning. Cached
+rendering does not authenticate again; consult the snapshot age. A successful
+probe verifies the sampled repository only, not permissions on every repository.

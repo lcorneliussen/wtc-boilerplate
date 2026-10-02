@@ -55,6 +55,13 @@ older_out="$("$runner" --list other 2>&1)"; older_rc=$?
 assert_eq 0 "$older_rc" 'older target uses a working shell list'
 assert_contains "$older_out" 'no workspace' 'older target reported the shell workspace list'
 assert_empty "$(cat "$OPEN_CLI_CALLS")" 'older target did not dispatch'
+it 'shell opener uses the selected collection recorded tool defaults'
+mkdir -p "$root/recorded store"
+printf 'WTC_LAYOUT=narrow\n' > "$root/recorded store/wtc.env"
+printf "WTC_CONFIG_ROOT='%s'\n" "$root/recorded store" > "$root/other/.env.collection"
+recorded_out="$(env -u WTC_CONFIG_ROOT -u WTC_LAYOUT "$runner" --dry-run other 2>&1)"
+assert_contains "$recorded_out" '(narrow)' 'selected root supplies the shell layout'
+rm -f "$root/other/.env.collection"
 mixed_out="$("$runner" --all --list 2>&1)"; mixed_rc=$?
 assert_eq 0 "$mixed_rc" 'mixed sweep uses a working shell list'
 assert_contains "$mixed_out" 'no workspace' 'mixed sweep reported the shell workspace list'

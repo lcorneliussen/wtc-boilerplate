@@ -66,8 +66,8 @@ whichever product repos you will add).
 None of the optional tools are needed to create collections, commit, or
 open PRs.
 
-Secrets for product repos live in a **control root** outside the
-workspace (`~/.config/wtc` by default). You do not need it to stand the
+Secrets for product repos live in a **control root** inside the
+workspace (`<workspace-root>/.config` by default). You do not need it to stand the
 harness up; add files there when a sibling actually needs them. See
 `instructions/secrets.md`.
 
@@ -195,10 +195,11 @@ belong to the other one, and vice versa. The harness can give this
 workspace its own store instead, keyed off the control root:
 
 ```bash
-mkdir -p "${WTC_CONFIG_ROOT:-$HOME/.config/wtc}"/gh
-./tools/refresh-env.sh                    # emits GH_CONFIG_DIR now that it exists
-cd ..                                     # into the collection, so mise exports it
-                                          # (no mise? set -a; . .env.collection; set +a)
+cd ..                                     # the collection root; mise loads .env.collection here
+                                          # (no mise? set -a; . ./.env.collection; set +a)
+mkdir -p "${WTC_CONFIG_ROOT:?load the collection environment first}"/gh
+harness/tools/refresh-env.sh              # emits GH_CONFIG_DIR now that it exists
+set -a; . ./.env.collection; set +a       # reload so GH_CONFIG_DIR reaches this shell
 gh auth login                             # writes into the scoped store
 gh auth status                            # confirm the identity is this workspace's
 ```

@@ -390,7 +390,7 @@ regenerated `.env.collection` against whatever the generator currently knows.
 So check whether the choice has been made:
 
 ```bash
-ls -d "${WTC_CONFIG_ROOT:-$HOME/.config/wtc}"/gh 2>/dev/null   # opted in?
+ls -d "${WTC_CONFIG_ROOT:?load the collection environment first}"/gh 2>/dev/null   # opted in?
 grep -c GH_CONFIG_DIR .env.collection 2>/dev/null              # in effect here?
 ```
 

@@ -421,3 +421,49 @@ cache_cwd="$(mktemp_dir cachecwd)"
 assert_eq "the answer" "$(cd "$cache_cwd"; FORGE_CACHE="$cache_parent/link" _forge_cached test unsafe 90 counted)"
 assert_eq "0" "$(python3 -c 'import os,sys; print(len(os.listdir(sys.argv[1])))' "$cache_cwd")"
 assert_eq "0" "$(python3 -c 'import os,sys; print(len(os.listdir(sys.argv[1])))' "$cache_parent/target")"
+
+
+it "control root defaults to the workspace and preserves explicit overrides"
+assert_eq "$ws/.config" "$(unset WTC_CONFIG_ROOT; load_wtc_config; printf '%s' "$WTC_CONFIG_ROOT")"
+assert_eq "$ws/custom-store" "$(WTC_CONFIG_ROOT="$ws/custom-store"; load_wtc_config; printf '%s' "$WTC_CONFIG_ROOT")"
+
+it "different workspaces use different default control roots"
+assert_eq "$ws/other/.config" "$(unset WTC_CONFIG_ROOT; ROOT="$ws/other"; load_wtc_config; printf '%s' "$WTC_CONFIG_ROOT")"
+
+it "selected collection loads defaults from its recorded control root"
+recorded_root="$ws/recorded store"
+mkdir -p "$recorded_root" "$ws/new"
+printf 'WTC_LAYOUT=narrow\n' > "$recorded_root/wtc.env"
+printf "WTC_CONFIG_ROOT='%s'\n" "$recorded_root" > "$ws/main/.env.collection"
+assert_eq "$recorded_root:narrow" "$(unset WTC_CONFIG_ROOT WTC_LAYOUT; load_wtc_config "$ws/main"; printf '%s:%s' "$WTC_CONFIG_ROOT" "$WTC_LAYOUT")"
+assert_eq "$recorded_root:narrow" "$(unset WTC_CONFIG_ROOT WTC_LAYOUT; load_wtc_config; printf '%s:%s' "$WTC_CONFIG_ROOT" "$WTC_LAYOUT")"
+assert_eq "$ws/.config" "$(unset WTC_CONFIG_ROOT WTC_LAYOUT; load_wtc_config "$ws/new"; printf '%s' "$WTC_CONFIG_ROOT")"
+rm -f "$ws/main/.env.collection"
+
+it "environment refresh emits scoped gh identity and preserves ports and local overrides"
+(
+  unset WTC_CONFIG_ROOT GH_CONFIG_DIR
+  mkdir -p "$ws/.config/gh"
+  printf 'COLLECTION_PORT_BASE=42700\n' > "$ws/main/.env.collection"
+  printf '# preserved local setting\n' > "$ws/main/.env.collection.local"
+  write_collection_env "$ws/main" main >/dev/null
+  assert_contains "$(cat "$ws/main/.env.collection")" "WTC_CONFIG_ROOT=$ws/.config"
+  assert_contains "$(cat "$ws/main/.env.collection")" "GH_CONFIG_DIR=$ws/.config/gh"
+  assert_contains "$(cat "$ws/main/.env.collection")" 'COLLECTION_PORT_BASE=42700'
+  assert_eq '# preserved local setting' "$(cat "$ws/main/.env.collection.local")"
+  [ "$TEST_FAILED" -eq 0 ]
+)
+assert_eq 0 "$?" "scoped environment generated correctly"
+
+
+it "secret linking defaults to the workspace control root without generated env"
+# A fake CLI that refuses `secrets link --help` keeps this on the shell path
+# even on a machine with a real wtc installed.
+no_cli="$(mktemp_dir no-cli)"
+printf '#!/usr/bin/env bash\nexit 1\n' > "$no_cli/wtc"; chmod +x "$no_cli/wtc"
+assert_contains "$(unset WTC_CONFIG_ROOT; PATH="$no_cli:$PATH" bash "$HARNESS_DIR/tools/link-secrets.sh" --collection "$ws/main" --dry-run)" "control root: $ws/.config"
+
+it "secret linking defaults to the selected collection's workspace, not the invoking harness's"
+other_ws="$(mktemp_dir other-ws)"
+mkdir -p "$other_ws/coll" "$other_ws/.config"
+assert_contains "$(unset WTC_CONFIG_ROOT; PATH="$no_cli:$PATH" bash "$HARNESS_DIR/tools/link-secrets.sh" --collection "$other_ws/coll" --dry-run)" "control root: $other_ws/.config"

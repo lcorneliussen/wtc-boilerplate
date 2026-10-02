@@ -99,6 +99,17 @@ fi
 collection="$(cd "$collection" && pwd)"
 [ -d "$collection/$harness_dirname" ] || {
   echo "error: $collection has no $harness_dirname/ — not a collection" >&2; exit 1; }
+# The selected collection decides the workspace: its default control root,
+# port allocation and session name come from there, not from the workspace
+# of the harness running this script, so --collection cannot wire one
+# workspace to another's credentials.
+ROOT="$(dirname "$collection")"
+if [ "$ROOT" != "$(dirname "$(dirname "$HARNESS_DIR")")" ]; then
+  # A different workspace can have a different repository registry and port
+  # offsets. Keep the invoking registry for collections in this workspace.
+  REGISTRY="$collection/$harness_dirname/.harness-repos.yml"
+  [ -f "$REGISTRY" ] || { echo "error: target registry missing: $REGISTRY" >&2; exit 1; }
+fi
 
 # The target collection's mise.toml chooses its CLI version. Keep the shell
 # implementation for bootstrap and older pins; --all re-enters here per target.
@@ -151,7 +162,7 @@ target="$collection/.env.collection"
 # .env.collection (so the port base is read from the real one and does not move)
 # and diffs that. The real collection is never opened for writing at all.
 
-work="$(mktemp -d)"
+work="$(mktemp -d "${TMPDIR:-/tmp}/wtc-refresh-env.XXXXXX")"
 trap 'rm -rf "$work"' EXIT
 
 if [ -f "$target" ]; then
@@ -167,7 +178,8 @@ fi
 
 if [ "$dry_run" = yes ]; then
   [ -f "$target" ] && cp "$target" "$work/.env.collection"
-  write_collection_env "$work" "$name" "$collection/$harness_dirname" "$skip_hooks" >/dev/null
+  # Preview generation must not register a temporary path in mise trust.
+  write_collection_env "$work" "$name" "$collection/$harness_dirname" yes >/dev/null
   cp "$work/.env.collection" "$work/after"
   cp "$work/mise.toml" "$work/mise-after"
 else

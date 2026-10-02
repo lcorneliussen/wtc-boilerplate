@@ -1,18 +1,18 @@
 # Secrets and local config — control root
 
 Machine-local secrets and per-repo local config live in a single **control
-root** outside every repo and collection:
+root** inside the workspace, outside every repo and collection:
 
 ```text
-~/.config/wtc/                 # $WTC_CONFIG_ROOT (this is the default)
-  wtc.env                            # machine-wide tool defaults (not secrets)
+<workspace-root>/.config/                 # $WTC_CONFIG_ROOT (this is the default)
+  wtc.env                            # workspace-wide tool defaults (not secrets)
   <repo-name>/<repo-relative-path>   # e.g. api/.env,
                                      #      console/.env.local
   certificates/                      # signing material not owned by any repo
 ```
 
 `wtc.env` is the one place a **changed default** belongs, so that a bare
-`tools/wtc-xyz.sh` keeps doing what this machine wants without flags repeated
+`tools/wtc-xyz.sh` keeps doing what this workspace wants without flags repeated
 in every command line. It is read by `wtc-open.sh` and `wtc-status.sh` on
 every run, and by every tool that generates a collection's `.env.collection`;
 CLI flags still win.
@@ -39,9 +39,9 @@ CLI flags still win.
 | `HARNESS_REVIEW_GROK_EFFORT` | `low` | `grok --reasoning-effort` when grok runs a concern |
 
 It holds defaults, not credentials — but it lives in the control root because
-that is the machine-scoped, never-committed place that already exists.
+that is the workspace-scoped, never-committed place that already exists.
 
-A **shared control root**, not per-collection copies. Collections multiply
+A **workspace-shared control root**, not per-collection copies. Collections multiply
 checkouts, and copies-per-collection means a rotated credential is stale in
 every collection you did not think to update. One canonical copy per file,
 **symlinked** into worktrees, is immediately current everywhere.
@@ -49,14 +49,26 @@ every collection you did not think to update. One canonical copy per file,
 That holds for anything that rotates, and it leaves nowhere to put a
 credential scoped to **one collection's work** — a throwaway sandbox key made
 for a single investigation, say. Putting that in the control root hands it to
-every collection on the machine. So there is a second, narrower tier
+every collection in the workspace. So there is a second, narrower tier
 alongside it (see "Collection-scoped secrets"). The rule of thumb: **rotates
-for the machine → control root; belongs to this piece of work →
+for the workspace → control root; belongs to this piece of work →
 collection-scoped.**
 
 `WTC_CONFIG_ROOT` is exported in every collection's `.env.collection`
-(default `~/.config/wtc`). Files are stored at their repo-relative
+(default `<workspace-root>/.config`). Files are stored at their repo-relative
 path, so linking is mechanical.
+
+## Workspace boundary
+
+The default is `$ROOT/.config`, beside `.bare/` and the collections. All
+collections in that workspace share it; other workspaces get their own root.
+An explicitly set `WTC_CONFIG_ROOT` still wins. Do not hardcode a home-directory
+fallback when configuring tool identities.
+
+Existing generated environments retain their old root until refreshed. To
+migrate, explicitly set `WTC_CONFIG_ROOT` to the intended workspace's `.config`
+and run `harness/tools/refresh-env.sh` in the target collection. Existing panes
+must reload the environment. Existing credentials are not moved or copied.
 
 ## Wiring a worktree
 
@@ -67,7 +79,7 @@ It also identifies `.env.collection.local`, whose variables belong only to this
 collection. `wtc secrets list --repo api` narrows the file list; `--json` is
 available for tools. The command does not print file contents.
 
-Use `wtc env list` to see variable names from machine defaults, generated
+Use `wtc env list` to see variable names from workspace defaults, generated
 collection environment, and the collection-local override file. It does not
 print values. Bare `wtc env` shows help; `wtc env setup` regenerates the
 collection environment when you want to apply configuration changes.
@@ -286,7 +298,7 @@ identity is per collection too.
 1. **Nothing from the control root is ever committed** — to any repo,
    including this one. The control root itself is not a git repo.
 2. Secrets originate in a password manager (or the issuing service); the control
-   root is the machine-local materialization. When rotating: update
+   root is the workspace-local materialization. When rotating: update
    the password manager, then the control-root file.
 3. Prod-capable material (e.g. deploy env files, signing certificates)
    stays out of worktrees entirely unless the task explicitly needs it —

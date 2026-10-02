@@ -34,3 +34,13 @@ printf '\n[secrets]\nprod_paths = ["widget/.env.prod"]\n' >> "$ws/main/harness/w
 out="$(PATH="$fake_bin:$PATH" WTC_FAKE_LOG="$log" WTC_FAKE_AVAILABLE=no "$tool" --repo widget 2>&1)"
 assert_neq "0" "$?"
 assert_contains "$out" "wtc v0.1.5 is required to enforce prod_paths"
+
+it 'shell fallback decodes a native single-quoted control root'
+quoted_ws="$(make_workspace)"
+quoted_root="$quoted_ws/quoted store"
+mkdir -p "$quoted_root"
+printf "WTC_CONFIG_ROOT='%s'\n" "$quoted_root" > "$quoted_ws/main/.env.collection"
+out="$(env -u WTC_CONFIG_ROOT PATH="$fake_bin:$PATH" WTC_FAKE_LOG="$log" WTC_FAKE_AVAILABLE=no \
+  "$quoted_ws/main/harness/tools/link-secrets.sh" --dry-run 2>&1)"
+assert_contains "$out" "control root: $quoted_root"
+assert_not_contains "$out" 'nothing to link'
