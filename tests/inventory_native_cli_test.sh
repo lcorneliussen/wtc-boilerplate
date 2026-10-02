@@ -9,6 +9,7 @@ if [ -n "${WTC_TEST_RELEASE_BINARY:-}" ]; then
   assert_eq "wtc version $(cat "$HARNESS_SRC/.wtc-cli-version")" \
     "$("$WTC_TEST_RELEASE_BINARY" --version)" 'binary matches harness pin'
   root="$(make_workspace)"
+  TEST_TMPDIRS="$TEST_TMPDIRS $root"
   mkdir -p "$root/main/widget" "$root/control/widget"
   add_fixture_worktree "$root" widget "$root/main/widget"
   printf '.env*\n' > "$root/main/widget/.gitignore"
@@ -28,6 +29,7 @@ import json, sys
 secret_text = open(sys.argv[1]).read()
 env_text = open(sys.argv[2]).read()
 assert 'synthetic_shared_value' not in secret_text
+assert 'synthetic_available_value' not in secret_text
 assert 'synthetic_local_value' not in secret_text
 assert 'synthetic_generated_value' not in env_text
 assert 'synthetic_local_value' not in env_text
@@ -46,7 +48,7 @@ assert any(row['name'] == 'OVERRIDE_KEY' and row.get('overrides') and
            'local override' in row['scope'] for row in keys)
 PY
   it 'published binary separates environment help from setup'
-  help="$("$WTC_TEST_RELEASE_BINARY" env)"
+  help="$(cd "$root/main" && "$WTC_TEST_RELEASE_BINARY" env)"
   assert_contains "$help" 'list' 'bare env lists its subcommands'
   assert_contains "$help" 'setup' 'bare env lists explicit setup'
   assert_no_file "$root/main/mise.toml" 'bare env did not regenerate files'
