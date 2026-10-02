@@ -102,9 +102,23 @@ if [ -z "${HARNESS_DIR:-}" ] || [ ! -f "${HARNESS_DIR}/.harness-repos.yml" ]; th
 fi
 . "$script_dir/lib.sh"
 harness_lib_init
-# Machine defaults first, flags on top: a changed default lives in the control
-# root, not in every command line (instructions/secrets.md).
-load_wtc_config
+# Tool defaults come from the selected collection's recorded root. Scan the
+# positional target before the main option parser; that parser still owns flags.
+_status_config_target="$(this_collection_dir)"
+_status_args=("$@")
+for ((_status_i=0; _status_i<${#_status_args[@]}; _status_i++)); do
+  _status_arg="${_status_args[_status_i]}"
+  case "$_status_arg" in
+    --fetch-age) _status_i=$((_status_i + 1)) ;;
+    --watch)
+      if [ $((_status_i + 1)) -lt "${#_status_args[@]}" ]; then
+        case "${_status_args[_status_i+1]}" in [0-9]*) _status_i=$((_status_i + 1)) ;; esac
+      fi ;;
+    -*) ;;
+    *) _status_config_target="$ROOT/$_status_arg" ;;
+  esac
+done
+load_wtc_config "$_status_config_target"
 
 # WTC_STATUS_* is the spelling in wtc.env. HARNESS_STATUS_* is accepted as a
 # fallback so a control root from a fork that still uses that prefix keeps

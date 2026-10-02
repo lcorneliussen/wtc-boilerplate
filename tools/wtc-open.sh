@@ -170,8 +170,13 @@ herdr_present || { echo "error: herdr is not installed (see instructions/herdr.m
 # second, and only a pane that never settles costs the whole budget.
 PANE_SETTLE=10
 
-# Machine defaults from the control root; flags still win (instructions/secrets.md).
-load_wtc_config
+# Tool defaults from the selected collection's recorded control root.
+# A multi-collection sweep keeps the invoking collection's defaults.
+if [ "${#open_targets[@]}" -eq 1 ]; then
+  load_wtc_config "${open_targets[0]}"
+else
+  load_wtc_config "$(this_collection_dir)"
+fi
 [ "$agent_kind_set" = yes ] || agent_kind="$WTC_AGENT_KIND"
 if [ "$agent_args_set" = no ] && [ -n "${WTC_AGENT_ARGS:-}" ]; then
   agent_args="$WTC_AGENT_ARGS"

@@ -430,6 +430,15 @@ assert_eq "$ws/custom-store" "$(WTC_CONFIG_ROOT="$ws/custom-store"; load_wtc_con
 it "different workspaces use different default control roots"
 assert_eq "$ws/other/.config" "$(unset WTC_CONFIG_ROOT; ROOT="$ws/other"; load_wtc_config; printf '%s' "$WTC_CONFIG_ROOT")"
 
+it "selected collection loads defaults from its recorded control root"
+recorded_root="$ws/recorded store"
+mkdir -p "$recorded_root" "$ws/new"
+printf 'WTC_LAYOUT=narrow\n' > "$recorded_root/wtc.env"
+printf "WTC_CONFIG_ROOT='%s'\n" "$recorded_root" > "$ws/main/.env.collection"
+assert_eq "$recorded_root:narrow" "$(unset WTC_CONFIG_ROOT WTC_LAYOUT; load_wtc_config "$ws/main"; printf '%s:%s' "$WTC_CONFIG_ROOT" "$WTC_LAYOUT")"
+assert_eq "$ws/.config" "$(unset WTC_CONFIG_ROOT WTC_LAYOUT; load_wtc_config "$ws/new"; printf '%s' "$WTC_CONFIG_ROOT")"
+rm -f "$ws/main/.env.collection"
+
 it "environment refresh emits scoped gh identity and preserves ports and local overrides"
 (
   unset WTC_CONFIG_ROOT GH_CONFIG_DIR
