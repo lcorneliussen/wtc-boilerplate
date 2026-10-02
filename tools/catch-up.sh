@@ -527,7 +527,14 @@ while IFS=$'\t' read -r collection wt repo owner; do
   case "$outcome" in
     updated|current|planned)
       # Run only repo-scoped secrets, never a whole-collection secrets sweep.
-      [ "$do_secrets" = no ] || run_hook link-secrets.sh "secrets:$repo" "$(basename "$wt")"
+      # An unmanaged ext. sibling has no registry entry, so the control root
+      # holds nothing for it and the linker would reject its directory name.
+      if [ "$do_secrets" = no ]; then :
+      elif [ "$(basename "$wt")" = harness ] || [ -n "$(registry_field "$repo" remote)" ]; then
+        run_hook link-secrets.sh "secrets:$repo" "$(basename "$wt")"
+      else
+        row hook "$collection" "secrets:$repo" skipped 'unmanaged sibling; no registry secrets to link' '' '' ''
+      fi
       if [ "$(basename "$wt")" = harness ]; then
         # Skill rendering selects the target's CLI pin from generated mise.toml.
         # Refresh it first when this catch-up just advanced the harness pin.

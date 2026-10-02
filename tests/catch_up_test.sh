@@ -220,6 +220,23 @@ assert_not_contains "$(cat "$root/secrets-calls")" 'agent-harness'
 # Restore harness to make it eligible for pane testing.
 git -C "$root/clean/harness" restore tools/link-secrets.sh
 
+it 'an unmanaged ext. sibling skips the secrets hook instead of failing it'
+git --git-dir="$root/.bare/widget.git" worktree add -q --detach "$root/clean/ext.thing" origin/main
+cat > "$root/clean/harness/tools/link-secrets.sh" <<'MOCK'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$CATCH_TEST_ROOT/secrets-calls"
+MOCK
+chmod +x "$root/clean/harness/tools/link-secrets.sh"
+: > "$root/secrets-calls"
+"$runner" --repos widget,ext.thing --json --no-skills --no-mcp --no-env clean > "$root/ext-secrets.json" 2> "$root/stderr"
+assert_eq 0 "$?"
+assert_contains "$(cat "$root/secrets-calls")" '--repo widget'
+assert_not_contains "$(cat "$root/secrets-calls")" 'ext.thing'
+assert_contains "$(cat "$root/ext-secrets.json")" 'secrets:ext.thing'
+assert_contains "$(cat "$root/ext-secrets.json")" 'unmanaged sibling; no registry secrets to link'
+git -C "$root/clean/harness" restore tools/link-secrets.sh
+git --git-dir="$root/.bare/widget.git" worktree remove --force "$root/clean/ext.thing"
+
 it 'real secrets hook selects the harness directory rather than its registry name'
 mkdir -p "$WTC_CONFIG_ROOT/harness" "$WTC_CONFIG_ROOT/widget"
 printf 'fixture harness value\n' > "$WTC_CONFIG_ROOT/harness/rollout-sentinel"
