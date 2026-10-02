@@ -21,6 +21,9 @@ Run the tool first, then use its report as the work list. The shim dispatches
 to the pinned CLI where available. Do not preemptively resolve conflicts while
 the sweep is running; the tool leaves the affected worktree intact or aborts
 its own failed merge and records a `needs-owner` row.
+If the matching CLI is unavailable, the shell fallback leaves open PR branches
+untouched because it cannot verify their merge targets. Install the pinned CLI
+and rerun catch-up in the owning collection.
 
 ```bash
 harness/tools/catch-up.sh                 # this collection

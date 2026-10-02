@@ -379,6 +379,10 @@ reconcile() {
   case "$pr_state" in
     UNKNOWN) outcome=needs-owner; reason='PR state unavailable; branch left untouched'; return ;;
     CLOSED|closed) outcome=needs-owner; reason='closed PR branch; owner must decide continuation'; return ;;
+    OPEN|open|DRAFT|draft)
+      outcome=needs-owner
+      reason='open PR catch-up requires the matching installed CLI to verify its merge target; branch left untouched'
+      return ;;
     MERGED|merged)
       tsv_from_cmd mcommit pr_head -- pr_merge_facts_for_branch "$collection" "$repo" "$branch"
       [ "$mcommit" != - ] || mcommit=''
