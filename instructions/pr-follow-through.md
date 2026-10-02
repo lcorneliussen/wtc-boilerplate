@@ -84,8 +84,8 @@ cannot schedule work while no agent is running.
 
 For each owned PR, use `wtc-pr` for forge commands and review mechanics:
 
-1. **Base moved:** catch up the affected worktree, merge the default branch
-   into live work, resolve routine conflicts within the task, validate and
+1. **Base moved:** catch up the affected worktree, merge the PR's actual target
+   branch into live work, resolve routine conflicts within the task, validate and
    push. Coordinate with any existing writer. Large semantic decisions become
    a concrete checkpoint; do not silently choose product behavior.
 2. **Checks failed:** read the logs, diagnose, fix and push. A supported

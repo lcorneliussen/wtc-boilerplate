@@ -17,8 +17,10 @@ what it is checked out on. Catch-up is also not git-only — files and skills
 that reached the harness or the control root after this collection was created
 never arrive on their own.
 
-Prefer `tools/catch-up.sh`: it does everything in this file in one pass, per
-collection or `--all`, and is what the rest of this skill documents.
+Run the tool first, then use its report as the work list. The shim dispatches
+to the pinned CLI where available. Do not preemptively resolve conflicts while
+the sweep is running; the tool leaves the affected worktree intact or aborts
+its own failed merge and records a `needs-owner` row.
 
 ```bash
 harness/tools/catch-up.sh                 # this collection
@@ -84,6 +86,14 @@ are separate rows, including failures. Normal runs save JSON and a readable
 `.md` companion in the initiating collection (`.wtc-catch-up.json` by default),
 even after partial failure; `--json` also emits the JSON on stdout. Nonzero
 exit means some work failed or needs its owner, not that all updates failed.
+
+Read the report's `needs-owner` rows and their `next_action` fields before
+doing any manual work. For this collection, inspect `git status`, the PR's
+actual merge target and the affected paths. If the tool aborted its own merge,
+rerun the merge on the owning branch, resolve the paths, run relevant checks,
+commit, and push an open or draft PR. If a merge was already in progress,
+inspect it first and either finish or abort that same operation; never start a
+second merge over it. Do not treat a failed merge as completed catch-up.
 
 Collect `needs-owner` rows in the initiating session. Give each owning
 collection agent its repo, source/target SHAs, reason and report location
@@ -169,7 +179,10 @@ git -C <worktree> rev-list --count HEAD..<default_ref>  # how stale
 ```
 
 `<default_ref>` per repo is in `harness/.harness-repos.yml` (`origin/main` or
-another working branch, if the registry names one).
+another working branch, if the registry names one). For an open or draft PR,
+the tool reads that PR's actual merge target and uses its fetched `origin/`
+ref instead. A missing, invalid or inconsistent PR target needs its owner;
+the tool must not silently substitute `default_ref`.
 
 | The worktree is | Do |
 |---|---|
@@ -177,7 +190,7 @@ another working branch, if the registry names one).
 | **Detached**, already at the tip | Nothing — there is no move to make, dirty or not. |
 | On a branch, **PR merged** (§2), clean, landing established | §3.1 — return to tip, safely prune or retain the local ref, retain delivery tracking. |
 | On a branch, **PR merged**, but dirty or with post-merge commits | §3.2 — that is follow-up work; give it a branch of its own first. |
-| On a **live** branch (no PR, or PR open/draft), behind the tip | §3.3 — merge the tip in; §3.3.1 pushes it when a PR exists. |
+| On a **live** branch (no PR, or PR open/draft), behind its base | §3.3 — merge the base in; §3.3.1 pushes it when a PR exists. |
 | On a **live** branch, already current | Nothing. |
 | Mid-merge / mid-rebase / mid-cherry-pick | Nothing. Report it — someone is in the middle of something. |
 | On a repo's default **branch** (legacy shape) | `git -C <wt> merge --ff-only @{u}` if clean, and suggest detaching so the branch stops being pinned to this collection. |
@@ -240,7 +253,7 @@ resolution rather than a review, so catch-up brings the base to it:
 
 ```bash
 git -C <wt> status --porcelain            # must be empty (or stashed)
-git -C <wt> merge --no-edit <default_ref>
+git -C <wt> merge --no-edit <base_ref>     # PR target for open/draft PRs; default_ref otherwise
 ```
 
 Merge, never rebase — the branch may already be pushed and under review, and
@@ -255,8 +268,9 @@ git -C <wt> merge --abort
 ```
 
 Report the conflicting paths to the branch owner. For work this session owns,
-return to `wtc-follow` / `wtc-pr` to resolve routine conflicts, validate and
-push. Ask the user only for a semantic or scope decision the task does not
+return to `wtc-follow` / `wtc-pr`: read the report, verify the current branch
+and PR target, rerun the merge, resolve each path, run relevant checks, commit
+and push. Ask the user only for a semantic or scope decision the task does not
 already settle; catch-up itself does not choose sides for another owner.
 
 ### 3.3.1 If the branch has a PR (open or draft), push the merge
