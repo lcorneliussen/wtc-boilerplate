@@ -99,7 +99,8 @@ def assert_fits(output, width):
 
 binary, collection, control = sys.argv[1:]
 for group in ('secrets', 'env'):
-    for flags, interactive in (([], True), (['--tui=false'], False)):
+    for flags, interactive in (([], True), (['--tui=false'], False),
+                               (['--no-tui'], False), (['--json'], False)):
         master, slave = pty.openpty()
         fcntl.ioctl(slave, termios.TIOCSWINSZ, struct.pack('HHHH', 12, 42, 0, 0))
         proc = subprocess.Popen([binary, group, 'list', '--collection', collection, *flags],
