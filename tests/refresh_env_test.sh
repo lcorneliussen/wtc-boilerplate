@@ -31,9 +31,18 @@ it 'a collection in another workspace defaults to that workspace'"'"'s control r
 other_ws="$(mktemp_dir other-ws)"
 mkdir -p "$other_ws/coll"
 cp -R "$ws/main/harness" "$other_ws/coll/harness"
+cat > "$other_ws/coll/harness/.harness-repos.yml" <<'YML'
+repos:
+  - name: remote-widget
+    remote: https://github.com/example/remote-widget.git
+    default_ref: origin/main
+    port_offset: 7
+YML
 printf 'COLLECTION_PORT_BASE=42800\n' > "$other_ws/coll/.env.collection"
 (unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" >/dev/null)
 assert_eq 0 "$?" "cross-workspace refresh succeeded"
 assert_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT=$other_ws/.config"
 assert_not_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT=$ws/"
 assert_contains "$(cat "$other_ws/coll/.env.collection")" 'COLLECTION_PORT_BASE=42800'
+assert_contains "$(cat "$other_ws/coll/.env.collection")" 'REMOTE_WIDGET_PORT=42807'
+assert_not_contains "$(cat "$other_ws/coll/.env.collection")" $'\nWIDGET_PORT='

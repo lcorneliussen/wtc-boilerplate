@@ -104,6 +104,12 @@ collection="$(cd "$collection" && pwd)"
 # of the harness running this script, so --collection cannot wire one
 # workspace to another's credentials.
 ROOT="$(dirname "$collection")"
+if [ "$ROOT" != "$(dirname "$(dirname "$HARNESS_DIR")")" ]; then
+  # A different workspace can have a different repository registry and port
+  # offsets. Keep the invoking registry for collections in this workspace.
+  REGISTRY="$collection/$harness_dirname/.harness-repos.yml"
+  [ -f "$REGISTRY" ] || { echo "error: target registry missing: $REGISTRY" >&2; exit 1; }
+fi
 
 # The target collection's mise.toml chooses its CLI version. Keep the shell
 # implementation for bootstrap and older pins; --all re-enters here per target.

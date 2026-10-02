@@ -14,7 +14,7 @@ def module(name, file):
 health = module('health', 'wtc-status-health.py')
 fmt = module('fmt', 'wtc-status-format.py')
 class HealthTests(unittest.TestCase):
-    def result(self, code=0, out='{"id": 1}', err=''):
+    def result(self, code=0, out='{"data":{"repository":{"pullRequests":{"nodes":[]}}}}', err=''):
         return subprocess.CompletedProcess([], code, out, err)
     def test_both_auth_failures_and_no_raw_error_leaks(self):
         for forge in ['github', 'bitbucket']:
@@ -36,9 +36,13 @@ class HealthTests(unittest.TestCase):
             self.assertTrue(health.collect([('github', 'example/widget')]))
             self.assertEqual([], health.collect([('github', 'example/widget')]))
     def test_one_probe_per_forge_and_no_false_positive(self):
-        with patch.object(health.subprocess, 'run', return_value=self.result(out='{"id": 1, "description": "auth login 401"}')) as call:
+        with patch.object(health.subprocess, 'run', return_value=self.result(out='{"data":{"repository":{"pullRequests":{"nodes":[]},"description":"auth login 401"}}}')) as call:
             self.assertEqual([], health.collect([('github', 'example/a'), ('github', 'example/b')]))
             self.assertEqual(1, call.call_count)
+            self.assertIn('graphql', call.call_args.args[0])
+    def test_repo_metadata_success_does_not_hide_pr_permission_failure(self):
+        with patch.object(health.subprocess, 'run', return_value=self.result(out='{"data":{"repository":{"id":"R_1"}},"errors":[{"message":"Resource not accessible by integration"}]}')):
+            self.assertIn('access unavailable', health.check('github', 'example/widget'))
     def test_malformed_success_is_not_healthy(self):
         with patch.object(health.subprocess, 'run', return_value=self.result(out='{}')):
             self.assertIn('invalid API response', health.check('github', 'example/widget'))
@@ -62,7 +66,7 @@ mkdir -p "$ws/fake-bin"
 cat > "$ws/fake-bin/gh" <<'GH'
 #!/usr/bin/env bash
 if [ "$1" = api ]; then
-  if [ "${HEALTH_OK:-no}" = yes ]; then printf '{"id":1}\n'; exit 0; fi
+  if [ "${HEALTH_OK:-no}" = yes ]; then printf '{"data":{"repository":{"pullRequests":{"nodes":[]}}}}\n'; exit 0; fi
   echo 'HTTP 401: private-error-detail' >&2
 fi
 exit 1

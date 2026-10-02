@@ -7,7 +7,12 @@ import sys
 
 def check(forge, slug):
     if forge == 'github':
-        command = ['gh', 'api', 'repos/' + slug]
+        owner, repo = slug.split('/', 1)
+        # Exercise the permissions used by the status PR/check query. Repo
+        # metadata may be readable even when pull requests are not.
+        command = ['gh', 'api', 'graphql', '-F', 'owner=' + owner,
+                   '-F', 'name=' + repo,
+                   '-f', 'query=query($owner:String!,$name:String!){repository(owner:$owner,name:$name){pullRequests(first:1){nodes{number reviewThreads(first:1){nodes{isResolved}} commits(last:1){nodes{commit{statusCheckRollup{state}}}}}}}}']
         label = 'GitHub (gh)'
     elif forge == 'bitbucket':
         owner, repo = slug.split('/', 1)
@@ -30,7 +35,9 @@ def check(forge, slug):
             data = None
         if (result.returncode == 0 and isinstance(data, dict)
                 and not data.get('error') and not data.get('errors')
-                and (data.get('full_name') or data.get('uuid') or data.get('id'))):
+                and ((forge == 'github' and isinstance(
+                    ((data.get('data') or {}).get('repository') or {}).get('pullRequests'), dict))
+                     or (forge == 'bitbucket' and (data.get('uuid') or data.get('id'))))):
             return None
         # Only inspect failed responses: repository descriptions may discuss
         # authentication without indicating a failed request.
@@ -38,7 +45,7 @@ def check(forge, slug):
         if any(t in output for t in ['401', 'not authenticated', 'requires authentication',
                                      'bad credentials', 'authentication failed', 'auth login']):
             reason = 'authentication failed'
-        elif any(t in output for t in ['403', 'forbidden', 'permission denied', '404', 'not found']):
+        elif any(t in output for t in ['403', 'forbidden', 'permission denied', 'not accessible', '404', 'not found']):
             reason = 'access unavailable'
         elif result.returncode:
             reason = 'API unavailable'
