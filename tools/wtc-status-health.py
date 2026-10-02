@@ -21,6 +21,8 @@ def check(forge, slug):
         reason = 'CLI missing'
     except subprocess.TimeoutExpired:
         reason = 'connection timed out'
+    except OSError:
+        reason = 'CLI unavailable'
     else:
         try:
             data = json.loads(result.stdout)

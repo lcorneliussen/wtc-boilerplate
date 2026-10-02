@@ -110,7 +110,10 @@ config_root="${WTC_CONFIG_ROOT:-}"
 if [ -z "$config_root" ] && [ -f "$collection/.env.collection" ]; then
   config_root="$(sed -n 's/^WTC_CONFIG_ROOT=//p' "$collection/.env.collection" | head -n1)"
 fi
-[ -n "$config_root" ] || config_root="$ROOT/.config"
+# The default belongs to the selected collection's workspace, never to the
+# workspace of the harness running this script: --collection may point
+# elsewhere, and one workspace's secrets must not land in another.
+[ -n "$config_root" ] || config_root="$(dirname "$collection")/.config"
 
 # An absent control root means "this machine has no local secrets to link",
 # which is a legitimate state. Treating it as an error made every catch-up

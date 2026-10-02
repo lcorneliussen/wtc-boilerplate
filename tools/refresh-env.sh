@@ -99,6 +99,11 @@ fi
 collection="$(cd "$collection" && pwd)"
 [ -d "$collection/$harness_dirname" ] || {
   echo "error: $collection has no $harness_dirname/ — not a collection" >&2; exit 1; }
+# The selected collection decides the workspace: its default control root,
+# port allocation and session name come from there, not from the workspace
+# of the harness running this script, so --collection cannot wire one
+# workspace to another's credentials.
+ROOT="$(dirname "$collection")"
 
 # The target collection's mise.toml chooses its CLI version. Keep the shell
 # implementation for bootstrap and older pins; --all re-enters here per target.

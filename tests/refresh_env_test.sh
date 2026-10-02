@@ -26,3 +26,14 @@ assert_ok "$ws/main/harness/tools/refresh-env.sh"
 assert_contains "$(cat "$MISE_CALL_LOG")" 'trust'
 assert_contains "$(cat "$ws/main/.env.collection")" 'COLLECTION_PORT_BASE=42700'
 assert_eq '# local overrides' "$(cat "$ws/main/.env.collection.local")"
+
+it 'a collection in another workspace defaults to that workspace'"'"'s control root'
+other_ws="$(mktemp_dir other-ws)"
+mkdir -p "$other_ws/coll"
+cp -R "$ws/main/harness" "$other_ws/coll/harness"
+printf 'COLLECTION_PORT_BASE=42800\n' > "$other_ws/coll/.env.collection"
+(unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" >/dev/null)
+assert_eq 0 "$?" "cross-workspace refresh succeeded"
+assert_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT=$other_ws/.config"
+assert_not_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT=$ws/"
+assert_contains "$(cat "$other_ws/coll/.env.collection")" 'COLLECTION_PORT_BASE=42800'

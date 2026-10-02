@@ -499,6 +499,7 @@ layout() { # recompute the columns for the terminal as it is now
 
 FORMAT_PY="$script_dir/wtc-status-format.py"
 ANSI_PY="$script_dir/wtc-status-ansi.py"
+HEALTH_PY="$script_dir/wtc-status-health.py"
 _snapshot_ndjson=""
 snapshot_loaded=no
 _snapshot_stale=0
@@ -1370,7 +1371,9 @@ load_snapshot() {
       dir="$(basename "$wt")"
       repo="$dir"; [ "$dir" = harness ] && repo="$(harness_repo)"
       slug="$(slug_for_worktree "$wt" "$repo")"
-      health_targets="${health_targets}$(forge_for_worktree "$wt" "$repo")"$'\t'"$slug"$'\n'
+      # Probe the same forge the PR columns use for this slug.
+      health_forge="unknown"; [ -n "$slug" ] && health_forge="$(forge_for_slug "$slug")"
+      health_targets="${health_targets}${health_forge}"$'\t'"$slug"$'\n'
       state="$(wt_head_state "$wt" "$repo")"
       kind="$(printf '%s' "$state" | awk '{print $1}')"
       label="$(printf '%s' "$state" | awk '{print $2}')"
@@ -1629,7 +1632,7 @@ EOF
     SNAPSHOT_PRS_ORPHANS="$orphans"
   fi
 
-  health_json="$(python3 "$HARNESS_DIR/tools/wtc-status-health.py" <<< "$health_targets")"
+  health_json="$(python3 "$HEALTH_PY" <<< "$health_targets")"
   while IFS= read -r health_warning; do
     [ -n "$health_warning" ] && FORGE_WARNINGS+=("$health_warning")
   done < <(python3 -c 'import json,sys; print("\n".join(json.load(sys.stdin)))' <<< "$health_json")

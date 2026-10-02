@@ -27,7 +27,8 @@ class HealthTests(unittest.TestCase):
             with patch.object(health.subprocess, 'run', return_value=self.result(1, '', err)):
                 self.assertIn(expected, health.check('github', 'example/widget'))
     def test_timeout_and_missing_cli(self):
-        for err, expected in [(FileNotFoundError(), 'CLI missing'), (subprocess.TimeoutExpired('gh', 10), 'timed out')]:
+        for err, expected in [(FileNotFoundError(), 'CLI missing'), (subprocess.TimeoutExpired('gh', 10), 'timed out'),
+                              (PermissionError(), 'CLI unavailable')]:
             with patch.object(health.subprocess, 'run', side_effect=err):
                 self.assertIn(expected, health.check('github', 'example/widget'))
     def test_success_and_recovery(self):
@@ -55,6 +56,8 @@ assert_eq 0 "$?" "health and snapshot tests pass"
 
 it "live and cached ANSI status show authentication failures"
 ws="$(make_workspace)"
+# Pin below native status support so all three calls exercise the shell path.
+printf '0.1.8\n' > "$ws/main/harness/.wtc-cli-version"
 mkdir -p "$ws/fake-bin"
 cat > "$ws/fake-bin/gh" <<'GH'
 #!/usr/bin/env bash
