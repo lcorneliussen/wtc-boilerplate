@@ -2,7 +2,7 @@
 . "$(dirname "$0")/helpers.sh"
 it "forge health failures survive snapshot encoding and rendering"
 python3 - "$HARNESS_SRC/tools" <<'PY'
-import importlib.util, json, pathlib, subprocess, sys, unittest
+import importlib.util, json, pathlib, subprocess, sys, threading, unittest
 from unittest.mock import patch
 sys.dont_write_bytecode = True
 root = pathlib.Path(sys.argv[1])
@@ -44,8 +44,29 @@ class HealthTests(unittest.TestCase):
         with patch.object(health.subprocess, 'run', return_value=self.result(out='{"data":{"repository":{"id":"R_1"}},"errors":[{"message":"Resource not accessible by integration"}]}')):
             self.assertIn('access unavailable', health.check('github', 'example/widget'))
     def test_malformed_success_is_not_healthy(self):
-        with patch.object(health.subprocess, 'run', return_value=self.result(out='{}')):
-            self.assertIn('invalid API response', health.check('github', 'example/widget'))
+        for body in ['{}', '{"data":"error"}', '{"data":{"repository":"error"}}']:
+            with patch.object(health.subprocess, 'run', return_value=self.result(out=body)):
+                self.assertIn('invalid API response', health.check('github', 'example/widget'))
+    def test_bitbucket_pr_access_and_checks(self):
+        with patch.object(health.subprocess, 'run', return_value=self.result(out='{"id":1}')) as call:
+            self.assertIn('invalid API response', health.check('bitbucket', 'example/widget'))
+            self.assertEqual('pr', call.call_args.args[0][1])
+        with patch.object(health.subprocess, 'run', side_effect=[
+                self.result(out='{"pullRequests":[{"id":7}]}'),
+                self.result(1, '', 'HTTP 403')]):
+            self.assertIn('check access unavailable', health.check('bitbucket', 'example/widget'))
+        with patch.object(health.subprocess, 'run', side_effect=[
+                self.result(out='{"pullRequests":[{"id":7}]}'),
+                self.result(out='{}')]):
+            self.assertIsNone(health.check('bitbucket', 'example/widget'))
+    def test_forge_probes_run_together_and_keep_warning_order(self):
+        barrier = threading.Barrier(2, timeout=1)
+        def probe(forge, slug):
+            barrier.wait()
+            return forge
+        with patch.object(health, 'check', side_effect=probe):
+            self.assertEqual(['github', 'bitbucket'], health.collect([
+                ('github', 'example/a'), ('bitbucket', 'example/b')]))
     def test_snapshot_roundtrip_and_cached_render(self):
         warning = 'GitHub (gh): authentication failed; PR/check data may be stale or unavailable'
         snapshot = fmt.assemble([{'kind': 'meta', 'forge_warnings': [warning]}])

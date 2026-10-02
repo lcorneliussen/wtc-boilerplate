@@ -1282,6 +1282,11 @@ write_collection_env() { # <collection-dir> <collection-name> [harness-dir] [ski
     base="$(sed -n 's/^COLLECTION_PORT_BASE=//p' "$dir/.env.collection" | head -n1)"
   fi
   [ -n "$base" ] || base="$(alloc_port_base)"
+  # Keep the collection's recorded store unless the caller explicitly chose
+  # another. Refreshing an older collection must not move its credentials.
+  if [ -z "${WTC_CONFIG_ROOT:-}" ] && [ -f "$dir/.env.collection" ]; then
+    WTC_CONFIG_ROOT="$(sed -n 's/^WTC_CONFIG_ROOT=//p' "$dir/.env.collection" | head -n1)"
+  fi
   # Workspace-wide defaults from $WTC_CONFIG_ROOT/wtc.env, so a lever set there
   # once (WTC_TWG_SITE) reaches every path that generates this file —
   # branch-off, add-repo and refresh-env — none of which take a flag for it.

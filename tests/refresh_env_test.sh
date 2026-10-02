@@ -46,3 +46,14 @@ assert_not_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT=$
 assert_contains "$(cat "$other_ws/coll/.env.collection")" 'COLLECTION_PORT_BASE=42800'
 assert_contains "$(cat "$other_ws/coll/.env.collection")" 'REMOTE_WIDGET_PORT=42807'
 assert_not_contains "$(cat "$other_ws/coll/.env.collection")" $'\nWIDGET_PORT='
+
+it 'refresh and preview preserve a recorded control root without an override'
+recorded="$other_ws/recorded-store"
+mkdir -p "$recorded/gh"
+printf 'COLLECTION_PORT_BASE=42800\nWTC_CONFIG_ROOT=%s\n' "$recorded" > "$other_ws/coll/.env.collection"
+preview="$(unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" --dry-run)"
+assert_not_contains "$preview" "WTC_CONFIG_ROOT=$other_ws/.config"
+assert_contains "$preview" "WTC_CONFIG_ROOT=$recorded"
+(unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" >/dev/null)
+assert_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT=$recorded"
+assert_contains "$(cat "$other_ws/coll/.env.collection")" "GH_CONFIG_DIR=$recorded/gh"

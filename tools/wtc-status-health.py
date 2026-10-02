@@ -3,6 +3,7 @@
 import json
 import subprocess
 import sys
+from concurrent.futures import ThreadPoolExecutor
 
 
 def check(forge, slug):
@@ -16,7 +17,8 @@ def check(forge, slug):
         label = 'GitHub (gh)'
     elif forge == 'bitbucket':
         owner, repo = slug.split('/', 1)
-        command = ['bb', 'repo', 'view', '--workspace', owner, '--repo', repo, '--json']
+        command = ['bb', 'pr', 'list', '-w', owner, '-r', repo,
+                   '--state', 'OPEN', '--limit', '50', '--json']
         label = 'Bitbucket (bb)'
     else:
         return None
@@ -33,11 +35,34 @@ def check(forge, slug):
             data = json.loads(result.stdout)
         except ValueError:
             data = None
+        payload = data.get('data') if isinstance(data, dict) else None
+        repository = payload.get('repository') if isinstance(payload, dict) else None
+        pulls = repository.get('pullRequests') if isinstance(repository, dict) else None
         if (result.returncode == 0 and isinstance(data, dict)
                 and not data.get('error') and not data.get('errors')
-                and ((forge == 'github' and isinstance(
-                    ((data.get('data') or {}).get('repository') or {}).get('pullRequests'), dict))
-                     or (forge == 'bitbucket' and (data.get('uuid') or data.get('id'))))):
+                and ((forge == 'github' and isinstance(pulls, dict)
+                      and isinstance(pulls.get('nodes'), list))
+                     or (forge == 'bitbucket' and isinstance(data.get('pullRequests'), list)))):
+            if forge == 'bitbucket' and data['pullRequests']:
+                first_pr = data['pullRequests'][0]
+                if not isinstance(first_pr, dict):
+                    return f'{label}: invalid API response; PR/check data may be stale or unavailable'
+                pr_id = first_pr.get('id')
+                if pr_id is not None:
+                    try:
+                        checks = subprocess.run(
+                            ['bb', '--json', 'pr', 'checks', str(pr_id), '-w', owner, '-r', repo],
+                            capture_output=True, text=True, timeout=10)
+                    except (OSError, subprocess.TimeoutExpired):
+                        return f'{label}: check access unavailable; PR/check data may be stale or unavailable'
+                    try:
+                        checks_data = json.loads(checks.stdout)
+                    except ValueError:
+                        checks_data = None
+                    if (checks.returncode or not isinstance(checks_data, (dict, list))
+                            or (isinstance(checks_data, dict) and
+                                (checks_data.get('error') or checks_data.get('errors')))):
+                        return f'{label}: check access unavailable; PR/check data may be stale or unavailable'
             return None
         # Only inspect failed responses: repository descriptions may discuss
         # authentication without indicating a failed request.
@@ -55,16 +80,16 @@ def check(forge, slug):
 
 
 def collect(targets):
-    warnings = []
+    probes = []
     seen = set()
     for forge, slug in targets:
         if forge in seen or '/' not in slug:
             continue
         seen.add(forge)
-        warning = check(forge, slug)
-        if warning:
-            warnings.append(warning)
-    return warnings
+        probes.append((forge, slug))
+    with ThreadPoolExecutor(max_workers=max(1, len(probes))) as pool:
+        return [warning for warning in pool.map(lambda target: check(*target), probes)
+                if warning]
 
 
 if __name__ == '__main__':
