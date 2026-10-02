@@ -108,7 +108,7 @@ collection="$(cd "$collection" && pwd)"
 # the documented default. Catch-up may run in a shell mise never touched.
 config_root="${WTC_CONFIG_ROOT:-}"
 if [ -z "$config_root" ] && [ -f "$collection/.env.collection" ]; then
-  config_root="$(sed -n 's/^WTC_CONFIG_ROOT=//p' "$collection/.env.collection" | head -n1)"
+  config_root="$(collection_env_value "$collection/.env.collection" WTC_CONFIG_ROOT)"
 fi
 # The default belongs to the selected collection's workspace, never to the
 # workspace of the harness running this script: --collection may point

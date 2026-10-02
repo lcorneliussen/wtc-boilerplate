@@ -549,6 +549,27 @@ wtc_repo_worktree() { # <collection> <repo> -> path (may not exist)
   fi
 }
 
+collection_env_value() { # <generated-env-file> <key> — data only, never source it
+  python3 - "$1" "$2" <<'PY'
+import json, shlex, sys
+key = sys.argv[2] + '='
+with open(sys.argv[1]) as env:
+    for line in env:
+        if not line.startswith(key):
+            continue
+        value = line[len(key):].rstrip('\n')
+        if value.startswith('"'):
+            value = json.loads(value)
+        elif value.startswith("'"):
+            fields = shlex.split(value)
+            if len(fields) != 1:
+                raise ValueError('invalid quoted environment value')
+            value = fields[0]
+        print(value)
+        break
+PY
+}
+
 # Workspace-wide tool defaults, in the control root next to the secrets:
 # $WTC_CONFIG_ROOT/wtc.env. The one place a changed default belongs, so a bare
 # `tools/wtc-xyz.sh` keeps doing what this workspace wants without flags in every
@@ -1285,18 +1306,7 @@ write_collection_env() { # <collection-dir> <collection-name> [harness-dir] [ski
   # Keep the collection's recorded store unless the caller explicitly chose
   # another. Refreshing an older collection must not move its credentials.
   if [ -z "${WTC_CONFIG_ROOT:-}" ] && [ -f "$dir/.env.collection" ]; then
-    WTC_CONFIG_ROOT="$(python3 - "$dir/.env.collection" <<'PY'
-import json, sys
-with open(sys.argv[1]) as env:
-    for line in env:
-        if line.startswith('WTC_CONFIG_ROOT='):
-            value = line.split('=', 1)[1].rstrip('\n')
-            # The native generator uses JSON-style quoting; the shell
-            # generator writes plain paths. Never evaluate the env file.
-            print(json.loads(value) if value.startswith('"') else value)
-            break
-PY
-)" || return 1
+    WTC_CONFIG_ROOT="$(collection_env_value "$dir/.env.collection" WTC_CONFIG_ROOT)" || return 1
   fi
   # Workspace-wide defaults from $WTC_CONFIG_ROOT/wtc.env, so a lever set there
   # once (WTC_TWG_SITE) reaches every path that generates this file —

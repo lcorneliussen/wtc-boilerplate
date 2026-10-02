@@ -57,6 +57,11 @@ assert_contains "$preview" "WTC_CONFIG_ROOT=$recorded"
 (unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" >/dev/null)
 assert_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT=$recorded"
 assert_contains "$(cat "$other_ws/coll/.env.collection")" "GH_CONFIG_DIR=$recorded/gh"
+printf "COLLECTION_PORT_BASE=42800\nWTC_CONFIG_ROOT='%s'\n" "$recorded" > "$other_ws/coll/.env.collection"
+preview="$(unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" --dry-run)"
+assert_contains "$preview" "WTC_CONFIG_ROOT=$recorded"
+(unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" >/dev/null)
+assert_contains "$(cat "$other_ws/coll/.env.collection")" "GH_CONFIG_DIR=$recorded/gh"
 printf 'COLLECTION_PORT_BASE=42800\nWTC_CONFIG_ROOT=%s\n' "$recorded" > "$other_ws/coll/.env.collection"
 (unset WTC_CONFIG_ROOT; "$ws/main/harness/tools/refresh-env.sh" --collection "$other_ws/coll" >/dev/null)
 assert_contains "$(cat "$other_ws/coll/.env.collection")" "WTC_CONFIG_ROOT=$recorded"
