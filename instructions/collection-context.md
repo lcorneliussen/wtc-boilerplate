@@ -22,24 +22,20 @@ you are in a collection; the collection root is `..`.
 
 ## Tool scope
 
-Every `tools/*.sh` acts on **this** collection — the one holding the harness
-worktree it was run from — when you give it no scope. Widening is always
-something you typed: `--all`, or a collection name. So a bare
-`./harness/tools/wtc-xyz.sh` is the safe command to reach for, and it is also
-the useful one.
+`wtc` commands act on **this** collection when no wider scope is given.
+Widening is explicit: use a collection name, `--collection`, or `--all` where
+that command supports it.
 
 | Tool | Bare run | Wider |
 |---|---|---|
-| `wtc-status.sh` | this collection | `--all`, `<collection>` |
-| `wtc-open.sh` | this collection's workspace | `--all`, `<collection> …` |
-| `wtc-browse.sh` | this collection in nvim | `<collection>` |
-| `add-repo.sh` | this collection | `--collection <name>` |
-| `link-skills.sh`, `link-secrets.sh`, `refresh-configs.sh` | this collection | `--collection <name>`, `--all` (link-skills) |
+| `wtc status` | this collection | `--all`, `<collection>` |
+| `wtc open` | this collection's workspace | `--all`, `<collection> …` |
+| `wtc browse` | this collection in nvim | `<collection>` |
+| `wtc add-repo` | this collection | `--collection <name>` |
+| `wtc skills render`, `wtc secrets link`, `wtc registry refresh` | this collection | `--collection <name>`; `wtc skills render --all` |
 
-Two tools are outside the rule by nature: `branch-off.sh` creates a new
-collection, and `retire.sh` needs a target to destroy. With a matching CLI pin,
-`retire.sh .` delegates self-retirement to a separate Herdr cleanup workspace.
-The older-pin shell fallback still requires an external collection.
+`wtc new` creates a collection. `wtc retire <collection>` removes one after
+checking for durable work; self-retirement delegates cleanup to another process.
 
 A default you want changed on this machine belongs in `$WTC_CONFIG_ROOT/wtc.env`
 ([secrets.md](secrets.md)), not in flags you have to remember every time.
@@ -55,14 +51,14 @@ A default you want changed on this machine belongs in `$WTC_CONFIG_ROOT/wtc.env`
 collection root, which is why the shared guidance lives there rather than in a
 per-tool rule file. It is linked, so a catch-up updates it everywhere.
 
-`WTC-SCOPE.md` is seeded — by `branch-off.sh`, or by `/wtc-start` on a
-collection that predates it (`tools/link-skills.sh --seed-scope`) — and then
+`WTC-SCOPE.md` is seeded — by `wtc new`, or by `/wtc-start` on a
+collection that predates it (`wtc skills render --seed-scope`) — and then
 filled from `HANDOFF.md` as that note is consumed. It is never linked and
 never overwritten: it is this collection's own answer, and it dies with the
 folder.
 
 **Widening the scope is a deliberate edit.** Pulling in another repo
-(`add-repo.sh`) or taking on an area the scope file does not mention means
+(`wtc add-repo`) or taking on an area the scope file does not mention means
 saying so in `WTC-SCOPE.md` first. A collection whose scope file no longer
 describes it has quietly become two tasks, which is how work leaks into a
 collection sibling.

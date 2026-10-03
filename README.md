@@ -19,7 +19,7 @@ different revision, with no clone duplication and no branch contention.
   <collection>/            # one folder per task
     AGENTS.md              # entry point, linked from harness/collection-AGENTS.md
     WTC-SCOPE.md           # what THIS collection is for
-    harness/               # this repo's worktree — tools + instructions
+    harness/               # this repo's worktree — configuration + instructions
     <repo>/                # repo siblings, one per repo in scope
     ext.<repo>/            # unmanaged sibling, owner lives elsewhere
 ```
@@ -36,7 +36,7 @@ different revision, with no clone duplication and no branch contention.
 - **The branch is created at the first commit.** A branch named before the
   work has an identity gets the wrong name — and the name is how work maps
   back to its issue.
-- **The harness travels inside the collection.** Instructions and tools are a
+- **The harness travels inside the collection.** Instructions and configuration are a
   worktree like any other, so the agent's rules are versioned with the code
   they govern.
 
@@ -63,20 +63,11 @@ different revision, with no clone duplication and no branch contention.
   tracker; ignore it if yours is not Atlassian.
 - **`skills/`** — the agent-facing procedures (`wtc-new`, `wtc-open`,
   `wtc-catch-up`, `wtc-pr`, …), each one a skill file an agent loads on demand.
-- **`tests/`** — `tests/run.sh` runs the lot. No dependencies beyond bash and
-  git, no network, and it builds its own throwaway workspace rather than
-  touching yours. `tests/coverage.sh` reports line coverage for `tools/`
-  and `hooks/`. `tests/README.md` covers what is asserted and why.
+- **`tests/`** — checks for the pinned CLI command surface, agent hooks, and
+  publication guard. `tests/README.md` shows how to run them.
 
 ## What this repository is
 
-A **reference implementation of the concept**, not a library. There is
-nothing to install and nothing to depend on. The pattern has been built more
-than once, in separate codebases, each time carried over by hand and adapted
-to what that project happened to need. It works; re-deriving it every time
-does not. This repository is where the idea gets maintained in one place
-instead. Read it, take the parts that fit, adapt the rest — the shell tools
-demonstrate the geometry, they are not an API anyone should build against.
-
-Status: seeding. Content is being extracted from a set of working
-implementations, and generalized where they disagree.
+A **reference harness for the `wtc` CLI**, with portable instructions, skills,
+and configuration. Install the pinned CLI release to run collection operations;
+use this repository to adapt the harness rules and hooks to your workspace.

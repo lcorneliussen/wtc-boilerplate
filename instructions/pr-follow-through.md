@@ -41,14 +41,14 @@ the archive; first finish or explicitly hand off the delivery obligations.
 ## Use status updates without repeating all the forge calls
 
 Read this collection's `.wtc-status.json` (`generated_at` is UTC), or the age
-shown by `harness/tools/wtc-status.sh --cached`, before requesting a new table.
+shown by `wtc status --no-watch --cached`, before requesting a new table.
 Default freshness limits for a follower are **2 minutes in the foreground**
 and **10 minutes in the background**. Unknown focus uses foreground. These
 are agent scheduling defaults, separate from the TUI render interval and
 forge cache TTL; they do not create a timer by themselves.
 
 - Reuse a valid, complete snapshot within the limit for triage. Refresh this
-  collection once with `harness/tools/wtc-status.sh --json --no-fetch` when
+  collection once with `wtc status --no-watch --json --no-fetch` when
   it is missing, malformed, older, or has an invalid/future timestamp. Do not
   widen to `--all` without explicit scope.
 - A push, review, check completion or merge notification invalidates the

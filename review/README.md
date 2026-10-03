@@ -6,7 +6,7 @@ The authoring thread reads that comment, fixes or answers, resolves the inline
 threads, pushes, and runs another round — in the same session, without a
 separate ask. The same mechanism is meant to run on a server later: nothing
 here depends on an interactive session, a collection, or a particular forge
-beyond `tools/review-post.sh` / `tools/review-status.sh`.
+beyond `wtc review post` / `wtc review status`.
 
 The concerns shipped in this tree are generic: no organisation, repo, or
 product names. A deployment adds its own in `concerns.d/`; a repo adds its
@@ -17,12 +17,12 @@ own under `.review/concerns/`.
 | Piece | Role |
 |---|---|
 | `skills/wtc-local-review/` | main-thread procedure: bundle → run → read → post → fix → resolve inline threads → re-run |
-| `tools/review-bundle.sh` | builds a review bundle (diff, PR text, concerns, downstream snapshots, prior rounds) |
-| `tools/review-run.sh` | fans out one headless agent per concern, then one lead pass; writes `summary.md` + `verdict` + per-run stats; `--post` runs the comment lifecycle |
-| `tools/review-post.sh` | creates or updates the bundle's one summary comment (bb or gh): `--progress`, final summary, `--failed`; a summary post also adds inline comments |
-| `tools/review-resolve.sh` | replies to and resolves the bundle's inline threads (not the summary comment) |
-| `tools/review-status.sh` | reads the latest review comment on a PR: `current|stale|none` + verdict (incl. `pending` / `error`) |
-| `tools/bb-pr-ready.sh` | the gate: undrafts only when the review is current and its verdict is `pass` or `pass-with-notes` |
+| `wtc review bundle` | builds a review bundle (diff, PR text, concerns, downstream snapshots, prior rounds) |
+| `wtc review run` | fans out one headless agent per concern, then one lead pass; writes `summary.md` + `verdict` + per-run stats; `--post` runs the comment lifecycle |
+| `wtc review post` | creates or updates the bundle's one summary comment (bb or gh): `--progress`, final summary, `--failed`; a summary post also adds inline comments |
+| `wtc review resolve` | replies to and resolves the bundle's inline threads (not the summary comment) |
+| `wtc review status` | reads the latest review comment on a PR: `current|stale|none` + verdict (incl. `pending` / `error`) |
+| `wtc review ready` | the gate: undrafts only when the review is current and its verdict is `pass` or `pass-with-notes` |
 | `hooks/guard-pr-ready.py` | PreToolUse: refuses raw `bb pr ready` / `gh pr ready` so the gate cannot be skipped |
 | `prompts/concern.md` | prompt for one concern run |
 | `prompts/lead.md` | prompt for the aggregation run |
@@ -198,11 +198,11 @@ under a **Gate record** heading, the line the tools parse:
 `wtc-review v1 head=<sha40> verdict=<verdict> blockers=<n> round=<k> lead=<agent:model>`
 ```
 
-`head=` is 12 to 40 hex chars; tools write the full 40. `review-status.sh` finds
+`head=` is 12 to 40 hex chars; tools write the full 40. `wtc review status` finds
 the newest comment with that line: `current` when the PR's head (a 12+ char id
 from the forge) is a prefix of `head=` (never the other way round, never
 shorter than 12), else `stale`; `none` if there is no such comment.
-`review-post.sh` also writes a local receipt keyed by forge, repository, PR,
+`wtc review post` also writes a local receipt keyed by forge, repository, PR,
 head, comment id and verdict under `<collection>/.wtc-review-posted/`.
 `review-status.sh --trusted-local` requires that receipt and reports
 `untrusted` when the newest status comment lacks it. The ready gate uses this
@@ -256,7 +256,7 @@ in `inline-comments.json` with an id, or whose key already appears in
 the summary comment still stands, and the row keeps `error` and an empty id
 so a later summary post retries it.
 
-`tools/review-resolve.sh <bundle> [--reply TEXT] [--file PATH --line N]`
+`wtc review resolve <bundle> [--reply TEXT] [--file PATH --line N]`
 replies (optional) and resolves those threads. It does not resolve the
 summary comment. The authoring thread does this after fixing or answering,
 then pushes and starts another round. Undrafting stays a separate, explicit
@@ -267,7 +267,7 @@ its key to avoid posting the same finding again.
 
 `pending` and `error` exist only in the status line: a lead never writes them
 and they never open the gate. If the newest status comment is `pending`, that
-is what `review-status.sh` reports, even when an older review of the same head
+is what `wtc review status` reports, even when an older review of the same head
 was complete — a run is in flight.
 
 ### Run stats
@@ -280,9 +280,9 @@ cost); grok reports usage and cost on its JSON result; anything unknown shows `-
 
 ## Gate
 
-`tools/bb-pr-ready.sh <n>` undrafts only when `review-status.sh` reports
+`wtc review ready <n>` undrafts only when `wtc review status` reports
 `current`, zero open blockers, and a verdict of `pass` or `pass-with-notes` — `changes-requested`,
 `pending` (a run is in flight) and `error` (it failed) stay closed. Anything else needs
-`--user-authorized "<the user's words>"`, the same escape as `bb-pr-merge.sh`.
+`--user-authorized "<the user's words>"`.
 Undrafting still happens only when the user asks for it; the gate adds a
 precondition, it does not add an automatic step.

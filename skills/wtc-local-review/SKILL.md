@@ -15,17 +15,16 @@ posted its summary on the PR's **current head**. Contract, bundle layout,
 schemas: `review/README.md`.
 
 **You are not the reviewer.** This skill drives the tools; the review is a
-fresh process started by `tools/review-run.sh`. Never review "in-thread" as a
+fresh process started by `wtc review run`. Never review "in-thread" as a
 substitute, and never write or edit `summary.md` / `verdict` yourself — the
 point is an opinion that does not share your context. An in-thread
 reading of the diff does not gate.
 
 ## Steps (from `harness/`)
 
-1. **Pick the PR(s)** — `tools/wtc-pr.sh list`. One repo the user named, or
+1. **Pick the PR(s)** — `wtc pr list`. One repo the user named, or
    each enlisted PR of the collection (one bundle and run per PR).
-2. **Bundle** — `wtc review bundle <repo> [<n>]` (or its
-   `tools/review-bundle.sh` compatibility entry point); the last stdout line is
+2. **Bundle** — `wtc review bundle <repo> [<n>]`; the last stdout line is
    the bundle dir. When a PR number is known this **checks out that PR's
    branch** (if the worktree is on another branch) and **runs collection catch-up
    first**. `--no-catch-up` skips only the catch-up. PR number defaults to the
@@ -38,7 +37,7 @@ reading of the diff does not gate.
    The review must match the remote head or posting refuses:
    `git -C ../<repo> push` (feature branch only; `wtc-draft-pr` targets).
    If you pushed, bundle again so the diff is that head.
-4. **Run** — `tools/review-run.sh <dir> --post` for a private PR. It first posts an
+4. **Run** — `wtc review run <dir> --post` for a private PR. It first posts an
    "in progress" comment on the PR (round, head, concerns, agent:model), runs
    one agent per concern and a lead (minutes), then **updates that same
    comment** with the summary — no second summary comment; on failure the
@@ -47,7 +46,7 @@ reading of the diff does not gate.
    Posting is part of this workflow (the gate reads the summary comment); tell
    the user it was posted, including how many inline threads. For a public or
    unknown-audience PR, run without `--post`, inspect `summary.md` and every
-   planned inline comment, then post with `tools/review-post.sh <dir>` after
+   planned inline comment, then post with `wtc review post <dir>` after
    removing private context. The gate stays closed until that post. It refuses a
    stale bundle before spending any agent time. Start it in the background
    (`run_in_background`, a herdr pane, or equivalent) and wait for completion;
@@ -56,9 +55,9 @@ reading of the diff does not gate.
    listed in the table; check `<dir>/run.log` / `findings/<id>.raw` if the
    cause is not obvious. The `### Run stats` section gives time, tokens and
    cost per agent run (`<dir>/stats/*.json`); mention the total to the user.
-6. **Post** — automatic with `--post` for private PRs. Standalone: `tools/review-post.sh <dir>`
+6. **Post** — automatic with `--post` for private PRs. Standalone: `wtc review post <dir>`
    creates or updates the summary in `<dir>/comment.id` and posts any missing
-   inline comments. `tools/review-post.sh <dir> --progress` posts only the
+   inline comments. `wtc review post <dir> --progress` posts only the
    progress comment (no inline comments).
 7. **Follow the review in this same thread. Do not stop to ask whether to.**
    For every open finding:
@@ -70,8 +69,8 @@ reading of the diff does not gate.
    use the bundle from the round that first posted that thread when resolving
    it. Later bundles retain its key to avoid creating a duplicate thread.
    ```bash
-   tools/review-resolve.sh <dir> --file path/in/repo --line N --reply "Addressed in <sha>."
-   tools/review-resolve.sh <dir> --reply "Addressed in <sha>."   # every open thread in the bundle
+   wtc review resolve <dir> --file path/in/repo --line N --reply "Addressed in <sha>."
+   wtc review resolve <dir> --reply "Addressed in <sha>."   # every open thread in the bundle
    ```
    A finding with no line lives only in the summary; reply on that comment
    (`bb pr comments reply <n> <comment.id> "…"`) and do not resolve it.
@@ -83,16 +82,16 @@ reading of the diff does not gate.
    remaining finding is one you have already answered and do not agree to
    change. Do not loop on nits you have already replied to.
 9. **Undraft only when the user asks**:
-   `tools/bb-pr-ready.sh <n>` (run inside the repo worktree). It refuses when
+   `wtc review ready <n>` (run inside the repo worktree). It refuses when
    the review is stale, missing, or `changes-requested`. Raw `bb pr ready` is
    blocked by a hook. Override only with the user's words:
-   `tools/bb-pr-ready.sh <n> --user-authorized "<verbatim quote>"`.
-   Undrafting is not merging — merge stays `wtc-pr` + `bb-pr-merge.sh`.
+   `wtc review ready <n> --user-authorized "<verbatim quote>"`.
+   Undrafting is not merging; use the repository's PR policy for a later merge.
 
-`tools/review-status.sh <repo> <n>` shows `current|stale|none` + verdict at
+`wtc review status <repo> <n>` shows `current|stale|none` + verdict at
 any time. `pending` (a run is in flight) and `error` (a run failed) never open
 the gate.
-The ready gate also requires the local receipt written by `review-post.sh`;
+The ready gate also requires the local receipt written by `wtc review post`;
 a status line in a comment posted by another path does not satisfy it.
 
 ## Multi-repo
@@ -100,7 +99,7 @@ a status line in a comment posted by another path does not satisfy it.
 Run per enlisted PR. Each bundle carries the other enlisted PRs as
 `related/*.patch`, and snapshots of consumers (`downstream:` in
 `.harness-repos.yml`) at their production ref and PR head, so
-backwards-compat concerns judge both deploy orders. Run `tools/catch-up.sh`
+backwards-compat concerns judge both deploy orders. Run `wtc catch-up`
 first if refs may be stale. Post each summary on its own PR.
 
 ## Config
@@ -114,7 +113,7 @@ first if refs may be stale. Post each summary on its own PR.
   `HARNESS_REVIEW_GROK_EFFORT` defaults to `low` so a grok concern does not
   sit for a quarter of an hour. Also `HARNESS_REVIEW_PARALLEL`,
   `HARNESS_REVIEW_TIMEOUT`.
-- Per run: `tools/review-run.sh <dir> --strong grok: --lead codex:` —
+- Per run: `wtc review run <dir> --strong grok: --lead codex:` —
   e.g. a cross-vendor second opinion when the user asks for one.
 
 ## Concerns

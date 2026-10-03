@@ -62,12 +62,12 @@ explicitly. Full rule: `harness/instructions/collection-context.md`.
 
 - **Skills** are the procedures for recurring collection actions —
   `/wtc-status`, `/wtc-open`, `/wtc-catch-up`, `/wtc-pr`, `/wtc-add-repo`,
-  `/wtc-retire`, and `/wtc-start` on a fresh one. They are authored in
-  `harness/skills/` and exposed at this root by `link-skills.sh`. Prefer one
-  over ad hoc shell when it exists.
+  `/wtc-retire`, and `/wtc-start` on a fresh one. Generic procedures ship
+  with the CLI; harness overrides live in `harness/skills/`. `wtc skills render`
+  exposes them at this root. Prefer a skill when one exists.
 - **MCP servers** are declared once in `harness/.mcp-servers.yml` and
   rendered into `.mcp.json`, `.cursor/mcp.json` and `.codex/config.toml` at
-  this root by `link-mcp.sh`. The rendered files name credentials and never
+  this root by `wtc mcp render`. The rendered files name credentials and never
   hold one; the values come from the collection env.
 - **Config** is `.env.collection` (generated: ports, `$WTC_CONFIG_ROOT`) plus
   `.env.collection.local` (yours, never regenerated, dies with the
@@ -75,14 +75,14 @@ explicitly. Full rule: `harness/instructions/collection-context.md`.
   already has them.
 - **Toolchain PATH** is injected for agent shells that never ran `mise
   activate`. Do not spend turns on `mise trust`, `mise exec`, or prepending
-  `mise where ruby` — a SessionStart/PreToolUse hook, `.envrc`, and herdr
-  workspace env all prepend sibling bins so `/usr/bin/env ruby` cannot fall
+  `mise where ruby` — a PreToolUse hook and `.envrc` prepend sibling bins;
+  herdr passes the cached path for those surfaces so `/usr/bin/env ruby` cannot fall
   through to macOS system Ruby. If `ruby -v` still shows 2.6, once:
-  `eval "$(harness/tools/agent-env.sh)"`. Grok project hooks need `/hooks-trust`
+  `eval "$(wtc agent-env)"`. Grok project hooks need `/hooks-trust`
   the first time you open a collection.
 - **Secrets** are never in git and never committed. One canonical copy lives
   in the control root at `$WTC_CONFIG_ROOT/<repo>/<repo-relative-path>` and is
-  **symlinked** into the worktrees by `harness/tools/link-secrets.sh`, so a
+  **symlinked** into the worktrees by `wtc secrets link`, so a
   rotated credential is current everywhere at once.
 
 Details in `harness/instructions/` — secrets.md, hooks-and-env.md, skills.md.
@@ -101,20 +101,20 @@ A status-only request remains read-only. Procedure and resumption limits:
 ## A draft PR is not ready until it has been reviewed
 
 `/wtc-local-review` bundles the diff and runs a separate headless review.
-The summary it posts is what `tools/bb-pr-ready.sh` reads before undrafting.
+The summary it posts is what `wtc review ready` reads before undrafting.
 Contract: `harness/review/README.md`.
 
 ## Widening the scope is a decision
 
 Needing another repo, another system, another service is normal — doing it
-silently is not. Bring the repo in with `harness/tools/add-repo.sh` and write
+silently is not. Bring the repo in with `wtc add-repo` and write
 down in `WTC-SCOPE.md` why it is here. A collection whose scope file no longer
 describes it has stopped being one task.
 
 ## Nothing durable lives in this folder
 
 `WTC-SCOPE.md`, `HANDOFF.md`, `.env.collection.local` are local and disposable
-— `retire.sh` deletes the whole directory when the work lands, and that must
+— `wtc retire` deletes the whole directory when the work lands, and that must
 cost nothing. Durable state goes to **git and the forge**: commits and branches
 in the repo siblings, PRs, and the issue that the branch name points at.
 

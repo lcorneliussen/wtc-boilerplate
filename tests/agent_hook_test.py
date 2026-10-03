@@ -1,0 +1,55 @@
+#!/usr/bin/env python3
+"""The generated agent hook reaches the CLI from nested worktree folders."""
+
+import json
+import os
+import subprocess
+import tempfile
+from pathlib import Path
+
+
+root = Path(__file__).resolve().parents[1]
+hooks = json.loads((root / "hooks/agent-env.json").read_text())["hooks"]
+commands = {
+    "--write": hooks["SessionStart"][0]["hooks"][0]["command"],
+    "--wrap": hooks["PreToolUse"][0]["hooks"][0]["command"],
+}
+
+with tempfile.TemporaryDirectory() as tmp:
+    base = Path(tmp)
+    collection = base / "topic"
+    nested = collection / "app" / "src"
+    nested.mkdir(parents=True)
+    (collection / "harness").mkdir()
+    (collection / "harness" / ".wtc-cli-version").write_text(
+        (root / ".wtc-cli-version").read_text()
+    )
+    binary = base / "bin"
+    binary.mkdir()
+    log = base / "calls"
+    wtc = binary / "wtc"
+    wtc.write_text('#!/bin/sh\nprintf "%s|%s\\n" "$PWD" "$*" >> "$WTC_HOOK_LOG"\n')
+    wtc.chmod(0o755)
+    env = dict(os.environ, PATH=f"{binary}:/usr/bin:/bin", WTC_HOOK_LOG=str(log), CLAUDE_PROJECT_DIR=str(nested))
+
+    for mode, command in commands.items():
+        subprocess.run(["bash", "-c", command], cwd=nested, env=env, input="{}", text=True, check=True)
+    assert log.read_text().splitlines() == [
+        f"{collection}|agent-env --write",
+        f"{collection}|agent-env --wrap",
+    ]
+
+    mise = binary / "mise"
+    mise.write_text('#!/bin/sh\nprintf "%s|%s\\n" "$PWD" "$*" >> "$WTC_HOOK_LOG"\n')
+    mise.chmod(0o755)
+    log.unlink()
+    subprocess.run(["bash", "-c", commands["--wrap"]], cwd=nested, env=env, input="{}", text=True, check=True)
+    assert log.read_text().splitlines() == [f"{collection}|exec -- wtc agent-env --wrap"]
+    mise.unlink()
+
+    log.unlink()
+    env["CLAUDE_PROJECT_DIR"] = str(base)
+    subprocess.run(["bash", "-c", commands["--wrap"]], cwd=base, env=env, input="{}", text=True, check=True)
+    assert not log.exists(), "hook acted outside a collection"
+
+print("agent hook: nested collection routing and outside fail-open")

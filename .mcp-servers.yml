@@ -1,6 +1,6 @@
 # Tracked MCP registry — WHAT servers exist (development view).
 #
-# Rendered into each collection's per-agent config by tools/link-mcp.sh:
+# Rendered into each collection's per-agent config by `wtc mcp render`:
 #
 #   <collection>/.mcp.json           (Claude Code, project scope)
 #   <collection>/.cursor/mcp.json    (Cursor)
@@ -9,7 +9,7 @@
 # Same split the repo registry uses: this file is tracked and says what
 # exists; the rendered files are machine-local and disposable. They live at
 # the collection root, which is not a git repo — so no repo needs an ignore
-# rule for them (same reasoning as tools/link-skills.sh).
+# rule for them (same reasoning as `wtc skills render`).
 #
 # CREDENTIALS ARE NAMED HERE, NEVER VALUED. `env:` lists variable *names*;
 # the renderer emits "${NAME}" for Claude/Cursor and env_vars = [...] for
@@ -30,10 +30,7 @@
 #   enabled    no = registered but not rendered (default: yes)
 #   role       one line, for humans reading this file
 #
-# Values must contain no " or \ — the renderer quotes them into JSON and TOML
-# and has no jq to escape with, so link-mcp.sh refuses the whole file rather
-# than emit a config no agent can parse. Need a quoted argument? Put it in a
-# wrapper script and point `command` at that.
+# Need a quoted argument? Set `args` to a JSON string array.
 #
 # See instructions/mcp.md for why a server belongs here rather than in a
 # machine-global agent config, and for what is deliberately NOT an MCP server.

@@ -11,15 +11,12 @@ root** inside the workspace, outside every repo and collection:
   certificates/                      # signing material not owned by any repo
 ```
 
-`wtc.env` is the one place a **changed default** belongs, so that a bare
-`tools/wtc-xyz.sh` keeps doing what this workspace wants without flags repeated
-in every command line. It is read by `wtc-open.sh` and `wtc-status.sh` on
-every run, and by every tool that generates a collection's `.env.collection`;
-CLI flags still win.
+`wtc.env` holds machine-local command defaults so bare `wtc` calls use
+this workspace's preferred behavior. CLI flags still win.
 
 | Variable | Default | Effect |
 |---|---|---|
-| `WTC_AGENT_KIND` | `claude` | agent kind `wtc-open.sh` starts |
+| `WTC_AGENT_KIND` | `claude` | agent kind `wtc open` starts |
 | `WTC_AGENT_ARGS` | — | args passed to the agent, replacing the built-in defaults |
 | `WTC_LAYOUT` | `auto` | `wide` / `narrow` / `auto` — herdr workspace layout at create time |
 | `WTC_LAYOUT_NARROW_AT` | `140` | session width (cols) below which `auto` picks narrow |
@@ -67,7 +64,7 @@ fallback when configuring tool identities.
 
 Existing generated environments retain their old root until refreshed. To
 migrate, explicitly set `WTC_CONFIG_ROOT` to the intended workspace's `.config`
-and run `harness/tools/refresh-env.sh` in the target collection. Existing panes
+and run `wtc env setup` in the target collection. Existing panes
 must reload the environment. Existing credentials are not moved or copied.
 
 ## Wiring a worktree
@@ -89,13 +86,12 @@ list. Use arrow keys or `j`/`k` to move and `q` to exit. Pass `--no-tui` for
 a compact one-shot table or `--json` for full metadata.
 
 `wtc secrets link` does it, for every checked-out repo in a collection. The
-`tools/link-secrets.sh` entry point dispatches to the pinned CLI when available
-and retains a shell fallback for a collection that has not installed it yet:
+`wtc secrets link` links the configured files:
 
 ```sh
-tools/link-secrets.sh                 # this harness worktree's collection
-tools/link-secrets.sh --collection ../billing --dry-run
-tools/link-secrets.sh --repo api     # what init hooks pass
+wtc secrets link                 # this harness worktree's collection
+wtc secrets link --collection ../billing --dry-run
+wtc secrets link --repo api     # what init hooks pass
 wtc secrets link --repo api         # native command
 ```
 
@@ -131,7 +127,7 @@ neighbour `.env.collection`, which is regenerated wholesale on every
 `branch-off` — anything hand-added *there* is lost (and that file is not
 chmod'd; its mode follows the caller's umask). The collection root is not a
 git repo, so `.env.collection.local` cannot be committed by accident.
-`retire.sh` deletes it with the collection — secrets scoped to this wtc die
+`wtc retire` deletes it with the collection — secrets scoped to this wtc die
 with it.
 
 `mise.toml` lists it second, so it composes with (and wins over) the generated
@@ -142,7 +138,7 @@ env:
 _.file = [".env.collection", ".env.collection.local"]
 ```
 
-Without mise (including `tools/wtc-open.sh`, which injects both into herdr):
+Without mise (including `wtc open`, which injects both into herdr):
 `set -a; . ./.env.collection; . ./.env.collection.local; set +a`.
 
 Two limits worth knowing before reaching for it:
@@ -152,7 +148,7 @@ Two limits worth knowing before reaching for it:
 - **It holds variables, not files.** A per-collection secret *file* — a
   certificate, or a config the app reads directly — has no tier yet; the shape
   would be a `collections/<name>/<repo>/<path>` overlay that
-  `link-secrets.sh` walks after the shared tier. Deliberately unbuilt until
+  `wtc secrets link` walks after the shared tier. Deliberately unbuilt until
   something needs it, because a whole-file override forces the collection copy
   to duplicate everything else in that file — the rotation problem the shared
   tier exists to avoid.
@@ -219,7 +215,7 @@ do that. Turning it on:
 ```sh
 cd <collection>                        # collection root, where .env.collection lives
 mkdir -p "$WTC_CONFIG_ROOT"/gh         # creating the store IS the opt-in
-harness/tools/refresh-env.sh           # regenerate — GH_CONFIG_DIR now appears
+wtc env setup           # regenerate — GH_CONFIG_DIR now appears
 ```
 
 Then re-enter the collection (or reopen the herdr workspace) so the new
@@ -233,14 +229,14 @@ gh auth status                         # confirm the identity
 ```
 
 Turning it back off is `rm -rf "$WTC_CONFIG_ROOT"/gh` (the keychain entry
-survives) followed by `refresh-env.sh`.
+survives) followed by `wtc env setup`.
 
 `twg` has no store to create — its lever is a site name rather than a config
 location, so setting it once in the control root is the opt-in:
 
 ```sh
 echo 'WTC_TWG_SITE=<your-site-prefix>' >> "$WTC_CONFIG_ROOT"/wtc.env
-harness/tools/refresh-env.sh --all     # TWG_SITE now appears in every collection
+wtc env setup --all     # TWG_SITE now appears in every collection
 ```
 
 ### Where the variables actually reach
@@ -249,18 +245,17 @@ Not "everywhere", and the difference bites:
 
 | Context | Gets it? | How |
 |---|---|---|
-| herdr panes | yes | `wtc-open.sh` injects every line as `--env` **at workspace creation** |
+| herdr panes | yes | `wtc open` injects every line as `--env` **at workspace creation** |
 | `mise run` / `mise exec` | yes | `mise.toml` lists `.env.collection` in `[env] _.file` |
 | A plain shell in a collection | **only with `mise activate`** in your shell rc | otherwise `cd` alone exports nothing |
-| A collection created before the variable existed | **no, until refreshed** | `tools/refresh-env.sh` |
+| A collection created before the variable existed | **no, until refreshed** | `wtc env setup` |
 
 - **An already-open herdr pane keeps the environment it started with.**
-  `wtc-open.sh` skips the env block when it reuses an existing workspace, so
+  `wtc open` skips the env block when it reuses an existing workspace, so
   re-running it refreshes nothing. Close and reopen the workspace.
-- **Existing collections stay stale until refreshed.** Only `branch-off` (new
-  collection) and `add-repo` (when the file is missing) generate this file, so
-  `tools/refresh-env.sh` is what carries a generator change to collections that
-  already exist. Catch-up runs it.
+- **Existing collections stay stale until refreshed.** `wtc new` generates
+  the file for new collections; `wtc env setup` applies generator changes to
+  an existing collection. Catch-up runs the same native environment action.
 
 Check where you actually stand with `echo "$GH_CONFIG_DIR"` — empty means
 either you have not opted in or one of the rows above is not satisfied, and
@@ -327,4 +322,4 @@ reviewable without listing a directory full of credentials. The shape:
 
 Two things earn their place in that table beyond the path: who consumes the
 file, and whether it is prod-capable. The second is what rule 3 keys off, and
-what `tools/link-secrets.sh` refuses to link without an explicit flag.
+what `wtc secrets link` refuses to link without an explicit flag.

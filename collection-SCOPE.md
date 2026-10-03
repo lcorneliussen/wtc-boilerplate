@@ -1,7 +1,7 @@
 # Scope — {{COLLECTION}}
 
 <!-- Template: harness/collection-SCOPE.md, seeded into <collection>/WTC-SCOPE.md.
-     Local and ephemeral: this file dies with the collection (retire.sh).
+     Local and ephemeral: this file dies with the collection (`wtc retire`).
      Durable task state — decisions, PR links — belongs in the issue and the
      PR. Keep this short enough that an agent reads all of it before starting
      work. Widening the scope is a deliberate edit; see

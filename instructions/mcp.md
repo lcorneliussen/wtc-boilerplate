@@ -7,7 +7,7 @@ split the repo registry uses.
 
 ```text
 harness/.mcp-servers.yml          # tracked: WHAT servers exist
-      │  tools/link-mcp.sh
+      │  wtc mcp render
       ├─> <collection>/.mcp.json              (Claude Code, project scope)
       ├─> <collection>/.cursor/mcp.json       (Cursor)
       └─> <collection>/.codex/config.toml     (Codex, trusted projects only)
@@ -17,7 +17,7 @@ Rendered rather than symlinked, unlike skills: the three CLIs want two
 serialisations (JSON and TOML) of the same facts, so one file cannot serve
 all three. They sit at the **collection root** because it is not a git repo —
 the files are invisible to git and no repo needs an ignore rule for them
-(same reasoning as `tools/link-skills.sh`), and it is where `AGENTS.md` says
+(same reasoning as `wtc skills render`), and it is where `AGENTS.md` says
 to start an agent.
 
 ## Credentials are named, never valued
@@ -41,7 +41,7 @@ two collections can point the same server at two different accounts, and
 neither can read the other's. A server configured in a machine-global agent
 config cannot do that, which is the reason this file exists at all.
 
-`link-mcp.sh` prints `note: unset in this shell: …` for any named variable the
+`wtc mcp render` prints `note: unset in this shell: …` for any named variable the
 environment lacks. Rendering config before creating the credential is a normal
 ordering — the note exists so the failure surfaces there rather than as an
 opaque auth error inside an agent later.
@@ -61,27 +61,18 @@ opaque auth error inside an agent later.
     role: one line, for humans reading the file
 ```
 
-Then `tools/link-mcp.sh` (this collection) or `--all` (every caught-up
-collection). The schema is deliberately flat because the renderer parses it
-with `awk` and emits JSON and TOML by hand — `lib.sh` holds the line that no
-tool is load-bearing, so there is no `jq` dependency.
-
-**Values must be quote- and backslash-free.** Both output formats quote them
-and there is nothing here to escape them with, so a `"` would produce JSON and
-TOML that no agent can parse — and it would fail inside the agent, far from
-the cause. `link-mcp.sh` validates the whole registry *before* writing
-anything and refuses with the offending server and field named, leaving the
-previously rendered files intact. A server that genuinely needs a quoted
-argument wants a wrapper script as its `command`.
+Then run `wtc mcp render` in this collection, or add `--all` to render every
+collection. For arguments containing spaces, set `args` to a quoted JSON
+string array, for example `args: '["one argument", "--flag"]'`. The CLI
+validates the registry before writing output files.
 
 ## What is deliberately not an MCP server
 
 **`gh` stays a CLI.** The GitHub MCP server was considered and rejected for
 this harness, for reasons worth not relitigating:
 
-1. `gh` runs inside `tools/*.sh` — `wtc-status.sh`, `lib.sh`, `branch-off.sh`.
-   MCP cannot reach a shell script, so adopting it would *add* a second path
-   with its own credentials rather than replace anything.
+1. `gh` is already a CLI that both humans and agents use alongside `wtc`.
+   An MCP path would duplicate the same operations and credentials.
 2. Four `gh api graphql` calls have no MCP equivalent; the official server
    exposes no arbitrary-GraphQL tool. `resolveReviewThread` (`wtc-pr` §6.4)
    is one of them.
@@ -101,7 +92,7 @@ rule above answers it directly, and a second Atlassian path would only have
 meant two credentials for one system. See `jira.md`.
 
 That leaves the registry empty, which is a working state rather than a gap:
-`link-mcp.sh` renders empty configs from it, and that is how a server removed
+`wtc mcp render` renders empty configs from it, and that is how a server removed
 from the registry gets pruned out of every collection.
 
 ## Per-agent caveats
@@ -119,9 +110,9 @@ from the registry gets pruned out of every collection.
 
 ## Where this is wired in
 
-Same lifecycle as `link-skills.sh`, and for the same reason — a collection is
+Same lifecycle as `wtc skills render`, and for the same reason — a collection is
 generated and disposable, so it is re-rendered rather than maintained:
 
-- `branch-off.sh` and `add-repo.sh` call it at creation, before the init hooks
+- `wtc new` and `wtc add-repo` call it at creation, before the init hooks
 - `wtc-catch-up` §4.1 re-renders, picking up registry changes since
 - `--all` rolls a landed registry change across every caught-up collection

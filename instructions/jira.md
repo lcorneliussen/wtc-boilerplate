@@ -31,7 +31,7 @@ twg auth refresh              # silent success = credentials are good
 `TWG_SITE` can be emitted into every generated `.env.collection`, so a
 collection targets your site rather than whichever one `auth.conf` happens to
 list first — set `WTC_TWG_SITE` in `$WTC_CONFIG_ROOT/wtc.env`, then
-`tools/refresh-env.sh` (`secrets.md` → Tool identity). If you hold two
+`wtc env setup` (`secrets.md` → Tool identity). If you hold two
 Atlassian **accounts** (not merely two sites), that is what `TWG_TOKEN` in
 `.env.collection.local` is for; `TWG_USER` disambiguates the account and is
 deliberately not generated, since a default would put a person's address in a
@@ -80,7 +80,7 @@ jira issue comment add PROJ-123 "Shipped in api PR #41 (issue api-foh7)."
    titles/bodies mention the key, Jira comments reference the issue id and
    PR. Link, don't copy content between layers.
 3. A wtc for Jira-tracked work starts with
-   `tools/branch-off.sh --tracker <KEY> <slug> [repos…]`; create the linking
+   `wtc new --tracker <KEY> <slug> [repos…]`; create the linking
    in-repo issue when consuming the launch note.
 4. Read freely; **write conservatively** — transitions and comments on
    issues you are actually working, nothing else, and no bulk operations.

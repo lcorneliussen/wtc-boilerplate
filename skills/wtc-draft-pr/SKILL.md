@@ -49,7 +49,7 @@ checklist of remaining work is a good body for a draft.
 
 ```bash
 gh pr view --json number --jq .number   # the number gh just created
-tools/wtc-pr.sh enlist <repo> <n> --branch <working-branch>
+wtc pr enlist <repo> <n> --branch <working-branch>
 ```
 
 This — not a label — is how `wtc-catch-up` and `wtc-status` find the PR later.
@@ -57,7 +57,7 @@ A label is optional and secondary now: add one only if the repo's own
 conventions want it, never as a substitute for enlisting.
 
 If a draft already exists, just push; there is nothing else to do. Check
-`tools/wtc-pr.sh list` first — if it was never enlisted (an older draft, or one
+`wtc pr list` first — if it was never enlisted (an older draft, or one
 opened by hand), enlist it now rather than leaving it invisible to catch-up.
 
 ## What this skill deliberately does not do

@@ -33,7 +33,7 @@ Manual audience review remains necessary before every external write.
 
 Activation requires this workflow and scanner to land on the default branch;
 the introducing PR cannot exercise the secret-backed workflow beforehand.
-Run the synthetic tests with `tests/run.sh publication_guard`. After merge,
+Run the synthetic tests with `python3 tests/publication_guard_test.py`. After merge,
 configure the secret, dispatch against a clean PR and verify the workflow result.
 Use only synthetic terms and a disposable test repository for failure probes.
 
