@@ -82,6 +82,20 @@ _VALUE_FLAGS = {
     "-R", "--repo", "--hostname", "-w", "--workspace",
     "-q", "--jq", "-t", "--template", "--color",
 }
+_REDIRECTIONS = {"<", "<<", "<<<", ">", ">>", "<>"}
+
+
+def _has_undo_arg(args: list[str]) -> bool:
+    """Ignore shell redirection operands, which are not CLI arguments."""
+    i = 0
+    while i < len(args):
+        if args[i] in _REDIRECTIONS:
+            i += 2
+            continue
+        if args[i] == "--undo":
+            return True
+        i += 1
+    return False
 
 
 def _skip_options(args: list[str], start: int) -> int:
@@ -241,7 +255,7 @@ def _find_raw_ready(cmd: str, depth: int = 0):
             command_at = _skip_options(args, 0)
             if command_at < len(args) and args[command_at] == "pr":
                 ready_at = _skip_options(args, command_at + 1)
-                if ready_at < len(args) and args[ready_at] == "ready" and "--undo" not in args:
+                if ready_at < len(args) and args[ready_at] == "ready" and not _has_undo_arg(args):
                     return prog
         elif prog in _SHELLS:
             for j, a in enumerate(args):
@@ -266,7 +280,7 @@ def check_pr_ready(cmd: str) -> None:
         cli = None
         for match in _RAW_READY.finditer(cmd):
             tail = re.split(r"[;&|\n]", cmd[match.end():], maxsplit=1)[0]
-            if re.search(r"(?:^|\s)--undo(?:\s|$)", tail):
+            if "<" not in tail and ">" not in tail and re.search(r"(?:^|\s)--undo(?:\s|$)", tail):
                 continue
             cli = match.group("cli")
             break

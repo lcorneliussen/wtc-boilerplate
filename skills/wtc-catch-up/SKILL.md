@@ -337,14 +337,12 @@ file, which is overwritten on the next run.
 wtc env setup
 ```
 
-`.env.collection` is written by `write_collection_env`, and only `branch-off`
-(new collection) and `add-repo` (only when the file is missing) ever call it.
-So a variable added to the generator since — a port for a newly registered
-repo, `GH_CONFIG_DIR` — reaches new collections only, and every older
-collection stays stale indefinitely. This is the missing half.
+`wtc env setup` regenerates `.env.collection` after changes to the registry
+or environment configuration. This also updates existing collections with
+newly registered ports and toolchain variables.
 
-Same ordering rule as the skills above: it runs **this collection's**
-`harness/` generator, so it must come *after* §3 moved that worktree.
+Run this after the harness worktree has advanced so the CLI reads its current
+registry and configuration.
 
 It preserves the collection's port base, so ports do not move, and leaves
 `.env.collection.local` alone. It regenerates `.env.collection` wholesale,

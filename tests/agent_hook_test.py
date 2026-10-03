@@ -82,6 +82,8 @@ for command in ("gh pr ready 12", "bb pr ready 12", "gh pr -R example/repo ready
                 "gh --jq . pr ready 12", "gh -q . pr ready 12",
                 "gh --template '{{.url}}' pr ready 12", "gh -t '{{.url}}' pr ready 12",
                 "gh pr --jq . ready 12", "gh pr -t '{{.url}}' ready 12",
+                "gh pr ready 12 <<< --undo", "gh pr ready 12 < --undo",
+                "gh pr ready 12 <<< --undo '",
                 "gh pr -R example/repo ready 12 '",
                 "bash -c 'gh pr ready 12'",
                 "eval 'gh pr ready 12'", "echo $(gh pr ready 12)"):
@@ -92,6 +94,8 @@ for command in ("gh pr ready 12", "bb pr ready 12", "gh pr -R example/repo ready
     assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
 for command in ("wtc review ready 12", 'echo "gh pr ready 12"',
                 "gh pr -R example/repo ready 12 --undo",
+                "gh pr ready 12 --undo <<< ignored",
+                "gh pr ready 12 < ignored --undo",
                 "gh pr -R example/repo ready 12 --undo '", "gh pr view ready"):
     result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": command}}),
                             text=True, capture_output=True)

@@ -24,6 +24,14 @@ required = {
 }
 assert required <= commands, sorted(required - commands)
 
+add_repo_help = subprocess.check_output(["wtc", "add-repo", "--help"], text=True)
+assert "wtc add-repo <repo> [repo ...]" in add_repo_help, add_repo_help
+assert "--collection string" in add_repo_help, add_repo_help
+for relative in ("skills/wtc-add-repo/SKILL.md", "instructions/worktree-workspace.md"):
+    guidance = (root / relative).read_text()
+    assert "wtc add-repo <repo>" in guidance, relative
+    assert "wtc add-repo <collection>" not in guidance, relative
+
 for path in [*root.glob("*.md"), *(root / "instructions").glob("*.md"),
              *(root / "review").glob("*.md"), *(root / "skills").glob("*/SKILL.md")]:
     text = path.read_text()

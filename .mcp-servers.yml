@@ -37,7 +37,7 @@
 
 schema_version: 1
 
-# Empty on purpose, and that is a working state — link-mcp.sh renders empty
+# Empty on purpose, and that is a working state — `wtc mcp render` writes empty
 # configs from it, which is how a removed server gets pruned from collections.
 #
 # Atlassian is deliberately NOT here. It was, briefly, as a community
