@@ -15,10 +15,10 @@ Run from any existing collection's harness worktree.
 
 | Source | Command | Collection / branch |
 |---|---|---|
-| Plain slug | `tools/branch-off.sh <slug> [repos…]` | `<slug>` |
-| Issue | `tools/branch-off.sh --issue <issue-id> <slug> [repos…]` | `<issue-id>-<slug>` |
-| tracker ticket | `tools/branch-off.sh --tracker <KEY> <slug> [repos…]` | `<key-lowercased>-<slug>` |
-| PR review | `tools/branch-off.sh --pr <repo>#<n> [repos…]` | `<repo>-pr<n>`, on the PR's head branch |
+| Plain slug | `wtc new <slug> [repos…]` | `<slug>` |
+| Issue | `wtc new --issue <issue-id> <slug> [repos…]` | `<issue-id>-<slug>` |
+| tracker ticket | `wtc new --tracker <KEY> <slug> [repos…]` | `<key-lowercased>-<slug>` |
+| PR review | `wtc new --pr <repo>#<n> [repos…]` | `<repo>-pr<n>`, on the PR's head branch |
 
 Prefer `--issue` whenever an issue exists or should: it gives a
 convention-correct `<issue-id>-<slug>` branch for free and pulls in the repo
@@ -62,10 +62,10 @@ review work pushes to it.
 ## 4. Run it
 
 ```bash
-tools/branch-off.sh --issue api-foh7 paging-clamp
-tools/branch-off.sh --tracker PROJ-123 rate-limits api console
-tools/branch-off.sh --pr api#41
-tools/branch-off.sh readonly-repro api
+wtc new --issue api-foh7 paging-clamp
+wtc new --tracker PROJ-123 rate-limits api console
+wtc new --pr api#41
+wtc new readonly-repro api
 ```
 
 The tool then, in order: creates the worktrees, writes `.env.collection` +
@@ -77,7 +77,7 @@ usable; fix the repo and re-run that hook's tool rather than recreating.
 
 ## 5. Write the launch note properly
 
-`branch-off.sh` seeds `HANDOFF.md` with the mechanical facts. Replace the
+`wtc new` seeds `HANDOFF.md` with the mechanical facts. Replace the
 goal line with what this wtc is actually for: the problem, the constraint,
 the acceptance condition, links to the issue / tracker ticket / PR.
 
@@ -87,12 +87,12 @@ action is to consume the note and delete it. A dead agent must cost nothing.
 
 ## 6. Open it
 
-`branch-off.sh` joins a running herdr session automatically. `--open` starts
+`wtc new` joins a running herdr session automatically. `--open` starts
 one; `--no-open` skips. Otherwise open the **collection root** — not just one
 sibling — in the editor or agent CLI, so cross-repo context is visible.
 
 The workspace agent needs no prompt from you: while `HANDOFF.md` is still
-there, `wtc-open.sh` hands it `/wtc-start` as soon as it is ready and waits to
+there, `wtc open` hands it `/wtc-start` as soon as it is ready and waits to
 see it working on it (`--no-first-prompt` to skip). That is why the note has
 to be right *before* the collection is opened.
 

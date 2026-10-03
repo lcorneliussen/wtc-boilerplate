@@ -5,8 +5,7 @@ description: Open or reshape a worktree collection in herdr — ensure the agent
 
 # Open a collection in herdr
 
-Mechanism: `harness/tools/wtc-open.sh` selects a matching native `wtc open`
-or its shell fallback. Canon: `harness/instructions/herdr.md`.
+Mechanism: `wtc open`. Canon: `harness/instructions/herdr.md`.
 
 A workspace is ergonomics only — worktrees already exist. Opening is
 idempotent: reuse the workspace, keep a live agent, fill idle panes, and
@@ -17,11 +16,11 @@ only reshape when asked (or when the layout is still partial).
 From the collection root (or name the collection):
 
 ```bash
-harness/tools/wtc-open.sh                 # this collection; auto layout
-harness/tools/wtc-open.sh --narrow        # stacked tabs; switch if needed
-harness/tools/wtc-open.sh --wide          # stacked columns; switch if needed
-harness/tools/wtc-open.sh --list          # pane-by-pane report; change nothing
-harness/tools/wtc-open.sh --dry-run       # plan only
+wtc open                 # this collection; auto layout
+wtc open --narrow        # stacked tabs; switch if needed
+wtc open --wide          # stacked columns; switch if needed
+wtc open --list          # pane-by-pane report; change nothing
+wtc open --dry-run       # plan only
 ```
 
 Bare args after flags are collection names under the workspace root. `--all`
@@ -38,8 +37,8 @@ matching its v0.1.21-or-newer pin.
 | When | default when the session is wide enough | `--narrow`, or `WTC_LAYOUT=narrow` / auto under `WTC_LAYOUT_NARROW_AT` |
 
 `--narrow` / `--wide` **switch** an existing workspace. The agent pane is
-preserved. Native `wtc open` moves the live status pane; the shell fallback
-recreates it. Auto never flips a complete wide ↔ narrow on its own.
+preserved; `wtc open` moves the live status pane. Auto never flips a complete
+wide ↔ narrow layout on its own.
 
 ## 2. Agent-first is normal
 

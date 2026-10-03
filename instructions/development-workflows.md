@@ -18,7 +18,7 @@ identity — at the first commit — and not before:
 - A repo brought into a collection only for context never grows a branch at
   all, and never has to be cleaned up.
 
-`branch-off.sh` and `add-repo.sh` therefore create detached worktrees; the
+`wtc new` and `wtc add-repo` therefore create detached worktrees; the
 collection name is the branch the work is *expected* to get, recorded in the
 launch note.
 
@@ -64,10 +64,10 @@ Treat "catch up" as: reconcile this collection with development outside it.
    unavailable PR target needs an owner handoff; never substitute the
    development tip. Abort and report conflicts for the owning agent.
 4. Merged PRs → stash if dirty; detach at tip; prune the local branch when
-   `git branch -d` allows it; `tools/wtc-pr.sh unlist <repo> <n>` for an
+   `git branch -d` allows it; `wtc pr unlist <repo> <n>` for an
    enlisted row that landed.
-5. Re-run `tools/link-skills.sh`, `tools/link-mcp.sh`, `tools/refresh-env.sh`
-   and `tools/link-secrets.sh`.
+5. Re-run `wtc skills render`, `wtc mcp render`, `wtc env setup`
+   and `wtc secrets link`.
 
 Do not skip a dirty sibling that is behind — stash, move, pop. Mid-merge or
 mid-rebase is still a skip; that is someone else's in-progress operation.
@@ -77,16 +77,16 @@ mid-rebase is still a skip; that is someone else's in-progress operation.
 Which PRs belong to a collection is **local**, not a forge label:
 
 ```bash
-tools/wtc-pr.sh enlist <repo> <n> --branch <working-branch>
-tools/wtc-pr.sh list
-tools/wtc-pr.sh unlist <repo> <n>
+wtc pr enlist <repo> <n> --branch <working-branch>
+wtc pr list
+wtc pr unlist <repo> <n>
 ```
 
-File: `<collection>/.wtc-prs` (dies with `retire.sh`). Catch-up's "has this
+File: `<collection>/.wtc-prs` (dies with `wtc retire`). Catch-up's "has this
 PR merged?" check reads it first; `gh` only enriches state/title when asked,
 and is the fallback for a branch that was never enlisted.
 
-Procedure: skill `wtc-catch-up`. Script: `tools/catch-up.sh`.
+Procedure: skill `wtc-catch-up`. Command: `wtc catch-up`.
 
 ## Ownership after push and merge
 
@@ -174,7 +174,7 @@ one link away rather than woven through:
   without encoding vendor keys into git refs — which matters the day the
   vendor changes and the refs do not.
 
-`tools/branch-off.sh --tracker <KEY>` is a worked example of accepting a tracker
+`wtc new --tracker <KEY>` is a worked example of accepting a tracker
 key at collection-creation time; adapt it to whichever tracker you run.
 
 ## Mirroring in product repos

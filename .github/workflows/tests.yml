@@ -10,8 +10,6 @@ permissions:
   contents: read
 
 concurrency:
-  # One run per branch. A push that supersedes an in-flight run cancels it,
-  # except on main, where every commit's result is worth keeping.
   group: tests-${{ github.ref }}
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
@@ -23,112 +21,24 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Both, and for different reasons. macOS is the platform the tools are
-        # written for and the only one that gives real bash 3.2 at /bin/bash —
-        # without it the "no bash 4 constructs" rule is a claim nothing checks.
-        # Ubuntu is what catches GNU/BSD divergence: `stat -c` vs `stat -f`,
-        # `sed -i` arity, `date` flags. The tools carry fallbacks for both, and
-        # a fallback no one exercises is a fallback that has already rotted.
         os: [ubuntu-latest, macos-latest]
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install coreutils (macOS)
-        if: runner.os == 'macOS'
-        # For `gtimeout`. Without it status_args_test skips its zero-interval
-        # cases — the ones that catch a status pane re-fetching every bare as
-        # fast as the machine allows — and it skips them on the platform the
-        # tools actually target, which is the worst place to lose that
-        # coverage. The skip is deliberate so the suite still runs on a bare
-        # machine; CI has no excuse to take it.
-        run: brew install coreutils
-
-      - name: Configure git identity
-        # The fixtures make real commits. A runner has no global identity, and
-        # `commit` fails without one. helpers.sh passes -c on its own commits,
-        # but branch-off runs git through the tools, which do not.
+      - name: Install pinned wtc release
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git config --global user.name  "wtc-test"
-          git config --global user.email "wtc-test@example.invalid"
-          git config --global init.defaultBranch main
-
-      - name: Record the environment
-        # When a run goes red on one leg and not the other, this is the first
-        # thing worth reading — so it runs *after* the installs above, or it
-        # reports the machine as it arrived rather than as the suite found it.
-        # An environment line that is wrong is worse than none.
+          version="$(cat .wtc-cli-version)"
+          case "$(uname -s)" in Darwin) os=darwin ;; Linux) os=linux ;; esac
+          case "$(uname -m)" in arm64|aarch64) arch=arm64 ;; x86_64) arch=amd64 ;; esac
+          asset="wtc_${version}_${os}_${arch}.tar.gz"
+          gh release download "v${version}" -R lcorneliussen/wtc-cli -p "$asset" -p checksums.txt
+          grep "  ${asset}$" checksums.txt | shasum -a 256 -c -
+          mkdir -p "$RUNNER_TEMP/wtc-bin"
+          tar -xzf "$asset" -C "$RUNNER_TEMP/wtc-bin" wtc
+          echo "$RUNNER_TEMP/wtc-bin" >> "$GITHUB_PATH"
+      - name: Check native reference and agent hooks
         run: |
-          echo "bash:      $(bash --version | head -1)"
-          echo "/bin/bash: $(/bin/bash --version | head -1)"
-          echo "git:       $(git --version)"
-          echo "uname:     $(uname -a)"
-          if command -v timeout >/dev/null || command -v gtimeout >/dev/null; then
-            echo "timeout:   yes"
-          else
-            echo "timeout:   no — status watch cases will SKIP, and the totals below will not match the other leg"
-          fi
-          command -v python3 >/dev/null \
-            && echo "python3:   yes" \
-            || echo "python3:   no — --wrap tests take the fail-open branch"
-
-      - name: Run the suite
-        # stdin closed on purpose. When stdin is a socket, bash decides it was
-        # started by a remote shell daemon and sources ~/.bashrc instead of
-        # $BASH_ENV — which silently turns the BASH_ENV coverage in
-        # agent_env_test.sh into a no-op. The tests redirect individually too;
-        # this is the belt to that pair of braces.
-        run: tests/run.sh < /dev/null
-
-  coverage:
-    name: coverage
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    # Linux only. Coverage needs BASH_XTRACEFD, which arrived in bash 4.1, and
-    # macOS ships 3.2 — so the platform the tools target is the one that cannot
-    # measure them. The macOS leg of `suite` still runs every test; it just
-    # cannot say which lines they touched.
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Configure git identity
-        run: |
-          git config --global user.name  "wtc-test"
-          git config --global user.email "wtc-test@example.invalid"
-          git config --global init.defaultBranch main
-
-      - name: Measure
-        # Report only — no floor. The number is here to be read and to make a
-        # regression visible in a diff, not to be gamed into going up. Add
-        # `--min <pct>` when there is a level worth defending.
-        run: |
-          tests/coverage.sh --markdown > coverage.md
-          cat coverage.md >> "$GITHUB_STEP_SUMMARY"
-          cat coverage.md
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: coverage.md
-          retention-days: 30
-
-  shellcheck:
-    name: shellcheck
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install shellcheck
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-
-      - name: Lint
-        # Advisory, not gating — `continue-on-error` keeps a style opinion from
-        # blocking a merge, while still putting the findings in the log where
-        # someone will read them. Promote it to gating once the existing
-        # findings are dealt with, not before: a check that is red on arrival
-        # teaches people to ignore it.
-        continue-on-error: true
-        run: |
-          shellcheck --severity=warning --shell=bash \
-            tools/*.sh hooks/*.sh tests/*.sh || true
+          python3 tests/native_reference_test.py
+          python3 tests/agent_hook_test.py
+          python3 tests/publication_guard_test.py

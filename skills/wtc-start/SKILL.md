@@ -38,7 +38,7 @@ If `HANDOFF.md` exists at the collection root:
    the file, seed it first:
 
    ```bash
-   tools/link-skills.sh --seed-scope
+   wtc skills render --seed-scope
    ```
 
 4. **Delete the handoff.** Not later, not at the end of the session — now.
@@ -48,7 +48,7 @@ bug. Its absence is normal and means the wtc was already picked up.
 
 Keep the scope file short — it is read in full at the start of every session
 here — and keep it true: widening the scope later is a deliberate edit to it,
-not a silent `add-repo.sh`.
+not a silent `wtc add-repo`.
 
 ## 3. Identify the work
 
@@ -109,8 +109,8 @@ checked out here. Point absent services at a shared dev instance.
 
 Do **not** diagnose `mise trust` / `mise exec` / `mise where ruby` as a first
 step. Agent shells get sibling toolchain bins on PATH from `.env.toolchain`
-(via a PreToolUse hook, `.envrc`, and herdr). If `ruby -v` is macOS 2.6,
-`eval "$(harness/tools/agent-env.sh)"` once and continue — full rule in
+(via a PreToolUse hook or `.envrc`; herdr passes the cached path). If `ruby -v` is macOS 2.6,
+`eval "$(wtc agent-env)"` once and continue — full rule in
 `harness/instructions/hooks-and-env.md` → Agent shells and PATH.
 
 ## Resume delivery ownership

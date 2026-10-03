@@ -17,17 +17,15 @@ collection root is the directory holding `harness/`.
 ## 2. Open it
 
 ```bash
-harness/tools/wtc-browse.sh                  # this collection
-harness/tools/wtc-browse.sh <collection>     # a named one under the workspace root
+wtc browse                  # this collection
+wtc browse <collection>     # a named one under the workspace root
 ```
 
 From a terminal (including the herdr `shell` pane) this opens nvim **in
 this window**. From an agent pane it sends nvim to the workspace `browse`
 pane — never into the agent itself — and opens a `pr` herdr tab with
 `gh dash` if that extension is installed. `--here` forces this terminal.
-The entry point delegates to `wtc browse` when the selected collection has
-the matching release installed. It also works during bootstrap and for
-collections with an older pin.
+The installed `wtc browse` command opens the browser directly.
 
 Do not pass `--here` from an agent pane unless the user asked to take it over.
 

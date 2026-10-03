@@ -17,18 +17,14 @@ what it is checked out on. Catch-up is also not git-only — files and skills
 that reached the harness or the control root after this collection was created
 never arrive on their own.
 
-Run the tool first, then use its report as the work list. The shim dispatches
-to the pinned CLI where available. Do not preemptively resolve conflicts while
+Run `wtc catch-up` first, then use its report as the work list. Do not preemptively resolve conflicts while
 the sweep is running; the tool leaves the affected worktree intact or aborts
 its own failed merge and records a `needs-owner` row.
-If the matching CLI is unavailable, the shell fallback leaves open PR branches
-untouched because it cannot verify their merge targets. Install the pinned CLI
-and rerun catch-up in the owning collection.
 
 ```bash
-harness/tools/catch-up.sh                 # this collection
-harness/tools/catch-up.sh --all           # every collection under the workspace root
-harness/tools/catch-up.sh --dry-run       # report only; touch nothing
+wtc catch-up                 # this collection
+wtc catch-up --all           # every collection under the workspace root
+wtc catch-up --dry-run       # report only; touch nothing
 ```
 
 Nothing here rewrites history or force-pushes. Local catch-up stashes dirty
@@ -41,15 +37,15 @@ and `--clean-only` leave dirty trees with their owner, as described below.
 
 ## Selected repositories and cross-collection rollout
 
-Use `harness/tools/catch-up.sh` for a repeatable catch-up and a collected
+Use `wtc catch-up` for a repeatable catch-up and a collected
 report. Cross-collection writes require the user's explicit scope; a local
 catch-up does not authorize `--all`.
 
 ```bash
-harness/tools/catch-up.sh --all --harness-only --dry-run --json
-harness/tools/catch-up.sh --all --harness-only --reload-status
-harness/tools/catch-up.sh --repos harness,widget --clean-only --json
-harness/tools/catch-up.sh --all --repos widget --report /path/to/rollout.json
+wtc catch-up --all --harness-only --dry-run --json
+wtc catch-up --all --harness-only --reload-status
+wtc catch-up --repos harness,widget --clean-only --json
+wtc catch-up --all --repos widget --report /path/to/rollout.json
 ```
 
 `--repos` accepts comma-separated registry or sibling names; `harness` always
@@ -68,11 +64,10 @@ collection. Keep the existing stash/update/restore behavior for a local
 invocation unless `--clean-only` is requested. Never remove untracked files
 to make a rollout proceed.
 
-Collection-root skills, MCP and environment hooks run only when the selected
-harness updates successfully or is already current. Secret linking is scoped
-to each successful selected repo. Missing optional target hooks are reported
-as skipped; do not substitute another collection's generator. This keeps
-older forks usable without assuming they ship `refresh-env.sh` or every hook.
+Collection-root skills, MCP and environment actions run through the installed
+CLI only when the selected harness updates successfully or is already current.
+Secret linking is scoped to each successful managed repo. Target-specific
+extension hooks still run when present; an absent MCP registry is skipped.
 
 `--reload-status` is explicit authorization to interrupt and restart eligible
 status panes. It finds the configured herdr session and workspace, verifies
@@ -113,7 +108,7 @@ clean-only and owner-handoff rules above take precedence over local stashing.
 ## 1. Fetch every owner
 
 ```bash
-harness/tools/refresh-configs.sh          # prints the bare list; regenerates .harness-repos
+wtc registry refresh          # prints the bare list; regenerates .harness-repos
 ```
 
 Then, for each bare (or loop over `.harness-repos`, which is `name=path`):
@@ -144,7 +139,7 @@ applies, and that check reads this collection's **local PR enlistment**
 first — not a `wtc:<label>` search on GitHub:
 
 ```bash
-harness/tools/wtc-pr.sh list
+wtc pr list
 ```
 
 A branch enlisted there is asked about directly
@@ -218,7 +213,7 @@ the worktree untouched for its owner to inspect.
 
 Retain the PR's enlistment until delivery is verified or its remaining
 obligations are explicitly handed off in the PR/issue. Only then may an
-unneeded row be removed with `harness/tools/wtc-pr.sh unlist <repo> <n>`.
+unneeded row be removed with `wtc pr unlist <repo> <n>`.
 
 Use `git branch -d`, never `-D`. Squash or patch-equivalent landings can fail
 its ancestry check even after the content has landed. Retain the local branch
@@ -303,7 +298,7 @@ first push is `wtc-pr`'s (or `wtc-draft-pr`'s), together with opening the PR.
 ## 4. Re-link the harness skills
 
 ```bash
-harness/tools/link-skills.sh
+wtc skills render
 ```
 
 Picks up `wtc-*` skills added to the harness since the collection was created
@@ -315,12 +310,12 @@ Order matters here: this links whatever **this collection's** `harness/`
 worktree has in git, so it must run *after* §3 moved that worktree. If it
 reports `(none)`, the harness worktree is behind rather than the tool being
 broken. To roll a newly landed skill out across every collection at once —
-each of which must be caught up first — `harness/tools/link-skills.sh --all`.
+each of which must be caught up first — `wtc skills render --all`.
 
 ## 5. Re-render the MCP servers
 
 ```bash
-harness/tools/link-mcp.sh
+wtc mcp render
 ```
 
 Same lifecycle and the same ordering rule as the skills above: it renders
@@ -339,7 +334,7 @@ file, which is overwritten on the next run.
 ## 6. Refresh the collection env
 
 ```bash
-harness/tools/refresh-env.sh
+wtc env setup
 ```
 
 `.env.collection` is written by `write_collection_env`, and only `branch-off`
@@ -357,7 +352,7 @@ which is that file's documented contract — hand-authored values belong in
 `.env.collection.local`, which wins on a conflicting key. `--dry-run` shows
 the diff and writes nothing; `--all` sweeps every collection.
 
-**Already-open herdr panes do not pick this up.** `wtc-open.sh` injects the
+**Already-open herdr panes do not pick this up.** `wtc open` injects the
 env at workspace *creation* and skips that block when reusing an open
 workspace, so a pane keeps whatever it started with. Close and reopen the
 workspace, or export by hand in the pane.
@@ -365,7 +360,7 @@ workspace, or export by hand in the pane.
 ## 7. Re-link machine-local secrets
 
 ```bash
-harness/tools/link-secrets.sh
+wtc secrets link
 ```
 
 Idempotent, and re-running is the point: init hooks ran at worktree creation
@@ -406,7 +401,7 @@ grep -c GH_CONFIG_DIR .env.collection 2>/dev/null              # in effect here?
   | Answer | What you do |
   |---|---|
   | *Machine-global is fine — this is the only thing I use `gh` for* | Nothing. Say so in the report and move on. |
-  | *Scope it to this workspace* | `mkdir -p "$WTC_CONFIG_ROOT"/gh`, re-run `refresh-env.sh`, then tell them to `gh auth login` from inside a collection |
+  | *Scope it to this workspace* | `mkdir -p "$WTC_CONFIG_ROOT"/gh`, re-run `wtc env setup`, then tell them to `gh auth login` from inside a collection |
 
 **Do not run `gh auth login` for them, and do not create the store without
 being asked.** Creating it *is* the opt-in, and turning it on logs them out

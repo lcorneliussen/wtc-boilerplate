@@ -31,7 +31,7 @@ clones. One layout, no modes. Standing this up in an empty folder:
 | **Repo siblings** | The repo worktrees inside one collection — the working set |
 | **Collection siblings** | The other collections under the workspace root — other tasks, off-limits unless the user names one ([collection-context.md](collection-context.md)) |
 | **Development tip** | Per-repo `default_ref` in `.harness-repos.yml` (`origin/main` / `origin/develop`) |
-| **Branch-off** | Create a new collection with selected repos (`tools/branch-off.sh`) |
+| **Branch-off** | Create a new collection with selected repos (`wtc new`) |
 | **Catch-up** | Fetch/prune bares, fast-forward clean tip worktrees (rules in `AGENTS.md`) |
 
 ## Rules
@@ -56,7 +56,7 @@ git --git-dir=.bare/<repo>.git fetch --all --prune
 ```
 
 Then add the repo to `.harness-repos.yml` (tracked) and rerun
-`tools/refresh-configs.sh` to update the local `.harness-repos`.
+`wtc registry refresh` to update the local `.harness-repos`.
 
 ## Unmanaged siblings (`ext.`)
 
@@ -81,11 +81,11 @@ a valid identifier.
 
 This works because the tools are worktree-driven, not registry-driven:
 
-- `owner_of` (`tools/lib.sh`) resolves any worktree to its real owner via
+- `wtc` resolves any worktree to its real owner via
   `git rev-parse --git-common-dir`, so fetching and teardown reach `ext.`
   siblings on the same path as registry repos — status refreshes them and
   retire prunes them, with no `.bare/` entry to look up.
-- `wtc-status.sh` walks the collection's directories and only requires a
+- `wtc status --no-watch` walks the collection's directories and only requires a
   `.git` entry, so the sibling appears in the table like any other.
 - `write_collection_env` iterates the registry, so an unmanaged repo simply
   gets no port — which is correct; it has no `port_offset` to claim.
@@ -100,22 +100,22 @@ sibling that develops on `develop` will read as behind when it is not.
 A wtc can start from a plain slug, an issue, a tracker ticket, or a PR:
 
 ```bash
-tools/branch-off.sh fix-login-flow api        # slug
-tools/branch-off.sh --issue api-foh7 paging-clamp       # issue (owning repo auto-included)
-tools/branch-off.sh --tracker PROJ-123 rate-limits api
-tools/branch-off.sh --pr api#41               # review wtc on the PR's head branch
-tools/add-repo.sh  <collection> <repo> […]             # bring repos in later
+wtc new fix-login-flow api        # slug
+wtc new --issue api-foh7 paging-clamp       # issue (owning repo auto-included)
+wtc new --tracker PROJ-123 rate-limits api
+wtc new --pr api#41               # review wtc on the PR's head branch
+wtc add-repo  <collection> <repo> […]             # bring repos in later
 ```
 
 `wtc new` accepts the same collection-creation options. With a matching
-v0.1.10 or newer pin installed, `branch-off.sh` selects that native command
+v0.1.10 or newer pin installed, `wtc new` selects that native command
 from the creating collection; the shell path remains available for bootstrap.
 For a PR review collection, the native command verifies the exact head and
 records the appropriate push command in `HANDOFF.md`, including when another
 worktree already has the PR branch checked out.
 
 `wtc add-repo <repo> [repo ...]` extends the current collection. With a
-matching v0.1.11 or newer pin installed, `add-repo.sh` selects the native
+matching v0.1.11 or newer pin installed, `wtc add-repo` selects the native
 command from the target collection; the shell path handles bootstrap and
 older pins. Use `--collection <name>` only when deliberately targeting another
 collection. The native command refreshes the env, links gitignored secrets,
@@ -142,12 +142,12 @@ CLIs discover them (`skills.md`), and run each repo's init hook — see
 
 ## Opening a collection
 
-- **Several collections at once**: `tools/wtc-open.sh [<collection> …]` opens
+- **Several collections at once**: `wtc open [<collection> …]` opens
   each as a workspace in the workspace root's herdr session — agent + shell at
   the collection root, collection env preloaded. This is the way to keep
   multiple wtcs in flight without a pile of terminal windows; see
   `instructions/herdr.md`. Optional, like mise.
-- **Whole collection**: `tools/wtc-browse.sh` opens one LazyVim with a vim
+- **Whole collection**: `wtc browse` opens one LazyVim with a vim
   tab per sibling — in this window from a terminal, in the herdr `browse`
   pane when an agent launches it. Or open the
   collection root in VS Code (or Cursor —

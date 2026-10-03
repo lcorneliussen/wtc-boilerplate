@@ -31,8 +31,7 @@ tab tools:  browse / shell     (stacked; shell 20%)
 ```
 
 Layout is applied on create. Explicit `--narrow` / `--wide` **switches** an
-existing workspace. Native `wtc open` moves live panes; the shell fallback
-recreates the status pane. A partial
+existing workspace. `wtc open` moves live panes. A partial
 workspace — common when you start the agent first, then open — is built out
 toward the resolved layout. `auto` never flips a complete wide ↔ narrow.
 `--wide` / `--narrow` override `WTC_LAYOUT` (and auto).
@@ -75,22 +74,20 @@ folder minus a trailing `-wtc` or `-harness` — so `<project>-wtc/` → session
 **`<project>`**; override with `--session` or `$HARNESS_HERDR_SESSION`.
 
 ```bash
-tools/wtc-open.sh [<collection> …]    # this collection, or the named ones
-tools/wtc-open.sh --narrow            # switch to (or create) stacked tabs
-tools/wtc-open.sh --wide              # switch to (or create) stacked columns
-tools/wtc-open.sh --all --list        # report every collection's agent state
+wtc open [<collection> …]    # this collection, or the named ones
+wtc open --narrow            # switch to (or create) stacked tabs
+wtc open --wide              # switch to (or create) stacked columns
+wtc open --all --list        # report every collection's agent state
 herdr --session <project>                  # attach
 ```
 
-The script selects native `wtc open` when every selected collection has a
-matching installed CLI at v0.1.21 or newer. Otherwise it uses the shell
-opener, including during bootstrap or a mixed-version upgrade. Run `wtc open`
-directly once the target's CLI installation and pin match.
+Run `wtc open` from the collection root. The collection's pinned CLI must
+be installed before opening its panes.
 
 Opening is idempotent and repairs a wtc whose agent exited. The session starts
 headless on demand, so opening never steals a terminal. `wtc new` joins
 a **running** session automatically (`--open` starts one, `--no-open` skips),
-and `retire.sh` closes the workspace with the collection.
+and `wtc retire` closes the workspace with the collection.
 
 Claude panes start with `--dangerously-skip-permissions`: a wtc is an isolated
 worktree on its own branch with no production credentials. `--agent-args`
@@ -98,8 +95,7 @@ overrides, `--no-agent` skips the agent.
 
 ## Status
 
-The status pane runs `tools/wtc-status-tui.sh`, which dispatches to the pinned
-`wtc status --tui`. It shows worktree branches, PR checks and reviews, and
+The status pane runs `wtc status --tui`. It shows worktree branches, PR checks and reviews, and
 working-tree state. The process view is available through `wtc status --procs`.
 
 The opener puts a `status` pane in every wtc, scoped to that collection —
@@ -131,7 +127,7 @@ mouse while a clickable target is visible or a refresh is running.
 
 ## Browse
 
-`tools/wtc-browse.sh` opens **one** LazyVim with **one vim tab per sibling**
+`wtc browse` opens **one** LazyVim with **one vim tab per sibling**
 (`:tcd` so gitsigns / neo-tree / Octo / lazygit see that repo). Tabs are
 LazyVim **bufferline** in `tabs` mode (click a tab, or `gt` / `gT`).
 `<leader><space>` / `<leader>ff` and `<leader>/` / `<leader>sg` search
@@ -155,8 +151,8 @@ The browse nvim listens on
 shortened and checksummed to fit the platform socket-path limit.
 
 ```bash
-tools/wtc-browse.sh              # this collection
-tools/wtc-browse.sh --here       # this terminal, even from an agent pane
+wtc browse              # this collection
+wtc browse --here       # this terminal, even from an agent pane
 ```
 
 For an interactive look at what the agents are actually running, bind a
@@ -177,15 +173,15 @@ you act on — tests, builds, git — runs directly in the agent's own shell.
 
 Panes are for processes that outlive the turn or that a human should watch:
 dev servers, `docker compose up`, watch-mode runners, log tails, and TUIs
-(`wtc-browse.sh`, lazygit) which belong in `browse`. A dev server in a pane is
+(`wtc browse`, lazygit) which belong in `browse`. A dev server in a pane is
 also findable via `herdr pane list`, so the next agent doesn't start a
 second copy on the same port.
 
 ### Write it relative
 
 Every command a tool types into a pane is **relative to the collection root**,
-which is that pane's cwd: `./harness/tools/wtc-status.sh --repos`,
-`./harness/tools/wtc-browse.sh --here`, a bare `lazygit` in a pane opened at
+which is that pane's cwd: `wtc status --tui`,
+`wtc browse --here`, a bare `lazygit` in a pane opened at
 the worktree. No absolute paths, and no collection argument where the tool
 already defaults to the collection it runs from. A pane's shell history is
 then a set of commands anyone can re-run in any collection, rather than a
@@ -229,7 +225,7 @@ entry looking submitted. The opener waits for the agent to be seen working and
 supplies the missing Enter when herdr reports the submission stalled.
 
 ```bash
-tools/branch-off.sh --issue api-1234 paging-clamp --open
+wtc new --issue api-1234 paging-clamp --open
 herdr --session <project> agent prompt api-1234-paging-clamp \
   "Read HANDOFF.md at the wtc root, then start." --wait
 ```

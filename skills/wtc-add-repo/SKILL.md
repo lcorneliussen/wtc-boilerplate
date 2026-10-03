@@ -17,12 +17,12 @@ name you pass is the registry `name`, not the GitHub slug.
 
 If the repo is not in the registry at all, this is a different job — it has to
 be registered first (remote, `default_ref`, a unique `port_offset` if it
-serves, `issues_prefix` if it owns issues), then `refresh-configs.sh` re-run.
+serves, `issues_prefix` if it owns issues), then `wtc registry refresh` re-run.
 
 ## 2. Add it
 
 ```bash
-harness/tools/add-repo.sh <collection> <repo> [<repo> …]
+wtc add-repo <collection> <repo> [<repo> …]
 ```
 
 Run from any harness worktree; `<collection>` is the collection's directory
@@ -46,7 +46,7 @@ port, so nothing needs re-wiring.
 ## 3. Wire the rest
 
 ```bash
-harness/tools/link-secrets.sh --repo <repo>
+wtc secrets link --repo <repo>
 ```
 
 The init hook normally does this itself, but hooks are per repo and a repo

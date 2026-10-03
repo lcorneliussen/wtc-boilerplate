@@ -45,7 +45,7 @@ git -C <collection>/<repo> log --oneline @{u}..HEAD
   deserves a look before it disappears. `.env.collection.local` is removed
   with the collection on purpose — those secrets were scoped to this wtc.
 
-`.harness-backups/` holds hand-made copies of files that `link-secrets.sh`
+`.harness-backups/` holds hand-made copies of files that `wtc secrets link`
 replaced. If anything in there matters, it belongs in the control root — copy
 it there first.
 
@@ -65,7 +65,6 @@ finish its turn. After a final pane check, it closes the source workspace
 before running hooks or removing worktrees; another live agent pane blocks
 the handoff. Inspect the `--cleanup--` pane for the final result. Its post hook
 runs after product teardown and before the harness worktree is removed.
-`harness/tools/retire.sh` is the compatibility entry point in older harnesses.
 
 `--force` overrides the pre-flight refusal. Use it only when you have
 established the work is genuinely disposable — and say in your report that you

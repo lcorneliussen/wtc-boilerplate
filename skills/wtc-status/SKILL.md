@@ -5,10 +5,7 @@ description: Report where every worktree collection stands — branches, open PR
 
 # Where does everything stand
 
-Use the pinned `wtc status` command to inspect this collection. The
-`harness/tools/wtc-status.sh` and `wtc-status-tui.sh` entry points dispatch to
-that exact released version when installed and retain their shell path for
-bootstrap or older pins. Status does not change worktree branches or files.
+Use the pinned `wtc status` command to inspect this collection. Status does not change worktree branches or files.
 
 ```bash
 wtc status                         # live TUI in a terminal; one pass when captured
@@ -47,8 +44,7 @@ Bare `wtc status` opens the live view when both input and output are terminals.
 Use `--no-watch` for an interactive one-shot table; captured output is already
 one-shot. `--all` is explicit because it reads every collection; it omits the
 enlisted PR section and does not run other collections' build hooks. The CLI's `--repos`
-flag hides the enlisted PR section when a compact table is needed; the
-compatibility scripts keep their older selector behavior. The interactive
+flag hides the enlisted PR section when a compact table is needed; The interactive
 view shows repositories and PRs by default; `--procs` selects the process view.
 It starts with the last snapshot while a fresh one loads. Refresh progress
 stays on one line so the table does not move; the count remains visible in a

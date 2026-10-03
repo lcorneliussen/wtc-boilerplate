@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """PreToolUse / beforeShellExecution: refuse raw "mark PR ready" commands.
 
-A draft PR is undrafted only through tools/bb-pr-ready.sh, which checks that a
+A draft PR is undrafted only through `wtc review ready`, which checks that a
 current local review exists (review/README.md § Gate). Blocks, when they are
 the command being run (tokenized with shlex; split on ; && || | newline; `bash -c`,
 `eval` and $(...) are recursed into; quoted arguments of other commands are not
@@ -10,14 +10,13 @@ commands):
   * gh pr ready …
 `bb pr edit` has no draft flag, so there is no second route to guard.
 
-Allows: tools/bb-pr-ready.sh (its own `bb pr ready` runs in a subprocess, not on
-the agent's command line — matching the command string is enough).
+Allows: `wtc review ready` (its forge call runs in a subprocess, not on the
+agent's command line).
 
 Escape hatch (explicit user ask only):
   WTC_ALLOW_RAW_PR_READY=1
 
-Exit 2 = deny. Fail-open on parse errors. Same I/O conventions as
-block-prod-writes.sh.
+Exit 2 = deny. Fail-open on parse errors. Uses agent hook JSON on stdin and stdout.
 """
 from __future__ import annotations
 
@@ -251,7 +250,7 @@ def check_pr_ready(cmd: str) -> None:
     deny(
         f"Raw `{cli} pr ready` is blocked: a draft PR is marked ready only after a "
         "current local review. Run /wtc-local-review, then use "
-        "harness/tools/bb-pr-ready.sh <n> from the repo worktree "
+        "wtc review ready <n> from the repo worktree "
         "(only when the user asked to undraft). "
         "Escape hatch after an explicit user ask: WTC_ALLOW_RAW_PR_READY=1"
     )
