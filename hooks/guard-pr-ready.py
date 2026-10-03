@@ -157,7 +157,10 @@ def _shell_heredoc_bodies(cmd: str):
         m = re.search(r"(?<!<)<<-?(?!<)\s*(?:'([^']+)'|\"([^\"]+)\"|\\?(\w+))", line)
         if m:
             delim = m.group(1) or m.group(2) or m.group(3)
-            is_shell = bool(re.search(r"\b(?:bash|sh|zsh|dash|ksh)\b[^\n]*<<", line))
+            is_shell = bool(
+                re.search(r"\b(?:bash|sh|zsh|dash|ksh)\b[^\n]*<<", line)
+                or re.search(r"\|\s*(?:(?:env|exec|command)\s+)*(?:\S*/)?(?:bash|sh|zsh|dash|ksh)\b", line)
+            )
     if delim is not None and is_shell:
         yield "\n".join(body)
 
@@ -301,6 +304,11 @@ def _find_raw_ready(cmd: str, depth: int = 0):
         elif prog.startswith("$") and _is_ready_args(args):
             return "gh"
         elif prog in _SHELLS:
+            for j, a in enumerate(args):
+                if a == "<<<" and j + 1 < len(args):
+                    hit = _find_raw_ready(args[j + 1], depth + 1)
+                    if hit:
+                        return hit
             for j, a in enumerate(args):
                 if re.match(r"^-[A-Za-z]*c[A-Za-z]*$", a) and j + 1 < len(args):
                     hit = _find_raw_ready(args[j + 1], depth + 1)

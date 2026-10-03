@@ -92,6 +92,8 @@ for command in ("gh pr ready 12", "bb pr ready 12", "gh pr -R example/repo ready
                 "bash <<'EOF'\ngh pr ready 12\nEOF",
                 "bash <<'EOF'\ngh pr -R example/repo ready 12\nEOF",
                 "bash <<EOF\ngh pr ready 12",
+                "cat <<'EOF' | bash\ngh pr ready 12\nEOF",
+                "bash <<< 'gh pr ready 12'",
                 "gh pr -R example/repo ready 12 '",
                 "bash -c 'gh pr ready 12'",
                 "eval 'gh pr ready 12'", "echo $(gh pr ready 12)"):
@@ -107,6 +109,7 @@ for command in ("wtc review ready 12", 'echo "gh pr ready 12"',
                 "${GH} pr ready --undo 12", "$(command -v gh) pr ready --undo 12",
                 "bash <<'EOF'\ngh pr ready --undo 12\nEOF",
                 "cat <<'EOF'\ngh pr ready 12\nEOF",
+                "bash <<< 'gh pr ready --undo 12'",
                 "gh pr -R example/repo ready 12 --undo '", "gh pr view ready"):
     result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": command}}),
                             text=True, capture_output=True)
