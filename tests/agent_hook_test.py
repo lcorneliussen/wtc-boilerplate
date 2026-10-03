@@ -87,7 +87,9 @@ for command in ("gh pr ready 12", "bb pr ready 12", "gh pr -R example/repo ready
                 "gh pr < /dev/null ready 12", "gh < /dev/null pr ready 12",
                 "$(command -v gh) pr ready 12", "${GH} pr ready 12",
                 "gh pr 2>/dev/null ready 12", "gh pr &>/dev/null ready 12",
+                "gh pr >|/dev/null ready 12",
                 "$(command -v gh) -R example/repo pr ready 12",
+                "bash <<'EOF'\ngh pr ready 12\nEOF",
                 "gh pr -R example/repo ready 12 '",
                 "bash -c 'gh pr ready 12'",
                 "eval 'gh pr ready 12'", "echo $(gh pr ready 12)"):

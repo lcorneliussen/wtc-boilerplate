@@ -82,7 +82,7 @@ _VALUE_FLAGS = {
     "-R", "--repo", "--hostname", "-w", "--workspace",
     "-q", "--jq", "-t", "--template", "--color",
 }
-_REDIRECTIONS = {"<", "<<", "<<<", ">", ">>", "<>", "&>", ">&", "<&"}
+_REDIRECTIONS = {"<", "<<", "<<<", ">", ">>", ">|", "<>", "&>", ">&", "<&"}
 
 
 def _has_undo_arg(args: list[str]) -> bool:
@@ -239,6 +239,11 @@ def _find_raw_ready(cmd: str, depth: int = 0):
     """Return 'bb' | 'gh' when a command in `cmd` marks a PR ready, else None."""
     if depth > _MAX_DEPTH:
         return None
+    # A here-document may be executable input to a shell. The hook cannot
+    # distinguish it from data reliably, so keep raw ready text inside it
+    # behind the review gate.
+    if re.search(r"(?<!<)<<-?(?!<)\s*(?:'[^']+'|\"[^\"]+\"|\w+)", cmd) and re.search(r"\bpr\s+ready\b", cmd):
+        return "gh"
     cmd = _strip_heredocs(cmd)
     substitutions = list(_substitutions(cmd))
     for inner, _, _ in substitutions:
