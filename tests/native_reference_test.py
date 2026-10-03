@@ -20,7 +20,8 @@ required = {
 }
 assert required <= commands, sorted(required - commands)
 
-for path in [root / "collection-AGENTS.md", *(root / "skills").glob("*/SKILL.md")]:
+for path in [*root.glob("*.md"), *(root / "instructions").glob("*.md"),
+             *(root / "review").glob("*.md"), *(root / "skills").glob("*/SKILL.md")]:
     text = path.read_text()
     assert not re.search(r"(?:harness/)?tools/[\w.-]+\.sh", text), path
 

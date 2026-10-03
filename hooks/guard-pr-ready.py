@@ -16,8 +16,7 @@ agent's command line).
 Escape hatch (explicit user ask only):
   WTC_ALLOW_RAW_PR_READY=1
 
-Exit 2 = deny. Fail-open on parse errors. Same I/O conventions as
-block-prod-writes.sh.
+Exit 2 = deny. Fail-open on parse errors. Uses agent hook JSON on stdin and stdout.
 """
 from __future__ import annotations
 

@@ -78,7 +78,7 @@ a token, session, or rate limit. Any other failure stops there.
 
 Example: `HARNESS_REVIEW_STRONG=grok:,codex:,claude:opus` tries grok, then
 codex, then claude opus, and only moves on when that run hits a limit.
-`review-run.sh --strong grok: --lead codex:` overrides one run. Concerns and
+`wtc review run --strong grok: --lead codex:` overrides one run. Concerns and
 the lead are separate lists, so a machine can run the concerns on one agent
 and the final pass on another. Each machine sets the list for the CLIs it
 actually has; an entry whose binary is missing fails that run.
@@ -130,12 +130,12 @@ stats/<id>.json     per agent run (concerns and `lead`), written by the runner:
                     {agent, model, seconds, input_tokens, output_tokens,
                      cache_read_tokens, cache_write_tokens, cost_usd|null,
                      turns|null, status: ok|error|timeout|skipped}
-summary.md          lead output + `### Run stats` + status line (assembled by review-run.sh)
+summary.md          lead output + `### Run stats` + status line (assembled by wtc review run)
 verdict             one word: pass | pass-with-notes | changes-requested
-comment.id          id of the bundle's summary comment (written by review-post.sh)
+comment.id          id of the bundle's summary comment (written by wtc review post)
 inline-comments.json  one row per inline thread: key, concern, file, line, severity,
-                    title, id, url, error, resolved (written by review-post.sh /
-                    review-resolve.sh)
+                    title, id, url, error, resolved (written by wtc review post /
+                    wtc review resolve)
 .inline/            bodies of the inline comments, for the poster
 progress.md         the last "in progress" body; failed.md the last "failed" body
 lead.spec           the lead's agent:model for this run
@@ -145,7 +145,7 @@ run.log             launcher output, for debugging
 `downstream` comes from the registry: `downstream: <repo> [<repo>…]` on a repo
 entry in `.harness-repos.yml` names the repos that consume it. Snapshots are
 read-only exports, not worktrees — nothing to clean up in the git owners.
-For a public or unknown-audience PR, `review-bundle.sh --public` omits
+For a public or unknown-audience PR, `wtc review bundle --public` omits
 upstream/downstream snapshots and related PR patches. Inspect the bundle
 before an external review run, then inspect the generated summary and inline
 comment bodies before posting them.
@@ -204,7 +204,7 @@ from the forge) is a prefix of `head=` (never the other way round, never
 shorter than 12), else `stale`; `none` if there is no such comment.
 `wtc review post` also writes a local receipt keyed by forge, repository, PR,
 head, comment id and verdict under `<collection>/.wtc-review-posted/`.
-`review-status.sh --trusted-local` requires that receipt and reports
+`wtc review status --trusted-local` requires that receipt and reports
 `untrusted` when the newest status comment lacks it. The ready gate uses this
 mode, so another commenter cannot satisfy it by copying a status line.
 The receipt is collection-local; a different machine needs its own review
@@ -212,7 +212,7 @@ bundle and post before its ready gate can pass.
 
 ### Comment lifecycle (one comment per bundle)
 
-`review-run.sh <dir> --post` (the skill's default flow):
+`wtc review run <dir> --post` (the skill's default flow):
 
 1. **before** any agent starts: `⏳ **Local review: in progress**` — round, head
    (7 chars), concerns with tier and agent list, start time — ending in the
@@ -233,10 +233,10 @@ bundle and post before its ready gate can pass.
 3. **on failure**: the same comment becomes `❌ **Local review: failed**` with the
    reason and the redacted tail of `run.log`, status line `verdict=error`.
 
-`review-post.sh <dir>` creates when there is no `comment.id`, else updates
+`wtc review post <dir>` creates when there is no `comment.id`, else updates
 (Bitbucket: REST `PUT …/comments/<id>` with the bb credentials, fallback
 `bb pr comments edit`; GitHub: `gh api -X PATCH …/issues/comments/<id>`).
-`review-post.sh <dir> --progress` posts only the progress comment.
+`wtc review post <dir> --progress` posts only the progress comment.
 `WTC_REVIEW_NO_API=1` forces the CLI fallback (tests, no REST credentials).
 
 ### Inline comments

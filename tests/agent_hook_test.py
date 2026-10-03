@@ -45,6 +45,16 @@ with tempfile.TemporaryDirectory() as tmp:
     log.unlink()
     subprocess.run(["bash", "-c", commands["--wrap"]], cwd=nested, env=env, input="{}", text=True, check=True)
     assert log.read_text().splitlines() == [f"{collection}|exec -- wtc agent-env --wrap"]
+    mise.write_text('#!/bin/sh\nprintf "%s|%s\\n" "$PWD" "$*" >> "$WTC_HOOK_LOG"\nexit 42\n')
+    log.unlink()
+    for mode, command in commands.items():
+        subprocess.run(["bash", "-c", command], cwd=nested, env=env, input="{}", text=True, check=True)
+    assert log.read_text().splitlines() == [
+        f"{collection}|exec -- wtc agent-env --write",
+        f"{collection}|agent-env --write",
+        f"{collection}|exec -- wtc agent-env --wrap",
+        f"{collection}|agent-env --wrap",
+    ]
     mise.unlink()
 
     log.unlink()
@@ -53,3 +63,18 @@ with tempfile.TemporaryDirectory() as tmp:
     assert not log.exists(), "hook acted outside a collection"
 
 print("agent hook: nested collection routing and outside fail-open")
+
+guard = root / "hooks" / "guard-pr-ready.py"
+for command in ("gh pr ready 12", "bb pr ready 12"):
+    result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": command}}),
+                            text=True, capture_output=True)
+    assert result.returncode == 2, (command, result)
+    assert "wtc review ready" in result.stderr, result.stderr
+for command in ("wtc review ready 12", 'echo "gh pr ready 12"'):
+    result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": command}}),
+                            text=True, capture_output=True)
+    assert result.returncode == 0, (command, result)
+result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": "gh pr ready 12"}}),
+                        text=True, capture_output=True, env=dict(os.environ, WTC_ALLOW_RAW_PR_READY="1"))
+assert result.returncode == 0, result
+print("ready guard: raw commands denied; native command and explicit escape allowed")
