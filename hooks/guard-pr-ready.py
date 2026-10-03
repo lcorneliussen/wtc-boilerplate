@@ -78,7 +78,10 @@ _WRAPPERS = {"exec", "env", "command", "builtin", "sudo", "time", "nohup", "xarg
 _KEYWORDS = {"then", "do", "else", "elif", "if", "while", "until", "!", "{", "}"}
 _SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
 _MAX_DEPTH = 6
-_VALUE_FLAGS = {"-R", "--repo", "--hostname"}
+_VALUE_FLAGS = {
+    "-R", "--repo", "--hostname", "-w", "--workspace",
+    "-q", "--jq", "-t", "--template", "--color",
+}
 
 
 def _skip_options(args: list[str], start: int) -> int:
@@ -236,9 +239,10 @@ def _find_raw_ready(cmd: str, depth: int = 0):
         args = words[i + 1:]
         if prog in ("bb", "gh"):
             command_at = _skip_options(args, 0)
-            ready_at = _skip_options(args, command_at + 1) if command_at < len(args) and args[command_at] == "pr" else len(args)
-            if ready_at < len(args) and args[ready_at] == "ready" and "--undo" not in args:
-                return prog
+            if command_at < len(args) and args[command_at] == "pr":
+                ready_at = _skip_options(args, command_at + 1)
+                if ready_at < len(args) and args[ready_at] == "ready" and "--undo" not in args:
+                    return prog
         elif prog in _SHELLS:
             for j, a in enumerate(args):
                 if re.match(r"^-[A-Za-z]*c[A-Za-z]*$", a) and j + 1 < len(args):

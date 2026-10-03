@@ -78,6 +78,10 @@ print("agent hook: nested collection routing and outside fail-open")
 guard = root / "hooks" / "guard-pr-ready.py"
 for command in ("gh pr ready 12", "bb pr ready 12", "gh pr -R example/repo ready 12",
                 "gh -R example/repo pr ready 12", "gh pr --repo=example/repo ready 12",
+                "bb -w example pr ready 12", "bb --workspace example pr ready 12",
+                "gh --jq . pr ready 12", "gh -q . pr ready 12",
+                "gh --template '{{.url}}' pr ready 12", "gh -t '{{.url}}' pr ready 12",
+                "gh pr --jq . ready 12", "gh pr -t '{{.url}}' ready 12",
                 "gh pr -R example/repo ready 12 '",
                 "bash -c 'gh pr ready 12'",
                 "eval 'gh pr ready 12'", "echo $(gh pr ready 12)"):
