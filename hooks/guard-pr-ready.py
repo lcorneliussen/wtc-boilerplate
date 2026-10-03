@@ -258,9 +258,14 @@ def check_pr_ready(cmd: str) -> None:
         return
     try:
         cli = _find_raw_ready(cmd)
-    except ValueError:  # shlex could not parse: fail open on the parser, keep the regex net
-        m = _RAW_READY.search(cmd)
-        cli = m.group("cli") if m else None
+    except ValueError:  # shlex could not parse: keep the regex net
+        cli = None
+        for match in _RAW_READY.finditer(cmd):
+            tail = re.split(r"[;&|\n]", cmd[match.end():], maxsplit=1)[0]
+            if re.search(r"(?:^|\s)--undo(?:\s|$)", tail):
+                continue
+            cli = match.group("cli")
+            break
     if not cli:
         return
     deny(

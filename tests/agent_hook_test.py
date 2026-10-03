@@ -87,10 +87,15 @@ for command in ("gh pr ready 12", "bb pr ready 12", "gh pr -R example/repo ready
     assert "wtc review ready" in result.stderr, result.stderr
     assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
 for command in ("wtc review ready 12", 'echo "gh pr ready 12"',
-                "gh pr -R example/repo ready 12 --undo", "gh pr view ready"):
+                "gh pr -R example/repo ready 12 --undo",
+                "gh pr -R example/repo ready 12 --undo '", "gh pr view ready"):
     result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": command}}),
                             text=True, capture_output=True)
     assert result.returncode == 0, (command, result)
+compound = "gh pr ready 12 --undo; gh pr ready 13 '"
+result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": compound}}),
+                        text=True, capture_output=True)
+assert result.returncode == 2, result
 result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": "gh pr ready 12"}}),
                         text=True, capture_output=True, env=dict(os.environ, WTC_ALLOW_RAW_PR_READY="1"))
 assert result.returncode == 0, result
