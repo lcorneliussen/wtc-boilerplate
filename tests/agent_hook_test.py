@@ -76,17 +76,30 @@ with tempfile.TemporaryDirectory() as tmp:
 print("agent hook: nested collection routing and outside fail-open")
 
 guard = root / "hooks" / "guard-pr-ready.py"
-for command in ("gh pr ready 12", "bb pr ready 12", "bash -c 'gh pr ready 12'",
+for command in ("gh pr ready 12", "bb pr ready 12", "gh pr -R example/repo ready 12",
+                "gh -R example/repo pr ready 12", "gh pr --repo=example/repo ready 12",
+                "bb -w example pr ready 12", "bb --workspace example pr ready 12",
+                "gh --jq . pr ready 12", "gh -q . pr ready 12",
+                "gh --template '{{.url}}' pr ready 12", "gh -t '{{.url}}' pr ready 12",
+                "gh pr --jq . ready 12", "gh pr -t '{{.url}}' ready 12",
+                "gh pr -R example/repo ready 12 '",
+                "bash -c 'gh pr ready 12'",
                 "eval 'gh pr ready 12'", "echo $(gh pr ready 12)"):
     result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": command}}),
                             text=True, capture_output=True)
     assert result.returncode == 2, (command, result)
     assert "wtc review ready" in result.stderr, result.stderr
     assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
-for command in ("wtc review ready 12", 'echo "gh pr ready 12"'):
+for command in ("wtc review ready 12", 'echo "gh pr ready 12"',
+                "gh pr -R example/repo ready 12 --undo",
+                "gh pr -R example/repo ready 12 --undo '", "gh pr view ready"):
     result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": command}}),
                             text=True, capture_output=True)
     assert result.returncode == 0, (command, result)
+compound = "gh pr ready 12 --undo; gh pr ready 13 '"
+result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": compound}}),
+                        text=True, capture_output=True)
+assert result.returncode == 2, result
 result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": "gh pr ready 12"}}),
                         text=True, capture_output=True, env=dict(os.environ, WTC_ALLOW_RAW_PR_READY="1"))
 assert result.returncode == 0, result
