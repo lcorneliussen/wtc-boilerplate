@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""PreToolUse / beforeShellExecution: refuse raw "mark PR ready" commands.
+"""PreToolUse / beforeShellExecution: catch common raw "mark PR ready" commands.
 
-A draft PR is undrafted only through `wtc review ready`, which checks that a
+A draft PR should be undrafted through `wtc review ready`, which checks that a
 current local review exists (review/README.md § Gate). Blocks, when they are
 the command being run (tokenized with shlex; split on ; && || | newline; `bash -c`,
 `eval` and $(...) are recursed into; quoted arguments of other commands are not
