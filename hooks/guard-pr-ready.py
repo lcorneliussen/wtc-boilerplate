@@ -32,7 +32,8 @@ _RAW_READY = re.compile(
     r"(?:^|[;&|(\n`]|\bthen\b|\bdo\b|\$\()\s*"
     r"(?:\w+=\S*\s+)*"
     r"(?:(?:exec|env|command|sudo|time|nohup|xargs)\s+(?:-\S+\s+)*)*"
-    r"(?:\S*/)?(?P<cli>bb|gh)\s+(?:-{1,2}\S+(?:\s+\S+)?\s+)*pr\s+ready\b"
+    r"(?:\S*/)?(?P<cli>bb|gh)\s+(?:-{1,2}\S+(?:\s+\S+)?\s+)*"
+    r"pr\s+(?:-{1,2}\S+(?:\s+\S+)?\s+)*ready\b"
 )
 
 
@@ -77,6 +78,19 @@ _WRAPPERS = {"exec", "env", "command", "builtin", "sudo", "time", "nohup", "xarg
 _KEYWORDS = {"then", "do", "else", "elif", "if", "while", "until", "!", "{", "}"}
 _SHELLS = {"bash", "sh", "zsh", "dash", "ksh"}
 _MAX_DEPTH = 6
+_VALUE_FLAGS = {"-R", "--repo", "--hostname"}
+
+
+def _skip_options(args: list[str], start: int) -> int:
+    i = start
+    while i < len(args) and args[i].startswith("-") and args[i] != "-":
+        flag = args[i]
+        i += 1
+        if flag == "--":
+            break
+        if flag in _VALUE_FLAGS and i < len(args):
+            i += 1
+    return i
 
 
 def _strip_heredocs(cmd: str) -> str:
@@ -221,7 +235,9 @@ def _find_raw_ready(cmd: str, depth: int = 0):
         prog = os.path.basename(words[i])
         args = words[i + 1:]
         if prog in ("bb", "gh"):
-            if any(a == "pr" and b == "ready" for a, b in zip(args, args[1:])) and "--undo" not in args:
+            command_at = _skip_options(args, 0)
+            ready_at = _skip_options(args, command_at + 1) if command_at < len(args) and args[command_at] == "pr" else len(args)
+            if ready_at < len(args) and args[ready_at] == "ready" and "--undo" not in args:
                 return prog
         elif prog in _SHELLS:
             for j, a in enumerate(args):
