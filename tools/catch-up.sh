@@ -52,7 +52,9 @@ if [ -f "$source_harness/.wtc-cli-version" ]; then
       fi
     done
     cd "$source_collection"
-    exec "${cli_cmd[@]}" catch-up "${cli_args[@]}"
+    # Bash 3.2 treats an empty array as unset under `set -u`; a bare
+    # invocation has no arguments to forward, so guard the expansion.
+    exec "${cli_cmd[@]}" catch-up ${cli_args[@]+"${cli_args[@]}"}
   fi
 fi
 

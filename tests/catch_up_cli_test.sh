@@ -28,6 +28,12 @@ it 'matching pin dispatches from the initiating collection'
 "$runner" --dry-run --harness-only --json >/dev/null
 assert_eq "$root/main|catch-up --dry-run --harness-only --json" "$(cat "$CATCH_CLI_CALLS")"
 
+it 'a bare invocation dispatches with nothing to forward'
+: > "$CATCH_CLI_CALLS"
+"$runner" >/dev/null 2> "$root/bare.err"
+assert_eq 0 "$?" "bare invocation dispatched: $(cat "$root/bare.err")"
+assert_eq "$root/main|catch-up" "$(cat "$CATCH_CLI_CALLS")"
+
 it 'relative report paths keep the caller directory'
 mkdir -p "$root/reports"
 (cd "$root" && "$runner" --dry-run --report reports/result.json >/dev/null)
