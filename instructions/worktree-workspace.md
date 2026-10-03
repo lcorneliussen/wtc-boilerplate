@@ -87,10 +87,10 @@ This works because the tools are worktree-driven, not registry-driven:
   retire prunes them, with no `.bare/` entry to look up.
 - `wtc status --no-watch` walks the collection's directories and only requires a
   `.git` entry, so the sibling appears in the table like any other.
-- `write_collection_env` iterates the registry, so an unmanaged repo simply
+- `wtc env setup` iterates the registry, so an unmanaged repo simply
   gets no port — which is correct; it has no `port_offset` to claim.
 
-One consequence remains: `default_ref_for` is name-keyed and falls back to
+One consequence remains: default-ref lookup is name-keyed and falls back to
 `origin/main` for anything unregistered, so the `↓ behind` column measures
 against `main` regardless of the repo's actual working branch. An `ext.`
 sibling that develops on `develop` will read as behind when it is not.
@@ -104,20 +104,16 @@ wtc new fix-login-flow api        # slug
 wtc new --issue api-foh7 paging-clamp       # issue (owning repo auto-included)
 wtc new --tracker PROJ-123 rate-limits api
 wtc new --pr api#41               # review wtc on the PR's head branch
-wtc add-repo  <collection> <repo> […]             # bring repos in later
+wtc add-repo <repo> [<repo> ...]    # bring repos into this collection later
 ```
 
-`wtc new` accepts the same collection-creation options. With a matching
-v0.1.10 or newer pin installed, `wtc new` selects that native command
-from the creating collection; the shell path remains available for bootstrap.
+`wtc new` accepts these collection-creation options through the pinned CLI.
 For a PR review collection, the native command verifies the exact head and
 records the appropriate push command in `HANDOFF.md`, including when another
 worktree already has the PR branch checked out.
 
-`wtc add-repo <repo> [repo ...]` extends the current collection. With a
-matching v0.1.11 or newer pin installed, `wtc add-repo` selects the native
-command from the target collection; the shell path handles bootstrap and
-older pins. Use `--collection <name>` only when deliberately targeting another
+`wtc add-repo <repo> [repo ...]` extends the current collection through the
+pinned CLI. Use `--collection <name>` only when deliberately targeting another
 collection. The native command refreshes the env, links gitignored secrets,
 updates skills and MCP configuration, then runs each new repo's init hook.
 

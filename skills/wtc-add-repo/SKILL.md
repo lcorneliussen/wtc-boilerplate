@@ -22,11 +22,13 @@ serves, `issues_prefix` if it owns issues), then `wtc registry refresh` re-run.
 ## 2. Add it
 
 ```bash
-wtc add-repo <collection> <repo> [<repo> …]
+wtc add-repo <repo> [<repo> ...]
+# From another collection:
+wtc add-repo --collection <collection> <repo> [<repo> ...]
 ```
 
-Run from any harness worktree; `<collection>` is the collection's directory
-name under the workspace root, not a path.
+The first form targets the current collection. In the second form,
+`<collection>` is the collection's directory name under the workspace root.
 
 Default: the new worktree is **detached at the repo's `default_ref`** — no
 branch. A repo added purely for context (reading a sibling's code, checking an

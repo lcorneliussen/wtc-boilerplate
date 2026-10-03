@@ -168,8 +168,8 @@ gh pr edit <n> --add-reviewer <who>   # only if the repo doesn't auto-assign
 Marking ready is what summons reviewers and the review bots. Do it only when
 the change is genuinely reviewable — otherwise this is a `wtc-draft-pr` job.
 `wtc review ready` opens the gate only when a current local review has passed
-(`/wtc-local-review`). A raw `gh pr ready` or `bb pr ready` is refused by
-`hooks/guard-pr-ready.py`.
+(`/wtc-local-review`). Use this native command for undrafting rather than a
+raw forge command.
 
 ## 6. Follow it
 

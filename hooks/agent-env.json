@@ -19,11 +19,6 @@
             "type": "command",
             "command": "d=\"${CLAUDE_PROJECT_DIR:-${GROK_WORKSPACE_ROOT:-${PWD:-.}}}\"; d=\"$(cd \"$d\" 2>/dev/null && pwd)\" || exit 0; while [ -n \"$d\" ] && [ \"$d\" != / ]; do if [ -f \"$d/harness/.wtc-cli-version\" ]; then cd \"$d\" || exit 0; if command -v mise >/dev/null 2>&1; then mise exec -- wtc agent-env --wrap && exit 0; fi; if command -v wtc >/dev/null 2>&1; then exec wtc agent-env --wrap; fi; exit 0; fi; d=\"$(dirname \"$d\")\"; done; exit 0",
             "timeout": 15
-          },
-          {
-            "type": "command",
-            "command": "d=\"${CLAUDE_PROJECT_DIR:-${GROK_WORKSPACE_ROOT:-${PWD:-.}}}\"; d=\"$(cd \"$d\" 2>/dev/null && pwd)\" || exit 0; while [ -n \"$d\" ] && [ \"$d\" != / ]; do if [ -f \"$d/harness/hooks/guard-pr-ready.py\" ]; then exec python3 \"$d/harness/hooks/guard-pr-ready.py\"; fi; d=\"$(dirname \"$d\")\"; done; exit 0",
-            "timeout": 10
           }
         ]
       }
