@@ -32,6 +32,20 @@ for relative in ("skills/wtc-add-repo/SKILL.md", "instructions/worktree-workspac
     assert "wtc add-repo <repo>" in guidance, relative
     assert "wtc add-repo <collection>" not in guidance, relative
 
+documented_options = {
+    ("new",): ("--issue", "--tracker", "--pr"),
+    ("catch-up",): ("--all", "--repos", "--reload-status"),
+    ("status",): ("--tui", "--no-watch", "--silent"),
+    ("secrets", "link"): ("--repo", "--include-prod"),
+    ("skills", "render"): ("--seed-scope", "--all"),
+    ("mcp", "render"): ("--all", "--dry-run"),
+    ("review", "bundle"): ("--public", "--no-catch-up"),
+}
+for command, flags in documented_options.items():
+    help_text = subprocess.check_output(["wtc", *command, "--help"], text=True)
+    for flag in flags:
+        assert flag in help_text, (command, flag)
+
 for path in [*root.glob("*.md"), *(root / "instructions").glob("*.md"),
              *(root / "review").glob("*.md"), *(root / "skills").glob("*/SKILL.md")]:
     text = path.read_text()

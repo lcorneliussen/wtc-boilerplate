@@ -136,10 +136,30 @@ def _strip_heredocs(cmd: str) -> str:
                 delim = None
             continue
         out.append(line)
-        m = re.search(r"<<-?\s*(?:'([^']+)'|\"([^\"]+)\"|\\?(\w+))", line)
+        m = re.search(r"(?<!<)<<-?(?!<)\s*(?:'([^']+)'|\"([^\"]+)\"|\\?(\w+))", line)
         if m:
             delim = m.group(1) or m.group(2) or m.group(3)
     return "\n".join(out)
+
+
+def _shell_heredoc_bodies(cmd: str):
+    """Yield here-document bodies supplied as shell interpreter input."""
+    delim, body, is_shell = None, [], False
+    for line in cmd.split("\n"):
+        if delim is not None:
+            if line.strip() == delim:
+                if is_shell:
+                    yield "\n".join(body)
+                delim, body, is_shell = None, [], False
+            else:
+                body.append(line)
+            continue
+        m = re.search(r"(?<!<)<<-?(?!<)\s*(?:'([^']+)'|\"([^\"]+)\"|\\?(\w+))", line)
+        if m:
+            delim = m.group(1) or m.group(2) or m.group(3)
+            is_shell = bool(re.search(r"\b(?:bash|sh|zsh|dash|ksh)\b[^\n]*<<", line))
+    if delim is not None and is_shell:
+        yield "\n".join(body)
 
 
 def _newlines_to_semicolons(cmd: str) -> str:
@@ -239,11 +259,10 @@ def _find_raw_ready(cmd: str, depth: int = 0):
     """Return 'bb' | 'gh' when a command in `cmd` marks a PR ready, else None."""
     if depth > _MAX_DEPTH:
         return None
-    # A here-document may be executable input to a shell. The hook cannot
-    # distinguish it from data reliably, so keep raw ready text inside it
-    # behind the review gate.
-    if re.search(r"(?<!<)<<-?(?!<)\s*(?:'[^']+'|\"[^\"]+\"|\w+)", cmd) and re.search(r"\bpr\s+ready\b", cmd):
-        return "gh"
+    for body in _shell_heredoc_bodies(cmd):
+        hit = _find_raw_ready(body, depth + 1)
+        if hit:
+            return hit
     cmd = _strip_heredocs(cmd)
     substitutions = list(_substitutions(cmd))
     for inner, _, _ in substitutions:
