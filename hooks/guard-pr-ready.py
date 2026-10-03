@@ -98,6 +98,19 @@ def _has_undo_arg(args: list[str]) -> bool:
     return False
 
 
+def _without_redirections(args: list[str]) -> list[str]:
+    """Remove shell redirections and their input/output operands."""
+    kept = []
+    i = 0
+    while i < len(args):
+        if args[i] in _REDIRECTIONS:
+            i += 2
+            continue
+        kept.append(args[i])
+        i += 1
+    return kept
+
+
 def _skip_options(args: list[str], start: int) -> int:
     i = start
     while i < len(args) and args[i].startswith("-") and args[i] != "-":
@@ -252,11 +265,17 @@ def _find_raw_ready(cmd: str, depth: int = 0):
         prog = os.path.basename(words[i])
         args = words[i + 1:]
         if prog in ("bb", "gh"):
-            command_at = _skip_options(args, 0)
-            if command_at < len(args) and args[command_at] == "pr":
-                ready_at = _skip_options(args, command_at + 1)
-                if ready_at < len(args) and args[ready_at] == "ready" and not _has_undo_arg(args):
+            cli_args = _without_redirections(args)
+            command_at = _skip_options(cli_args, 0)
+            if command_at < len(cli_args) and cli_args[command_at] == "pr":
+                ready_at = _skip_options(cli_args, command_at + 1)
+                if ready_at < len(cli_args) and cli_args[ready_at] == "ready" and not _has_undo_arg(args):
                     return prog
+        elif prog == "pr" and args and args[0] == "ready" and substitutions:
+            # A command substitution in executable position was masked above.
+            return "gh"
+        elif prog.startswith("$") and len(args) > 1 and args[:2] == ["pr", "ready"]:
+            return "gh"
         elif prog in _SHELLS:
             for j, a in enumerate(args):
                 if re.match(r"^-[A-Za-z]*c[A-Za-z]*$", a) and j + 1 < len(args):

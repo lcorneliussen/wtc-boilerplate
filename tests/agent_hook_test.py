@@ -84,6 +84,8 @@ for command in ("gh pr ready 12", "bb pr ready 12", "gh pr -R example/repo ready
                 "gh pr --jq . ready 12", "gh pr -t '{{.url}}' ready 12",
                 "gh pr ready 12 <<< --undo", "gh pr ready 12 < --undo",
                 "gh pr ready 12 <<< --undo '",
+                "gh pr < /dev/null ready 12", "gh < /dev/null pr ready 12",
+                "$(command -v gh) pr ready 12", "${GH} pr ready 12",
                 "gh pr -R example/repo ready 12 '",
                 "bash -c 'gh pr ready 12'",
                 "eval 'gh pr ready 12'", "echo $(gh pr ready 12)"):

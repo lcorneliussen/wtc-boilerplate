@@ -87,10 +87,10 @@ This works because the tools are worktree-driven, not registry-driven:
   retire prunes them, with no `.bare/` entry to look up.
 - `wtc status --no-watch` walks the collection's directories and only requires a
   `.git` entry, so the sibling appears in the table like any other.
-- `write_collection_env` iterates the registry, so an unmanaged repo simply
+- `wtc env setup` iterates the registry, so an unmanaged repo simply
   gets no port — which is correct; it has no `port_offset` to claim.
 
-One consequence remains: `default_ref_for` is name-keyed and falls back to
+One consequence remains: default-ref lookup is name-keyed and falls back to
 `origin/main` for anything unregistered, so the `↓ behind` column measures
 against `main` regardless of the repo's actual working branch. An `ext.`
 sibling that develops on `develop` will read as behind when it is not.
