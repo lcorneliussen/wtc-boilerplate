@@ -82,20 +82,12 @@ _VALUE_FLAGS = {
     "-R", "--repo", "--hostname", "-w", "--workspace",
     "-q", "--jq", "-t", "--template", "--color",
 }
-_REDIRECTIONS = {"<", "<<", "<<<", ">", ">>", "<>"}
+_REDIRECTIONS = {"<", "<<", "<<<", ">", ">>", "<>", "&>", ">&", "<&"}
 
 
 def _has_undo_arg(args: list[str]) -> bool:
     """Ignore shell redirection operands, which are not CLI arguments."""
-    i = 0
-    while i < len(args):
-        if args[i] in _REDIRECTIONS:
-            i += 2
-            continue
-        if args[i] == "--undo":
-            return True
-        i += 1
-    return False
+    return "--undo" in _without_redirections(args)
 
 
 def _without_redirections(args: list[str]) -> list[str]:
@@ -103,12 +95,24 @@ def _without_redirections(args: list[str]) -> list[str]:
     kept = []
     i = 0
     while i < len(args):
+        if args[i].isdigit() and i + 1 < len(args) and args[i + 1] in _REDIRECTIONS:
+            i += 3
+            continue
         if args[i] in _REDIRECTIONS:
             i += 2
             continue
         kept.append(args[i])
         i += 1
     return kept
+
+
+def _is_ready_args(args: list[str]) -> bool:
+    cli_args = _without_redirections(args)
+    command_at = _skip_options(cli_args, 0)
+    if command_at >= len(cli_args) or cli_args[command_at] != "pr":
+        return False
+    ready_at = _skip_options(cli_args, command_at + 1)
+    return ready_at < len(cli_args) and cli_args[ready_at] == "ready" and not _has_undo_arg(args)
 
 
 def _skip_options(args: list[str], start: int) -> int:
@@ -265,16 +269,12 @@ def _find_raw_ready(cmd: str, depth: int = 0):
         prog = os.path.basename(words[i])
         args = words[i + 1:]
         if prog in ("bb", "gh"):
-            cli_args = _without_redirections(args)
-            command_at = _skip_options(cli_args, 0)
-            if command_at < len(cli_args) and cli_args[command_at] == "pr":
-                ready_at = _skip_options(cli_args, command_at + 1)
-                if ready_at < len(cli_args) and cli_args[ready_at] == "ready" and not _has_undo_arg(args):
-                    return prog
-        elif prog == "pr" and args and args[0] == "ready" and substitutions:
+            if _is_ready_args(args):
+                return prog
+        elif substitutions and _is_ready_args(words[i:]):
             # A command substitution in executable position was masked above.
             return "gh"
-        elif prog.startswith("$") and len(args) > 1 and args[:2] == ["pr", "ready"]:
+        elif prog.startswith("$") and _is_ready_args(args):
             return "gh"
         elif prog in _SHELLS:
             for j, a in enumerate(args):
