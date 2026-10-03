@@ -12,6 +12,10 @@ pin = (root / ".wtc-cli-version").read_text().strip()
 version = subprocess.check_output(["wtc", "--version"], text=True).strip()
 assert version == f"wtc version {pin}", (version, pin)
 
+major, minor, _ = map(int, pin.split("."))
+compat = re.search(r'(?m)^requires = "([^"]+)"$', (root / "wtc.toml").read_text())
+assert compat and compat.group(1) == f">={pin},<{major}.{minor + 1}", compat.group(1) if compat else None
+
 result = json.loads(subprocess.check_output(["wtc", "commands", "--json"], text=True))
 commands = {item["name"] for item in result["data"]}
 required = {

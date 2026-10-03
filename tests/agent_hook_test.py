@@ -10,6 +10,7 @@ from pathlib import Path
 
 root = Path(__file__).resolve().parents[1]
 hooks = json.loads((root / "hooks/agent-env.json").read_text())["hooks"]
+guard_command = hooks["PreToolUse"][0]["hooks"][1]["command"]
 commands = {
     "--write": hooks["SessionStart"][0]["hooks"][0]["command"],
     "--wrap": hooks["PreToolUse"][0]["hooks"][0]["command"],
@@ -21,6 +22,10 @@ with tempfile.TemporaryDirectory() as tmp:
     nested = collection / "app" / "src"
     nested.mkdir(parents=True)
     (collection / "harness").mkdir()
+    (collection / "harness" / "hooks").mkdir()
+    (collection / "harness" / "hooks" / "guard-pr-ready.py").write_bytes(
+        (root / "hooks" / "guard-pr-ready.py").read_bytes()
+    )
     (collection / "harness" / ".wtc-cli-version").write_text(
         (root / ".wtc-cli-version").read_text()
     )
@@ -62,14 +67,22 @@ with tempfile.TemporaryDirectory() as tmp:
     subprocess.run(["bash", "-c", commands["--wrap"]], cwd=base, env=env, input="{}", text=True, check=True)
     assert not log.exists(), "hook acted outside a collection"
 
+    guarded = subprocess.run(["bash", "-c", guard_command], cwd=nested, env=dict(env, CLAUDE_PROJECT_DIR=str(nested)),
+                             input=json.dumps({"tool_input": {"command": "gh pr ready 12"}}),
+                             text=True, capture_output=True)
+    assert guarded.returncode == 2, guarded
+    assert json.loads(guarded.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
+
 print("agent hook: nested collection routing and outside fail-open")
 
 guard = root / "hooks" / "guard-pr-ready.py"
-for command in ("gh pr ready 12", "bb pr ready 12"):
+for command in ("gh pr ready 12", "bb pr ready 12", "bash -c 'gh pr ready 12'",
+                "eval 'gh pr ready 12'", "echo $(gh pr ready 12)"):
     result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": command}}),
                             text=True, capture_output=True)
     assert result.returncode == 2, (command, result)
     assert "wtc review ready" in result.stderr, result.stderr
+    assert json.loads(result.stdout)["hookSpecificOutput"]["permissionDecision"] == "deny"
 for command in ("wtc review ready 12", 'echo "gh pr ready 12"'):
     result = subprocess.run(["python3", str(guard)], input=json.dumps({"tool_input": {"command": command}}),
                             text=True, capture_output=True)
