@@ -83,8 +83,8 @@ reading of the diff does not gate.
    change. Do not loop on nits you have already replied to.
 9. **Undraft only when the user asks**:
    `wtc review ready <n>` (run inside the repo worktree). It refuses when
-   the review is stale, missing, or `changes-requested`. Raw `bb pr ready` is
-   blocked by a hook. Override only with the user's words:
+   the review is stale, missing, or `changes-requested`. Do not use a raw forge
+   ready command. Override only with the user's words:
    `wtc review ready <n> --user-authorized "<verbatim quote>"`.
    Undrafting is not merging; use the repository's PR policy for a later merge.
 

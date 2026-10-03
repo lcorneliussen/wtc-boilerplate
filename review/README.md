@@ -23,7 +23,6 @@ own under `.review/concerns/`.
 | `wtc review resolve` | replies to and resolves the bundle's inline threads (not the summary comment) |
 | `wtc review status` | reads the latest review comment on a PR: `current|stale|none` + verdict (incl. `pending` / `error`) |
 | `wtc review ready` | the gate: undrafts only when the review is current and its verdict is `pass` or `pass-with-notes` |
-| `hooks/guard-pr-ready.py` | PreToolUse: catches common raw `bb pr ready` / `gh pr ready` calls by agents |
 | `prompts/concern.md` | prompt for one concern run |
 | `prompts/lead.md` | prompt for the aggregation run |
 | `concerns/*.md` | generic concerns (always shipped) |
@@ -34,11 +33,9 @@ The reviewer is **not** a skill. A reviewer run is a fresh process told by its
 prompt what it is; it never delegates to another harness, so there is no mode
 detection and no recursion.
 
-The hook is a best-effort agent safeguard, not a shell security boundary:
-arbitrary shell programs can construct and execute forge commands at runtime.
 Agents must use `wtc review ready` for undrafting; that command enforces the
-current-review check. The hook catches common direct raw commands and shell
-forms that would otherwise bypass the procedure by accident.
+current-review check. A shell hook cannot reliably police arbitrary commands
+that invoke a forge CLI, so the review procedure is an agent instruction.
 
 ## Concern files
 
