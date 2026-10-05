@@ -225,6 +225,16 @@ usually discovers the option.
 
 ---
 
+## Optional: services, tunnels and collection resources
+
+After the ordinary bootstrap works, follow [instructions/runtime.md](instructions/runtime.md)
+to evaluate the experimental dekit adapter in a disposable collection. It needs
+the CLI candidate tracked in [wtc-cli #65](https://github.com/lcorneliussen/wtc-cli/issues/65);
+do not replace the stable CLI pin until a tested release contains it. Start
+with [examples/runtime](examples/runtime/README.md), then wrap each repo's
+existing launch command. Repositories and developers that do not use WTC keep
+their current setup and local startup commands.
+
 ## Check
 
 ```text

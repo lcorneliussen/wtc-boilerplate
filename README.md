@@ -51,6 +51,8 @@ different revision, with no clone duplication and no branch contention.
 - **`instructions/hooks-and-env.md`** — the per-repo lifecycle hooks, the
   collection env (ports, `WTC_CONFIG_ROOT`), and how agent shells get
   sibling toolchains on PATH without `mise activate`.
+- **`instructions/runtime.md`** — optional dekit services, tunnel grouping,
+  resource hooks and retirement, with a [synthetic trial](examples/runtime/README.md).
 - **`instructions/secrets.md`** — the control root, the collection-scoped
   tier, and how to stop `gh`/`twg`/`jira` sharing one machine-global identity
   across unrelated projects.
