@@ -29,8 +29,7 @@ Most standard guidance already ships with `wtc-cli`. New work is testing a
 config-only harness scaffold, complete embedded instruction rendering, and
 optional services and resources. See the
 [CLI harness design](https://github.com/lcorneliussen/wtc-cli/blob/main/docs/harness-design.md)
-and [recorded demos](https://github.com/lcorneliussen/wtc-cli/blob/main/docs/demos/README.md)
-on the candidate branch.
+and [recorded demos](https://github.com/lcorneliussen/wtc-cli/blob/main/docs/demos/README.md).
 
 The intended ownership is simple: WTC supplies common operations and guidance;
 your harness owns the registry, pins, project policy, and integration hooks.
