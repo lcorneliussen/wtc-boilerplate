@@ -1,16 +1,15 @@
 # Bootstrap a WTC workspace
 
-Use the CLI's [released bootstrap guide](https://github.com/lcorneliussen/wtc-cli/blob/65-dekit-runtime/docs/released-bootstrap.md)
+Use the CLI's [released bootstrap guide](https://github.com/lcorneliussen/wtc-cli/blob/main/docs/released-bootstrap.md)
 for the first bare owner and collection. That guide is compatible with the
-populated reference harness and v0.1.38; it lives on the candidate branch while
-the documentation change is reviewed.
+populated reference harness and v0.1.38.
 
 Adapt this reference into your own harness repository. Commit your repository
 registry, exact CLI pin, project configuration, and deliberate policy overrides.
 Publish that harness to your own remote before cloning its shared bare owner.
 The workspace root remains a plain folder, and collections are worktrees.
 
-The [minimal-harness path](https://github.com/lcorneliussen/wtc-cli/blob/65-dekit-runtime/docs/getting-started.md)
+The [minimal-harness path](https://github.com/lcorneliussen/wtc-cli/blob/main/docs/getting-started.md)
 is being tested separately. It scaffolds project configuration and supplies
 standard instructions from the CLI. It is not included in v0.1.38, so do not
 switch a stable harness pin merely to follow the candidate examples.
