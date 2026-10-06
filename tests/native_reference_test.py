@@ -19,7 +19,7 @@ assert compat and compat.group(1) == f">={pin},<{major}.{minor + 1}", compat.gro
 result = json.loads(subprocess.check_output(["wtc", "commands", "--json"], text=True))
 commands = {item["name"] for item in result["data"]}
 required = {
-    "add-repo", "agent-env", "browse", "catch-up", "env", "mcp", "new",
+    "add-repo", "agent-env", "browse", "catch-up", "customize", "env", "mcp", "new",
     "open", "pr", "registry", "retire", "review", "secrets", "skills", "status",
 }
 assert required <= commands, sorted(required - commands)
