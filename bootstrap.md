@@ -15,5 +15,7 @@ is being tested separately. It scaffolds project configuration and supplies
 standard instructions from the CLI. It is not included in v0.1.38, so do not
 switch a stable harness pin merely to follow the candidate examples.
 
-After bootstrap, read `wtc customize` for configuration and hooks. Keep
-ordinary project development commands usable outside WTC.
+After bootstrap, read `wtc customize` for configuration and hooks. For the
+optional runtime trial, use [instructions/runtime.md](instructions/runtime.md)
+and [examples/runtime](examples/runtime/README.md). Projects keep their ordinary
+local development commands when WTC is not in use.

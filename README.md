@@ -26,8 +26,8 @@ entry points, skills, and instructions.
 ## Toward a smaller harness
 
 Most standard guidance already ships with `wtc-cli`. New work is testing a
-config-only harness scaffold and complete embedded instruction rendering.
-See the
+config-only harness scaffold, complete embedded instruction rendering, and
+optional services and resources. See the
 [CLI harness design](https://github.com/lcorneliussen/wtc-cli/blob/minimal-harness-docs/docs/harness-design.md)
 and [recorded demos](https://github.com/lcorneliussen/wtc-cli/blob/minimal-harness-docs/docs/demos/README.md).
 
@@ -39,3 +39,11 @@ This starter remains available during that transition. The minimal path is not
 in v0.1.38; keep a compatible released pin until a tested release contains it.
 Remove redundant files from existing project harnesses through reviewed changes,
 while preserving deliberate overrides.
+
+## Runtime trial
+
+The [onboarding guide](instructions/runtime.md) and
+[synthetic example](examples/runtime/README.md) exercise services, grouped
+endpoints, logs, and safe resource teardown. The ordinary `bin/dev` command
+continues to work without WTC. The trial uses a loopback relay; real tunnels and
+cloud resources use project-owned commands and hooks.

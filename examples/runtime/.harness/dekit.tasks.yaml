@@ -1,0 +1,15 @@
+tasks:
+  web/server:
+    label: existing build-and-run command
+    cmd: [./bin/dev]
+    autostart: true
+    ready: {log: WEB_READY, timeout: 10s}
+    x-wtc: {url_env: RUNTIME_DEMO_URL}
+  web/tunnel:
+    label: local relay fixture (replace with real tunnel)
+    cmd: [python3, scripts/relay.py]
+    deps: [web/server]
+    autostart: true
+    tags: [endpoint]
+    ready: {log: ENDPOINT_READY, timeout: 10s}
+    x-wtc: {url_env: RUNTIME_DEMO_TUNNEL_URL}
