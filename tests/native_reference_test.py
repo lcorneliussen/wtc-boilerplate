@@ -53,6 +53,10 @@ documented_options = {
 }
 for command, flags in documented_options.items():
     help_text = subprocess.check_output(["wtc", *command, "--help"], text=True)
+    # Cobra can return parent help successfully for an unknown subcommand.
+    usage = help_text.split("Usage:\n", 1)[1].split("\n\n", 1)[0]
+    expected_usage = r"(?m)^  wtc " + re.escape(" ".join(command)) + r"(?:\s|$)"
+    assert re.search(expected_usage, usage), (command, usage)
     for flag in flags:
         assert flag in help_text, (command, flag)
 

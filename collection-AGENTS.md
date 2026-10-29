@@ -74,8 +74,9 @@ instructions. See [runtime enablement](harness/instructions/runtime.md) and
 - **Skills** are the procedures for recurring collection actions —
   `/wtc-status`, `/wtc-open`, `/wtc-catch-up`, `/wtc-pr`, `/wtc-add-repo`,
   `/wtc-retire`, `/wtc-svc` where services are enabled, and `/wtc-start` on a
-  fresh one. Generic procedures ship with the CLI; harness overrides live in `harness/skills/`. `wtc skills render`
-  exposes them at this root. Prefer a skill when one exists.
+  fresh one. Generic procedures ship with the CLI; harness overrides live in
+  `harness/skills/`. `wtc skills render` exposes them at this root. Prefer a
+  skill when one exists.
 - **MCP servers** are declared once in `harness/.mcp-servers.yml` and
   rendered into `.mcp.json`, `.cursor/mcp.json` and `.codex/config.toml` at
   this root by `wtc mcp render`. The rendered files name credentials and never
