@@ -1,5 +1,18 @@
 # WTC reference harness
 
+> **Superseded — no longer maintained.** This repository is retained as a
+> historical reference and is superseded by [wtc-cli](https://github.com/lcorneliussen/wtc-cli).
+>
+> For new workspaces, start with [`wtc docs setup.md`](https://github.com/lcorneliussen/wtc-cli/blob/v0.1.62/internal/wtc/defaults/setup.md).
+> Use the CLI's [generated-harness instructions](https://github.com/lcorneliussen/wtc-cli/blob/v0.1.62/docs/getting-started.md#minimal-harness)
+> for `wtc harness init`; standard instructions ship with the CLI.
+>
+> Existing copies do not need to be deleted or automatically migrated. Preserve
+> project-specific registry entries, pins, hooks, and policy; consult the
+> [existing-harness guidance](https://github.com/lcorneliussen/wtc-cli/blob/v0.1.62/docs/getting-started.md#existing-populated-harness)
+> before changing them. Historical files, examples, and Git history remain
+> available below and may describe older CLI behavior.
+
 An optional starter for a project using [worktree collections](https://github.com/lcorneliussen/wtc-cli).
 A collection puts the repositories needed for one task beside each other as
 Git worktrees, with a shared environment and agent entry point.
