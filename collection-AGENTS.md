@@ -58,12 +58,23 @@ and fetching there is normal. Tools that span collections (`--all` sweeps,
 `retire <other>`, a new branch-off) run only when the user asked for that
 explicitly. Full rule: `harness/instructions/collection-context.md`.
 
+## Launching services: `wtc svc`
+
+Services and tunnels require released WTC v0.1.40 or later and the opt-in
+`[runtime] backend = "dekit"` setting in `harness/wtc.toml`. Enable the backend
+and render skills before using `/wtc-svc` to launch, run, preview, share, inspect
+logs, restart or stop an app, server or worker. Use collection-owned services
+through `wtc svc` so they retain their port, status and lifecycle across agent
+sessions. Without the runtime setting, follow the repository's own launch
+instructions. See [runtime enablement](harness/instructions/runtime.md) and
+`wtc docs instructions/runtime.md` for the CLI's versioned contract.
+
 ## Skills, config, secrets — the short version
 
 - **Skills** are the procedures for recurring collection actions —
   `/wtc-status`, `/wtc-open`, `/wtc-catch-up`, `/wtc-pr`, `/wtc-add-repo`,
-  `/wtc-retire`, and `/wtc-start` on a fresh one. Generic procedures ship
-  with the CLI; harness overrides live in `harness/skills/`. `wtc skills render`
+  `/wtc-retire`, `/wtc-svc` where services are enabled, and `/wtc-start` on a
+  fresh one. Generic procedures ship with the CLI; harness overrides live in `harness/skills/`. `wtc skills render`
   exposes them at this root. Prefer a skill when one exists.
 - **MCP servers** are declared once in `harness/.mcp-servers.yml` and
   rendered into `.mcp.json`, `.cursor/mcp.json` and `.codex/config.toml` at
