@@ -25,18 +25,19 @@ entry points, skills, and instructions.
 
 ## Toward a smaller harness
 
-Most standard guidance already ships with `wtc-cli`. New work is testing a
-config-only harness scaffold, complete embedded instruction rendering, and
-optional services and resources. See the
-[CLI harness design](https://github.com/lcorneliussen/wtc-cli/blob/minimal-harness-docs/docs/harness-design.md)
-and [recorded demos](https://github.com/lcorneliussen/wtc-cli/blob/minimal-harness-docs/docs/demos/README.md).
+Most standard guidance ships with `wtc-cli`. The config-only harness scaffold
+and embedded instruction rendering shipped in v0.1.39; optional services and
+resources shipped in v0.1.40 and remain experimental. See the
+[CLI harness design](https://github.com/lcorneliussen/wtc-cli/blob/v0.1.40/docs/harness-design.md)
+and [recorded demos](https://github.com/lcorneliussen/wtc-cli/blob/v0.1.40/docs/demos/README.md).
 
 The intended ownership is simple: WTC supplies common operations and guidance;
 your harness owns the registry, pins, project policy, and integration hooks.
 A new harness should not need to copy every default just to get started.
 
-This starter remains available during that transition. The minimal path is not
-in v0.1.38; keep a compatible released pin until a tested release contains it.
+This populated starter and the minimal path are both available with the tested
+v0.1.40 baseline. That runtime minimum is separate from the latest stable
+release; see [bootstrap.md](bootstrap.md) before choosing a newer exact pin.
 Remove redundant files from existing project harnesses through reviewed changes,
 while preserving deliberate overrides.
 

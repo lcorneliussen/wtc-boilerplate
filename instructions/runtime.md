@@ -38,7 +38,7 @@ and rendering skills with `wtc skills render`.
 
 Keep repositories' existing standalone launch commands working with WTC env
 unset. WTC supervises those commands; their build/cache/watch behavior stays
-inside the repository. `wtc down` keeps logs and collection data; teardown and
+inside the repository. `wtc svc down` keeps logs and collection data; teardown and
 retirement clean only resources with verified collection ownership. A failed
 stop or teardown must retain the collection and its ownership receipts.
 

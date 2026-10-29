@@ -36,11 +36,16 @@ for relative in ("skills/wtc-add-repo/SKILL.md", "instructions/worktree-workspac
     assert "wtc add-repo <collection>" not in guidance, relative
 
 documented_options = {
+    ("svc", "up"): ("--wait",),
+    ("svc", "down"): (),
+    ("svc", "restart"): ("--wait",),
+    ("svc", "logs"): ("--tail", "--follow"),
+    ("svc", "teardown"): (),
     ("svc", "tunnel"): ("--public", "--stop"),
     ("svc", "render"): ("--dry-run",),
     ("new",): ("--issue", "--tracker", "--pr"),
     ("catch-up",): ("--all", "--repos", "--reload-status"),
-    ("status",): ("--tui", "--no-watch", "--silent"),
+    ("status",): ("--tui", "--no-watch", "--silent", "--local"),
     ("secrets", "link"): ("--repo", "--include-prod"),
     ("skills", "render"): ("--seed-scope", "--all"),
     ("mcp", "render"): ("--all", "--dry-run"),
@@ -73,10 +78,12 @@ assert "runtime" not in tomllib.loads((root / "wtc.toml").read_text()), "runtime
 # rather than a mutable development branch. Local links are checked from their
 # installed location: collection-AGENTS.md becomes the collection's AGENTS.md.
 for relative in ("bootstrap.md", "instructions/runtime.md", "examples/runtime/README.md",
-                 "collection-AGENTS.md"):
+                 "collection-AGENTS.md", "README.md"):
     text = (root / relative).read_text()
-    assert not re.search(r"candidate|unreleased|locally built candidate", text, re.I), relative
-    for url in re.findall(r"https://github.com/lcorneliussen/wtc-cli/blob/([^ )]+)", text):
+    # The README scan covers its release guidance, not unrelated overview links.
+    release_guidance = text.split("## Toward a smaller harness\n", 1)[-1] if relative == "README.md" else text
+    assert not re.search(r"candidate|unreleased|locally built candidate", release_guidance, re.I), relative
+    for url in re.findall(r"https://github.com/lcorneliussen/wtc-cli/blob/([^ )]+)", release_guidance):
         assert url.startswith(f"v{pin}/"), (relative, url)
     for target in re.findall(r"\]\(([^)]+)\)", text):
         if "://" in target or target.startswith("#"):

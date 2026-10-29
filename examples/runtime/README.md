@@ -8,7 +8,7 @@ web process, so shutdown exercises a nested launcher.
 
 For the WTC trial, use released WTC v0.1.40 or later and enable dekit as described in
 [the onboarding guide](../../instructions/runtime.md). Use a worktree of this
-fixture repo in a disposable collection. Before `wtc up`, set unused ports in
+fixture repo in a disposable collection. Before `wtc svc up`, set unused ports in
 that collection's `.env.collection.local`, for example:
 
 ```sh
